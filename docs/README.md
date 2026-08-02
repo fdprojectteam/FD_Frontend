@@ -62,11 +62,11 @@ source of truth for the Marketplace module.
 
 ## Approved UI
 
-Marketplace Home
+FD Investment Platform - Marketplace Home
 
-Product Details
+FD Investment Platform - Product Details
 
-Comparison
+FD Investment Platform - Comparison
 
 These designs are the implementation source of truth.
 
