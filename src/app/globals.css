@@ -1,0 +1,309 @@
+@import 'tailwindcss';
+@import '../design-system/tokens/index.css';
+
+/**
+ * Tailwind v4 theme mapping — generates utilities from the design tokens.
+ * Token values live in src/design-system/tokens/ (provenance:
+ * docs/engineering/design-tokens.md). This file only maps them into
+ * Tailwind namespaces; it never defines raw values.
+ */
+@theme inline {
+  /* ---- Breakpoints: approved 2026-07-30 (mobile <768, tablet ≥768, desktop ≥1200) ---- */
+  --breakpoint-*: initial;
+  --breakpoint-md: 768px;
+  --breakpoint-xl: 1200px;
+
+  /* ---- Fonts ---- */
+  --font-sans: var(--ds-font-sans);
+
+  /* ---- Brand & status colors → bg-primary, text-success, … ---- */
+  --color-primary: var(--ds-color-primary);
+  --color-primary-subtle: var(--ds-color-primary-subtle);
+  --color-success: var(--ds-color-success);
+  --color-warning: var(--ds-color-warning);
+  --color-error: var(--ds-color-error);
+  --color-info: var(--ds-color-info);
+
+  /* ---- Surfaces → bg-surface-card, bg-surface-brand, … ---- */
+  --color-surface-page: var(--ds-surface-page);
+  --color-surface-card: var(--ds-surface-card);
+  --color-surface-subtle: var(--ds-surface-subtle);
+  --color-surface-muted: var(--ds-surface-muted);
+  --color-surface-brand: var(--ds-surface-brand);
+  --color-surface-brand-subtle: var(--ds-surface-brand-subtle);
+
+  /* ---- Text colors → text-content, text-content-muted, … ---- */
+  --color-content: var(--ds-text-color-primary);
+  --color-content-muted: var(--ds-text-color-secondary);
+  --color-content-placeholder: var(--ds-text-color-placeholder);
+  --color-content-brand: var(--ds-text-color-brand);
+  --color-content-on-brand: var(--ds-text-color-on-brand);
+
+  /* ---- Borders → border-default, border-strong, … ---- */
+  --color-border-default: var(--ds-border-default);
+  --color-border-strong: var(--ds-border-strong);
+  --color-border-primary: var(--ds-border-primary);
+  --color-divider: var(--ds-divider);
+
+  /* ---- Typography scale → text-h1, text-body, … ---- */
+  --text-h1: var(--ds-text-h1-size);
+  --text-h1--line-height: var(--ds-text-h1-leading);
+  --text-h1--font-weight: var(--ds-text-h1-weight);
+  --text-h2: var(--ds-text-h2-size);
+  --text-h2--line-height: var(--ds-text-h2-leading);
+  --text-h2--font-weight: var(--ds-text-h2-weight);
+  --text-h3: var(--ds-text-h3-size);
+  --text-h3--line-height: var(--ds-text-h3-leading);
+  --text-h3--font-weight: var(--ds-text-h3-weight);
+  --text-body-lg: var(--ds-text-body-lg-size);
+  --text-body-lg--line-height: var(--ds-text-body-lg-leading);
+  --text-body: var(--ds-text-body-size);
+  --text-body--line-height: var(--ds-text-body-leading);
+  --text-caption: var(--ds-text-caption-size);
+  --text-caption--line-height: var(--ds-text-caption-leading);
+  --text-numeric: var(--ds-text-numeric-size);
+  --text-numeric--line-height: var(--ds-text-numeric-leading);
+  --text-numeric--font-weight: var(--ds-text-numeric-weight);
+
+  /* ---- Radius → rounded-sm/md/lg/card/full ---- */
+  --radius-*: initial;
+  --radius-sm: var(--ds-radius-sm);
+  --radius-md: var(--ds-radius-md);
+  --radius-lg: var(--ds-radius-lg);
+  --radius-card: var(--ds-radius-card);
+  --radius-full: var(--ds-radius-full);
+
+  /* ---- Elevation → shadow-elevation-1/2/overlay ---- */
+  --shadow-*: initial;
+  --shadow-elevation-1: var(--ds-elevation-1);
+  --shadow-elevation-2: var(--ds-elevation-2);
+  --shadow-elevation-overlay: var(--ds-elevation-overlay);
+
+  /* ---- Motion → duration-fast/base/slow, ease-out/in/in-out ---- */
+  --ease-*: initial;
+  --ease-out: var(--ds-ease-out);
+  --ease-in: var(--ds-ease-in);
+  --ease-in-out: var(--ds-ease-in-out);
+}
+
+/* Page-width container per the 12-col / 1200px grid (inventory §12). */
+@utility container-page {
+  margin-inline: auto;
+  max-width: var(--ds-container-max);
+  padding-inline: var(--ds-container-gutter-mobile);
+
+  @media (width >=768px) {
+    padding-inline: var(--ds-container-gutter);
+  }
+}
+
+/*
+ * Narrower reading column for the product-details screen (M2.6 §2.7.1).
+ * Same gutters as container-page so the two align at mobile widths, where
+ * both are full-bleed; from md the detail column is visibly inset.
+ */
+@utility container-detail {
+  margin-inline: auto;
+  max-width: var(--ds-container-detail-max);
+  padding-inline: var(--ds-container-gutter-mobile);
+
+  @media (width >=768px) {
+    padding-inline: var(--ds-container-gutter);
+  }
+}
+
+/* Accessible focus ring (inventory §2d; Document 14 §6). */
+@utility focus-ring {
+  &:focus-visible {
+    outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring-color);
+    outline-offset: var(--ds-focus-ring-offset);
+  }
+}
+
+/*
+ * Generic vertical expand/collapse motion (T1.7 — approved Option A).
+ * Reusable by Accordion, future Collapsible, navigation groups, FAQ
+ * sections. The consumer sets --ds-expand-height to its measured runtime
+ * height variable (e.g. Radix's --radix-accordion-content-height).
+ * Durations/easing come exclusively from motion tokens; the global
+ * prefers-reduced-motion rule below collapses these to an immediate
+ * state change.
+ */
+@keyframes ds-expand-down {
+  from {
+    height: 0;
+  }
+
+  to {
+    height: var(--ds-expand-height);
+  }
+}
+
+@keyframes ds-collapse-up {
+  from {
+    height: var(--ds-expand-height);
+  }
+
+  to {
+    height: 0;
+  }
+}
+
+@utility animate-expand-down {
+  animation: ds-expand-down var(--ds-duration-base) var(--ds-ease-out);
+}
+
+@utility animate-collapse-up {
+  animation: ds-collapse-up var(--ds-duration-base) var(--ds-ease-out);
+}
+
+/*
+ * Generic fade motion (T1.8 — approved). Opacity only: no zoom, scale,
+ * slide, or spring. Reusable unchanged by Toast, Popover, Dropdown,
+ * Alert Dialog, and Sheet. Durations/easing from motion tokens; the
+ * global prefers-reduced-motion rule collapses them automatically.
+ */
+@keyframes ds-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ds-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@utility animate-fade-in {
+  animation: ds-fade-in var(--ds-duration-base) var(--ds-ease-out);
+}
+
+@utility animate-fade-out {
+  animation: ds-fade-out var(--ds-duration-base) var(--ds-ease-out);
+}
+
+/*
+ * Overlay viewport guards (T1.8). Keeps calc() out of platform
+ * components so the "no arbitrary values in components" rule holds.
+ * Gutters derive from the approved spacing scale:
+ *   vertical   = 2 × --ds-space-8 (32px)
+ *   horizontal = 2 × --ds-space-4 (16px)
+ */
+@utility overlay-viewport-height {
+  max-height: calc(100svh - (2 * var(--ds-space-8)));
+  overflow-y: auto;
+}
+
+@utility overlay-viewport-width {
+  max-width: calc(100% - (2 * var(--ds-space-4)));
+}
+
+/*
+ * Generic quiet pulse for loading placeholders (T1.11 — approved).
+ * (Motion inventory: expand/collapse, fade, pulse — five primitives total.)
+ * Opacity only: no shimmer, gradient, wave, transform, or scale. Uses the
+ * --ds-duration-pulse [TED] token and the muted-opacity token; the global
+ * prefers-reduced-motion rule stops the loop automatically. Reusable by
+ * any placeholder surface — deliberately not Skeleton-specific.
+ */
+@keyframes ds-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: var(--ds-opacity-muted);
+  }
+}
+
+@utility animate-pulse-soft {
+  animation: ds-pulse var(--ds-duration-pulse) var(--ds-ease-in-out) infinite;
+}
+
+/* Scrim behind overlays: gray-900 at --ds-opacity-scrim (inventory §16). */
+@utility overlay-scrim {
+  background-color: rgb(from var(--ds-gray-900) r g b / var(--ds-opacity-scrim));
+}
+
+/*
+ * Generic fade motion (T1.8 — approved Option A). Reusable unchanged by
+ * Dialog, and future Toast, Popover, Dropdown, Alert Dialog, Sheet.
+ * No zoom/scale/slide/spring — fade only, on motion tokens. The global
+ * prefers-reduced-motion rule collapses these to an immediate change.
+ */
+@keyframes ds-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ds-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@utility animate-fade-in {
+  animation: ds-fade-in var(--ds-duration-base) var(--ds-ease-out);
+}
+
+@utility animate-fade-out {
+  animation: ds-fade-out var(--ds-duration-base) var(--ds-ease-in);
+}
+
+/*
+ * Overlay panel viewport guards (T1.8): keep floating panels (Dialog,
+ * future Sheet/Drawer) inside the viewport with token-derived gutters —
+ * platform components must not carry arbitrary calc values themselves.
+ */
+@utility overlay-panel-max-h {
+  /* full small-viewport height minus a 2 × space-8 vertical gutter */
+  max-height: calc(100svh - (2 * var(--ds-space-8)));
+}
+
+@utility overlay-panel-max-w {
+  /* never wider than the viewport minus a 2 × space-4 horizontal gutter */
+  max-width: calc(100% - (2 * var(--ds-space-4)));
+}
+
+body {
+  background: var(--ds-surface-page);
+  color: var(--ds-text-color-primary);
+  font-family: var(--ds-font-sans);
+}
+
+/* Financial figures must not shift layout as values change. */
+.tabular-nums,
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reduced motion is a platform requirement (Document 14 §16). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
