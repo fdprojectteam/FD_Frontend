@@ -21,8 +21,14 @@ export const marketplaceKeys = {
       [...marketplaceKeys.products.lists(), params ?? {}] as const,
     details: () => [...marketplaceKeys.products.all, 'detail'] as const,
     detail: (id: string) => [...marketplaceKeys.products.details(), id] as const,
-    compare: (ids: string[]) =>
-      [...marketplaceKeys.products.all, 'compare', [...ids].sort()] as const,
+    /**
+     * The deposit amount is part of the key, not a detail of the request.
+     * Returns are derived from it, so two amounts are two different results;
+     * leaving it out would serve ₹1,00,000's figures for a ₹5,00,000 deposit
+     * from cache and look entirely correct.
+     */
+    compare: (ids: string[], amount: number) =>
+      [...marketplaceKeys.products.all, 'compare', [...ids].sort(), amount] as const,
   },
 
   banks: {

@@ -1048,7 +1048,10 @@ export async function runInvariantSuite() {
   );
   ok(
     'what is displayed comes from the store, so the cap governs the columns',
-    /useCompareProducts\(selection\.ids\)/.test(compareScreen ?? ''),
+    // Re-pointed 2026-08-02: the batch gained a second argument (the deposit
+    // amount). The rule is unchanged — the *ids* come from the store, never
+    // from the URL — so the probe matches the first argument and stops there.
+    /useCompareProducts\(selection\.ids,/.test(compareScreen ?? ''),
   );
   /**
    * Re-pointed in T2.7.4: the screen no longer renders the remove control
@@ -1063,6 +1066,336 @@ export async function runInvariantSuite() {
   ok(
     'the back link is a real Link to ROUTES.home, never router.back()',
     /href=\{ROUTES\.home\}/.test(compareScreen ?? '') && !/router\.back/.test(compareScreen ?? ''),
+  );
+
+  section('Invariants · Deposit amount (client change request, 2026-08-02)');
+
+  const amountField = sources.get('src/modules/marketplace/components/compare-amount-field.tsx');
+  const compareProducts = sources.get('src/modules/marketplace/hooks/use-compare-products.ts');
+  const queryKeys = sources.get('src/modules/marketplace/hooks/query-keys.ts');
+
+  ok('the field exists', Boolean(amountField));
+  /**
+   * Presentation-only in the T2.7.7 sense — ownership, not signature. It takes
+   * the value, the error and a change handler; it must not acquire the right to
+   * decide any of them, and above all it must not calculate.
+   */
+  ok(
+    'it owns no state, no store, no router and no query',
+    !/use(State|Effect|Memo|Reducer|Router|SearchParams|Query|CompareSelection)\s*\(/.test(
+      amountField ?? '',
+    ),
+  );
+  ok(
+    'and it computes nothing — the amount is a number it reports upward',
+    !/calculateMaturity|parseDepositAmount|estimatedReturns/.test(amountField ?? ''),
+  );
+
+  /**
+   * The amount is **client state, not a URL parameter** (approved 2026-08-02,
+   * consistent with D3). `/compare`'s parameter set stays closed at one key —
+   * asserted separately — so this asserts the other half: the route holds it and
+   * the URL layer never hears about it.
+   *
+   * Re-pointed by the Investment Preferences change: the state moved off the
+   * screen into `useComparisonPreferences`, so that the section can grow to
+   * Tenure, Payout, Senior Citizen and Tax Saver without the screen growing a
+   * `useState` pair per field. The invariant is unchanged — one owner, and it is
+   * not the URL — so the assertion follows the owner rather than the literal
+   * `useState` call it used to be.
+   */
+  const preferences = sources.get('src/modules/marketplace/hooks/use-comparison-preferences.ts');
+
+  ok('the preferences hook exists', Boolean(preferences));
+  ok(
+    'the screen takes the amount from it rather than holding its own',
+    /useComparisonPreferences\(\)/.test(compareScreen ?? '') &&
+      !/useState\(REFERENCE_AMOUNT\)/.test(compareScreen ?? ''),
+  );
+  ok(
+    'and the hook owns it as local state, never the URL',
+    /useState\(REFERENCE_AMOUNT\)/.test(preferences ?? '') &&
+      !/useRouter|useSearchParams|usePathname/.test(preferences ?? ''),
+  );
+
+  /**
+   * The preferences are modelled as an **object**, not as a bag of loose values.
+   * This is the structural half of "reusable as Investment Preferences, not just
+   * a single Deposit Amount input": a hook returning a `ComparisonPreferences`
+   * absorbs the next field, whereas one returning `amount` directly would need a
+   * new return value — and a new prop threaded through the screen — for each.
+   */
+  ok(
+    'preferences are one object, so the next field is a key rather than a rewrite',
+    /interface ComparisonPreferences/.test(preferences ?? '') &&
+      /preferences: \{ depositAmount: appliedDepositAmount \}/.test(preferences ?? ''),
+  );
+
+  /**
+   * The section is a **container**, not a deposit-amount widget wearing a
+   * heading. If it ever imports the field it arranges, the fourth preference
+   * becomes an edit to this file instead of one more child — which is precisely
+   * the redesign the brief asks to design out.
+   */
+  const preferencesSection = sources.get(
+    'src/modules/marketplace/components/investment-preferences.tsx',
+  );
+
+  ok('the Investment Preferences section exists', Boolean(preferencesSection));
+  ok(
+    'it arranges children and knows nothing about which fields they are',
+    /children: ReactNode/.test(preferencesSection ?? '') &&
+      !/CompareAmountField|depositAmount/.test(preferencesSection ?? ''),
+  );
+  ok(
+    'it owns no state and calculates nothing',
+    !/use(State|Effect|Memo|Reducer|Query)\s*\(/.test(preferencesSection ?? '') &&
+      !/calculateMaturity|resolveApplicableRate/.test(preferencesSection ?? ''),
+  );
+
+  /**
+   * One set of preferences for both presentations. The brief requires desktop
+   * and mobile to display the same calculated data; rendering the controls
+   * outside both `data-compare-view` containers is what makes that structural
+   * rather than a thing to keep in step — there is only one amount, so there is
+   * nothing to synchronise.
+   */
+  ok(
+    'the preferences render above the views, not inside either of them',
+    /<InvestmentPreferences[\s\S]*?<\/InvestmentPreferences>[\s\S]*data-compare-view/.test(
+      compareScreen ?? '',
+    ),
+  );
+
+  section('Invariants · Draft vs applied (Comparison Experience Refinement, 2026-08-02)');
+
+  /**
+   * The refinement's whole architecture, stated once: **two values, and only one
+   * of them is business input.**
+   *
+   *     input → draftDepositAmount → Update Comparison → appliedDepositAmount
+   *
+   * A single value with a debounce would satisfy "the table stops flickering"
+   * and none of the rest — the user would still not know whether what they were
+   * reading answered what they had typed. So the probes below assert the
+   * *separation*, not the calmness: calmness is a consequence, and it is the
+   * consequence that a later refactor would keep while quietly losing the rule.
+   */
+  ok(
+    'the hook holds a draft and an applied value, not one value',
+    /useState\(REFERENCE_AMOUNT\)/.test(preferences ?? '') &&
+      /const \[draftDepositAmount, setDraftDepositAmount\] = useState\(/.test(preferences ?? '') &&
+      /const \[appliedDepositAmount, setAppliedDepositAmount\] = useState\(/.test(
+        preferences ?? '',
+      ),
+  );
+  /**
+   * The applied value moves through exactly two doors: the explicit apply, and
+   * the one-shot products-derived default that runs before the user has an
+   * opinion. A third `setAppliedDepositAmount` is a third way for the comparison
+   * to change without being asked — which is the behaviour being removed.
+   */
+  ok(
+    'the applied value is written only by applyPreferences and the seeded default',
+    (preferences ?? '').split('setAppliedDepositAmount(').length - 1 === 2,
+  );
+  /**
+   * `setDepositAmount` is the keystroke handler. If it ever touches the applied
+   * value again, every probe above still passes and the screen is back to
+   * recalculating as the user types.
+   */
+  ok(
+    'a keystroke moves the draft and nothing else',
+    /const setDepositAmount = useCallback\(\(raw: string\) => \{[^}]*setDraftDepositAmount\(raw\);\s*\}, \[\]\);/.test(
+      preferences ?? '',
+    ),
+  );
+  /**
+   * Enter reaches `applyPreferences` directly from the field, bypassing the
+   * disabled button, so the guard cannot live only in the control.
+   */
+  ok(
+    'applying re-checks rather than trusting its caller',
+    /const applyPreferences = useCallback\(\(\) => \{\s*if \(!parsed\.ok \|\| parsed\.amount === appliedDepositAmount\) return;/.test(
+      preferences ?? '',
+    ),
+  );
+
+  /**
+   * The load-bearing consequence: **calculations read the applied value only.**
+   * The draft leaves the screen exactly once, as the field's `value` — anything
+   * else reading it is a calculation racing the user's typing again.
+   */
+  ok(
+    'the screen calculates from the applied preferences',
+    /const amount = preferences\.depositAmount;/.test(compareScreen ?? ''),
+  );
+  ok(
+    'and the draft reaches the field and nothing else',
+    (compareScreen ?? '').split('depositAmountInput').length - 1 === 2 &&
+      /value=\{depositAmountInput\}/.test(compareScreen ?? ''),
+  );
+
+  /**
+   * The apply row is a **preferences** component, not a comparison one: it takes
+   * labels and a callback. The moment it formats a deposit or names the
+   * comparison, the second preferences section on the platform starts by
+   * copying it.
+   */
+  const applyBar = sources.get('src/modules/marketplace/components/preference-apply-bar.tsx');
+
+  ok('the apply bar exists', Boolean(applyBar));
+  ok(
+    'it owns no state, no store, no router and no query',
+    !/use(State|Effect|Memo|Reducer|Router|SearchParams|Query|CompareSelection)\s*\(/.test(
+      applyBar ?? '',
+    ),
+  );
+  ok(
+    'and it knows nothing about deposits, amounts, or comparisons',
+    !/deposit|Deposit|formatCurrency|Comparison|compare/.test(applyBar ?? ''),
+  );
+  /**
+   * One live region carrying both states, so applying announces itself without a
+   * toast that has to be scheduled and cleared.
+   */
+  ok(
+    'the pending and settled messages share one polite status region',
+    (applyBar ?? '').split('role="status"').length - 1 === 1 &&
+      /aria-live="polite"/.test(applyBar ?? ''),
+  );
+
+  /**
+   * The field reports the gesture; the screen decides what it means. Named
+   * `onSubmit`/`onRevert` rather than `onApply`, and asserted as such — a field
+   * that knew it applied a comparison would be a field that could not be reused
+   * by one.
+   */
+  ok(
+    'the field reports Enter and Escape without deciding what they do',
+    /onSubmit\?: \(\) => void/.test(amountField ?? '') &&
+      /onRevert\?: \(\) => void/.test(amountField ?? '') &&
+      !/applyPreferences|appliedDepositAmount/.test(amountField ?? ''),
+  );
+  ok(
+    'and the screen is what binds them to applying and reverting',
+    /onSubmit=\{applyPreferences\}/.test(compareScreen ?? '') &&
+      /onRevert=\{resetDraft\}/.test(compareScreen ?? ''),
+  );
+  /**
+   * The action is present only while there is something to apply, so the control
+   * the user just activated unmounts and focus falls to `<body>`. The screen
+   * hands it back to the field — a keyboard user's next Tab must not restart at
+   * the top of the page.
+   *
+   * The button path only: Enter never lost focus, so it stays bound to
+   * `applyPreferences` directly rather than acquiring a redundant focus call.
+   */
+  ok(
+    'applying from the button returns focus to the field it came from',
+    /const handleApply = \(\) => \{\s*applyPreferences\(\);\s*amountFieldRef\.current\?\.focus\(\);/.test(
+      compareScreen ?? '',
+    ) && /onApply=\{handleApply\}/.test(compareScreen ?? ''),
+  );
+
+  /**
+   * Apply must not reintroduce the flicker at a different moment. The amount is
+   * part of the query key, so a new applied value is a cold key; without
+   * `keepPreviousData` the table would empty into skeletons on every apply.
+   *
+   * Its cost is asserted beside it: previous data now survives an errored
+   * refetch, so the screen's content guard must keep carrying `!isError`.
+   */
+  ok(
+    'the batch keeps the previous figures while the applied amount reloads',
+    /placeholderData: keepPreviousData/.test(compareProducts ?? ''),
+  );
+  ok(
+    'so the content guard still refuses to render a comparison beside an error',
+    /const comparison = ids\.length > 0 && !isError && products \? products : null;/.test(
+      compareScreen ?? '',
+    ),
+  );
+  /**
+   * One transition wrapper around **both** presentations (brief: "refresh
+   * desktop and mobile together"). Two would be two timings to keep in step.
+   */
+  ok(
+    'one refresh treatment wraps both views rather than one each',
+    (compareScreen ?? '').split('data-comparison-updating').length - 1 === 1 &&
+      /data-comparison-updating[\s\S]*data-compare-view="desktop"[\s\S]*data-compare-view="mobile"/.test(
+        compareScreen ?? '',
+      ),
+  );
+
+  /**
+   * Slab resolution has exactly one call site, and it is the service — the same
+   * rule `calculateMaturity` has always lived under. A component resolving a
+   * slab for itself would be a second opinion about the rate its own maturity
+   * figure was derived from, and the two would render together perfectly.
+   */
+  const slabCallers = [...sources.entries()]
+    .filter(
+      ([file, text]) =>
+        file !== 'src/modules/marketplace/utils/rate-slabs.ts' &&
+        file !== 'src/modules/marketplace/utils/index.ts' &&
+        /resolveApplicableRate\s*\(/.test(text),
+    )
+    .map(([file]) => file);
+
+  check('resolveApplicableRate has exactly one call site', slabCallers, [
+    'src/modules/marketplace/services/product-service.ts',
+  ]);
+
+  /**
+   * The rate and the money it produced are published together, from one
+   * resolution. Asserted on the source because the failure it guards against is
+   * a *refactor* — resolving the rate once for display and again for the
+   * calculation — and the two would agree until the day they did not.
+   */
+  ok(
+    'the applied rate is the rate the maturity was computed from',
+    /const appliedRate = resolveApplicableRate\(/.test(
+      sources.get('src/modules/marketplace/services/product-service.ts') ?? '',
+    ) &&
+      /annualRate: appliedRate/.test(
+        sources.get('src/modules/marketplace/services/product-service.ts') ?? '',
+      ),
+  );
+  ok(
+    'and no amount reaches the compare URL layer',
+    !/amount/i.test(sources.get('src/modules/marketplace/utils/compare-url.ts') ?? '') &&
+      !/amount/i.test(sources.get('src/modules/marketplace/hooks/use-compare-url-state.ts') ?? ''),
+  );
+
+  /**
+   * The amount is part of the query's **identity**, not a detail of its
+   * request. Two amounts are two different results; omitting it from the key
+   * would serve one amount's figures for another straight from cache, and look
+   * entirely correct while doing it.
+   */
+  ok(
+    'the batch takes the amount and passes it to the service',
+    /useCompareProducts\(ids: string\[\], amount: number\)/.test(compareProducts ?? '') &&
+      /getProductsByIds\(ids, amount\)/.test(compareProducts ?? ''),
+  );
+  ok(
+    'and the query key carries it',
+    /compare: \(ids: string\[\], amount: number\)/.test(queryKeys ?? '') &&
+      /'compare', \[\.\.\.ids\]\.sort\(\), amount\]/.test(queryKeys ?? ''),
+  );
+
+  /**
+   * The returns are still computed in the service. This is the rule the change
+   * was most likely to break: recomputing per amount inside a component would
+   * have put a third `calculateMaturity` call site in the tree, which the exact
+   * list above already forbids — this states the module-level half of it.
+   */
+  ok(
+    'no compare component calculates a return',
+    !sectionComponents
+      .filter((file) => file.includes('/compare-'))
+      .some((file) => /calculateMaturity|Math\.pow|\*\*/.test(sources.get(file) ?? '')),
   );
 
   section('Invariants · T2.7.4 — the comparison table');

@@ -18,6 +18,17 @@ import type { ProductDetails } from '../types/product';
  * same contract" is checkable rather than merely true today.
  */
 export interface CompareViewProps {
+  /**
+   * Products whose minimum investment the entered deposit amount does not
+   * reach (client change request, 2026-08-02).
+   *
+   * Derived by `CompareScreen`, never here: the views are told *which* columns
+   * fall short, they do not decide it. The returns for those columns are still
+   * shown and are arithmetically correct — what the flag says is that the user
+   * could not actually open that deposit with this amount, which is a different
+   * statement from "this number is wrong".
+   */
+  belowMinimumIds?: string[];
   products: ProductDetails[];
   rows: CompareRow[];
   onRemove: (productId: string) => void;

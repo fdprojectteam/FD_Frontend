@@ -7,18 +7,24 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ROUTES } from '@/constants/routes';
+import { cn } from '@/lib/utils';
 
 import { CompareActionBar } from './compare-action-bar';
+import { CompareAmountField } from './compare-amount-field';
 import { CompareCards } from './compare-cards';
 import { CompareEmptyState } from './compare-empty-state';
 import { ComparePicker } from './compare-picker';
 import { CompareTable } from './compare-table';
+import { InvestmentPreferences } from './investment-preferences';
+import { PreferenceApplyBar } from './preference-apply-bar';
 import { PICKER_PAGE_SIZE } from '../constants/compare';
 import { useCompareProducts } from '../hooks/use-compare-products';
 import { useCompareSelection } from '../hooks/use-compare-selection';
 import { useCompareUrlState } from '../hooks/use-compare-url-state';
+import { useComparisonPreferences } from '../hooks/use-comparison-preferences';
 import { useProducts } from '../hooks/use-products';
 import { buildCompareRows } from '../utils/compare-rows';
+import { formatCurrency } from '../utils/format';
 
 /**
  * CompareScreen — the `/compare` shell (M2.7, T2.7.3).
@@ -47,7 +53,85 @@ import { buildCompareRows } from '../utils/compare-rows';
 export function CompareScreen() {
   const selection = useCompareSelection();
   const { ids, addId, removeId } = useCompareUrlState(selection);
-  const { data: products, isError, refetch } = useCompareProducts(selection.ids);
+
+  /* ---- Comparison context (client change request, 2026-08-02) ----- */
+
+  /**
+   * The Investment Preferences the whole comparison is calculated against.
+   *
+   * Extracted into `useComparisonPreferences` rather than held as loose
+   * `useState` here: the brief asks for a section that grows to Tenure, Payout,
+   * Senior Citizen and Tax Saver, and preferences kept as individual state pairs
+   * on this screen would meet that instruction in the components while defeating
+   * it in the state. One object, one setter per field, one place to add the
+   * next.
+   *
+   * The screen still owns the rules and the field still only applies them (I3).
+   * No component calculates anything: the amount goes to the service, which is
+   * where `calculateMaturity` — and now slab resolution — has always lived.
+   */
+  /**
+   * **Draft and applied** (Comparison Experience Refinement, 2026-08-02). The
+   * screen reads `preferences` — the applied context — and never the draft. The
+   * draft exists only between the field and the apply action; everything below
+   * this line, including the query key, is calculated from a figure the user
+   * confirmed.
+   */
+  const {
+    preferences,
+    depositAmountInput,
+    depositAmountError,
+    hasPendingChanges,
+    canApply,
+    setDepositAmount,
+    applyPreferences,
+    resetDraft,
+    applyDefaultFor,
+  } = useComparisonPreferences();
+
+  const amount = preferences.depositAmount;
+
+  /**
+   * Applying from the button, which then leaves.
+   *
+   * The focus move is the whole reason this wrapper exists: the action is
+   * present only while there is something to apply, so the element the user just
+   * activated unmounts, and focus falls to `<body>` — the next Tab would start
+   * from the top of the page. Returning it to the field puts the user back where
+   * the edit began, which is also where the next edit starts.
+   *
+   * Enter is bound to `applyPreferences` directly: the field already has focus,
+   * so there is nothing to restore.
+   */
+  const amountFieldRef = useRef<HTMLInputElement>(null);
+
+  const handleApply = () => {
+    applyPreferences();
+    amountFieldRef.current?.focus();
+  };
+
+  const {
+    data: products,
+    isError,
+    isFetching,
+    refetch,
+  } = useCompareProducts(selection.ids, amount);
+
+  /**
+   * Seeds the default deposit from the products themselves — the highest
+   * minimum among them, floored at ₹1,00,000, so the opening comparison is one
+   * every column can actually be opened at.
+   *
+   * It runs on every `products` change and the hook decides whether to act: the
+   * guard belongs with the state it protects, not spread across the call site,
+   * and "the user has typed" is not a fact this component should have to
+   * remember. Adding or removing a column afterwards therefore leaves the
+   * entered amount alone, which is correct — the user's figure is about their
+   * money, not about the current selection.
+   */
+  useEffect(() => {
+    if (products) applyDefaultFor(products);
+  }, [products, applyDefaultFor]);
 
   /* ---- "Add another FD" (T2.7.6) --------------------------------- */
 
@@ -153,6 +237,18 @@ export function CompareScreen() {
    * Runtime behaviour is identical, including the empty-array edge:
    * `Boolean([])` and `[] ? … : null` are both truthy.
    */
+  /**
+   * Which columns the entered amount cannot actually open.
+   *
+   * A comparison, not a calculation — the figures stay correct for the amount
+   * entered, and this only says the deposit could not be taken out. Derived
+   * here because the views decide nothing (I3), and passed down as ids so both
+   * presentations flag the same columns from the same source.
+   */
+  const belowMinimumIds = (products ?? [])
+    .filter((product) => amount < product.minInvestment)
+    .map((product) => product.id);
+
   const comparison = ids.length > 0 && !isError && products ? products : null;
   const hasComparison = comparison !== null;
 
@@ -192,6 +288,49 @@ export function CompareScreen() {
           </Button>
         </div>
 
+        {/*
+          Above the results and outside both `data-compare-view` containers, so
+          there is exactly one set of preferences at every breakpoint and the
+          desktop table and the mobile cards are fed by the same values — the
+          brief's requirement that both always display the same calculated data
+          is structural here rather than something to keep in step.
+
+          It renders beside an empty selection too. The section describes how the
+          comparison would be calculated, and hiding it would make the controls
+          appear and disappear as columns come and go.
+        */}
+        <InvestmentPreferences
+          description="Interest rate, interest earned and maturity value are calculated on this amount."
+          action={
+            /*
+              The apply step (refinement, 2026-08-02). The section owns the
+              draft and the action; the screen owns what applying *means* — it
+              is the only thing here that knows the applied amount re-keys the
+              batch and re-prices every column.
+
+              `formatCurrency` rather than the raw figure, because the message
+              has to be recognisable as the number in the table below it.
+            */
+            <PreferenceApplyBar
+              pending={hasPendingChanges}
+              canApply={canApply}
+              pendingLabel="Changes not applied"
+              settledLabel={`Comparing at ${formatCurrency(amount)}`}
+              actionLabel="Update Comparison"
+              onApply={handleApply}
+            />
+          }
+        >
+          <CompareAmountField
+            inputRef={amountFieldRef}
+            value={depositAmountInput}
+            error={depositAmountError}
+            onChange={setDepositAmount}
+            onSubmit={applyPreferences}
+            onRevert={resetDraft}
+          />
+        </InvestmentPreferences>
+
         {ids.length === 0 ? (
           <CompareEmptyState />
         ) : isError ? (
@@ -228,14 +367,47 @@ export function CompareScreen() {
             trees are visible to the harness and an unscoped selector would bind
             to whichever came first.
           */
-          <>
+          /*
+            One wrapper around both presentations, so the refresh transition is
+            declared once and desktop and mobile fade in step (refinement,
+            2026-08-02). Two wrappers would be two chances for the timings to
+            drift apart, and the brief asks for exactly the opposite.
+
+            **Opacity only, and no remount.** While the applied amount's batch is
+            in flight the previous figures stay on screen, dimmed; when it lands
+            they return to full strength in `--ds-duration-base` (200ms, inside
+            the brief's 150–250ms window) on the platform's easing token. A
+            keyed remount would fade the *old* numbers in at the moment of the
+            click — the key changes with the amount, not with the data — and
+            re-running the whole table's mount animation on a value change is
+            more movement than the interaction deserves.
+
+            `aria-busy` rather than a live announcement: the apply bar above
+            already announces the change in words, and a busy table is a state,
+            not news. The global reduced-motion rule collapses the transition.
+          */
+          <div
+            aria-busy={isFetching || undefined}
+            data-comparison-updating={isFetching ? 'true' : undefined}
+            className={cn('duration-base transition-opacity ease-out', isFetching && 'opacity-70')}
+          >
             <div data-compare-view="desktop" className="hidden md:block">
-              <CompareTable products={comparison} rows={rows} onRemove={removeId} />
+              <CompareTable
+                products={comparison}
+                rows={rows}
+                onRemove={removeId}
+                belowMinimumIds={belowMinimumIds}
+              />
             </div>
             <div data-compare-view="mobile" className="md:hidden">
-              <CompareCards products={comparison} rows={rows} onRemove={removeId} />
+              <CompareCards
+                products={comparison}
+                rows={rows}
+                onRemove={removeId}
+                belowMinimumIds={belowMinimumIds}
+              />
             </div>
-          </>
+          </div>
         )}
 
         <ComparePicker

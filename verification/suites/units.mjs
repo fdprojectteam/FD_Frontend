@@ -441,6 +441,14 @@ export async function runUnitSuite() {
     minInvestment,
     estimatedReturns: {
       principal: 100_000,
+      /*
+        At the ₹1,00,000 reference no slab applies, so the applied rate *is* the
+        headline rate (change request, 2026-08-02) — which is why every approved
+        figure below is unchanged by the slab work. The two are separate fields
+        precisely so the cases where they diverge are expressible; see the
+        divergence fixture at the end of this section.
+      */
+      appliedRate: interestRate,
       interestEarned: returns[0],
       maturityValue: returns[1],
     },
@@ -601,6 +609,98 @@ export async function runUnitSuite() {
     'maturity is read from estimatedReturns, never recomputed',
     M.buildCompareRows([tampered]).find((entry) => entry.id === 'maturityValue').values,
     ['₹42'],
+  );
+
+  /**
+   * The same proof for the **rate** (change request, 2026-08-02).
+   *
+   * The Interest Rate row must quote the rate the deposit actually earns, not
+   * the rate the product is advertised at. Those agree at ₹1,00,000, which is
+   * exactly why the assertion needs a fixture where they disagree: with equal
+   * values, a row still reading `interestRate` would pass every other check in
+   * this file.
+   *
+   * The winner is asserted from the same divergence. A row that formatted the
+   * applied rate while ranking on the headline rate would print the right
+   * numbers and star the wrong column — a failure that is invisible in the
+   * values and wrong in the only thing the row is for.
+   */
+  const slabbed = (id, headline, applied) => ({
+    ...HDFC,
+    id,
+    interestRate: headline,
+    estimatedReturns: { ...HDFC.estimatedReturns, appliedRate: applied },
+  });
+
+  // Headline order is A > B; applied order is reversed by the rate cards.
+  const divergent = [slabbed('a', 7.75, 7.1), slabbed('b', 6.8, 7.85)];
+  const divergentRate = M.buildCompareRows(divergent).find((entry) => entry.id === 'interestRate');
+
+  check('the rate row quotes the applied rate, not the headline', divergentRate.values, [
+    '7.1%',
+    '7.85%',
+  ]);
+  check('and the best rate is judged on the applied rate too', divergentRate.bestIndex, 1);
+
+  /* ---------------------------------------------------------------- */
+  section('Unit · resolveApplicableRate (change request, 2026-08-02)');
+
+  /**
+   * A rate card that does **not** rise monotonically — the ₹2 crore band pays
+   * less, as bulk deposits commonly do. That is the shape a "take the highest
+   * rate" shortcut gets wrong, so it is the shape the fixture uses.
+   */
+  const CARD = [
+    { minAmount: 500_000, annualRate: 7.85 },
+    { minAmount: 2_500_000, annualRate: 7.95 },
+    { minAmount: 20_000_000, annualRate: 7.5 },
+  ];
+  const rateAt = (amount, slabs = CARD) => M.resolveApplicableRate(7.75, amount, slabs);
+
+  check('below the first band, the headline rate stands', rateAt(100_000), 7.75);
+  check('one rupee below a boundary stays in the lower band', rateAt(499_999), 7.75);
+  check('the boundary itself is inclusive', rateAt(500_000), 7.85);
+  check('mid-band resolves to that band', rateAt(1_000_000), 7.85);
+  check('the highest band cleared wins, not the highest rate', rateAt(50_000_000), 7.5);
+  check('a product with no rate card earns its headline rate', rateAt(50_000_000, []), 7.75);
+  check('and an absent rate card is the same statement', M.resolveApplicableRate(7.75, 9e9), 7.75);
+
+  /**
+   * Order-independence. The bands are documented as ascending, but the resolver
+   * is defined on "the highest band the amount clears" rather than on "the last
+   * match", so a fixture or an API that returns them shuffled cannot change the
+   * answer.
+   */
+  check(
+    'band order in the data does not change the answer',
+    rateAt(1_000_000, [...CARD].reverse()),
+    7.85,
+  );
+
+  /* ---------------------------------------------------------------- */
+  section('Unit · defaultDepositAmount (change request, 2026-08-02)');
+
+  const withMin = (minInvestment) => ({ minInvestment });
+
+  check(
+    'the highest minimum wins, so every column is openable',
+    M.defaultDepositAmount([withMin(10_000), withMin(50_000), withMin(25_000)]),
+    100_000,
+  );
+  check(
+    'and it is floored at the reference amount, never below it',
+    M.defaultDepositAmount([withMin(5_000)]),
+    100_000,
+  );
+  check(
+    'a minimum above the floor raises the default to meet it',
+    M.defaultDepositAmount([withMin(10_000), withMin(2_500_000)]),
+    2_500_000,
+  );
+  check(
+    'an empty comparison falls back to the reference amount',
+    M.defaultDepositAmount([]),
+    100_000,
   );
 
   /* ---------------------------------------------------------------- */

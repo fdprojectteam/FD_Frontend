@@ -10,6 +10,7 @@ import type {
   ProductSummaryDto,
 } from '../types/product';
 import { calculateMaturity } from '../utils/maturity';
+import { resolveApplicableRate } from '../utils/rate-slabs';
 
 /**
  * ProductService — business operations for FD products (M2.1).
@@ -18,15 +19,29 @@ import { calculateMaturity } from '../utils/maturity';
  * returns shown on cards and comparison rows. Repositories stay
  * transport-only; components and hooks never calculate anything
  * (Document 10 §15, Document 12 §5).
+ *
+ * As of the 2026-08-02 change request that ownership extends to the **rate**.
+ * The comparison screen calculates on a user-entered deposit, and the rate that
+ * deposit earns is drawn from the product's slabs rather than from its headline
+ * figure. Resolving it here — one line above the call that consumes it — is what
+ * guarantees `appliedRate` and `maturityValue` can never describe different
+ * rates. Had the rate been resolved in a hook or a component, the two would be
+ * one refactor apart from disagreeing, and the disagreement would render
+ * perfectly: a plausible rate above a maturity value computed from another.
  */
 function toSummary(dto: ProductSummaryDto, referenceAmount: number): ProductSummary {
+  const appliedRate = resolveApplicableRate(dto.interestRate, referenceAmount, dto.rateSlabs);
+
   return {
     ...dto,
-    estimatedReturns: calculateMaturity({
-      principal: referenceAmount,
-      annualRate: dto.interestRate,
-      tenureMonths: dto.tenureMonths,
-    }),
+    estimatedReturns: {
+      ...calculateMaturity({
+        principal: referenceAmount,
+        annualRate: appliedRate,
+        tenureMonths: dto.tenureMonths,
+      }),
+      appliedRate,
+    },
   };
 }
 

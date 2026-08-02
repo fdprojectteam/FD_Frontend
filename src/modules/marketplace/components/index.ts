@@ -2,6 +2,7 @@ export { ActiveFilters, type ActiveFiltersProps } from './active-filters';
 export { BenefitChipList, type BenefitChipListProps } from './benefit-chip-list';
 export { CategoryCard, type CategoryCardProps } from './category-card';
 export { CompareActionBar } from './compare-action-bar';
+export { CompareAmountField, type CompareAmountFieldProps } from './compare-amount-field';
 export { CompareCards, type CompareCardsProps } from './compare-cards';
 export { CompareColumnHeader, type CompareColumnHeaderProps } from './compare-column-header';
 export { CompareEmptyState } from './compare-empty-state';
@@ -21,6 +22,9 @@ export { HeroSpotlightCard, type HeroSpotlightCardProps } from './hero-spotlight
 export { HomeHero, type HomeHeroProps } from './home-hero';
 export { HomeScreen } from './home-screen';
 export { InvestmentCalculator, type InvestmentCalculatorProps } from './investment-calculator';
+export { InvestmentPreferences, type InvestmentPreferencesProps } from './investment-preferences';
+export { PreferenceApplyBar, type PreferenceApplyBarProps } from './preference-apply-bar';
+export { PreferenceField, type PreferenceFieldProps } from './preference-field';
 export { KeyInfoGrid, type KeyInfoGridProps } from './key-info-grid';
 export { ProductAccordions, type ProductAccordionsProps } from './product-accordions';
 export { ProductDetailScreen, type ProductDetailScreenProps } from './product-detail-screen';

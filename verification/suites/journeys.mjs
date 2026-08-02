@@ -862,6 +862,279 @@ export async function runJourneySuite() {
       );
     }
 
+    section('L10 · The deposit amount drives the returns (2026-08-02)');
+
+    await loadCompare('/compare?ids=fd-001,fd-002,fd-003');
+
+    const amountField = () => $('#compare-amount');
+    // `-message`, not `-error`: the field renders through `PreferenceField`,
+    // which uses one element for a hint or an error so a field cannot grow a
+    // second line when validation fails.
+    const amountError = () => $('#compare-amount-message');
+    const belowMinimumCount = () =>
+      $$(`${DESKTOP} thead th[scope="col"]`).filter((node) =>
+        /Below minimum/.test(norm(node.textContent)),
+      ).length;
+
+    /*
+      The apply affordances (Comparison Experience Refinement, 2026-08-02).
+      Found by role and text rather than by a test id: the button the user can
+      see is the button under test, and a probe bound to an id would keep
+      passing if the label stopped saying what it does.
+    */
+    const applyButton = () => buttonByText('Update Comparison');
+    /*
+      Scoped to the preferences section rather than matched globally: the screen
+      has other polite regions (the loading placeholder, the picker's result
+      count), and a probe that took "the first status on the page" would pass
+      today and bind to a skeleton the first time one rendered beside it.
+    */
+    const preferencesSection = () => $('section[aria-labelledby="investment-preferences-heading"]');
+    const preferencesStatus = () => {
+      const section = preferencesSection();
+      return section ? norm($('[role="status"]', section)?.textContent) : '';
+    };
+    const pressKey = (input, key) => {
+      input.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      );
+    };
+
+    check('the comparison offers a deposit amount', Boolean(amountField()), true);
+    /*
+      The default is the highest minimum among the compared products, floored at
+      the ₹1,00,000 reference. fd-001/002/003 have minimums of ₹10,000, ₹10,000
+      and ₹50,000, so the floor stands — and, crucially, no column opens flagged
+      as below its own minimum.
+    */
+    check('it opens at the reference amount', amountField()?.value, '100000');
+    check('and no column opens below its minimum', belowMinimumCount(), 0);
+
+    const baselineEarned = compareRowValues('Interest Earned');
+    const baselineMobileEarned = mobileRowValues('Interest Earned');
+    const baselineRate = compareRowValues('Interest Rate');
+    const baselineWinner = bestCellIndex('Maturity Value');
+
+    /*
+      ------------------------------------------------------------------
+      Editing is not applying (Comparison Experience Refinement, 2026-08-02).
+
+      The screen used to recalculate on every keystroke, and this journey used to
+      assert exactly that. The client's objection was not that it was wrong but
+      that it was *loud*: typing `1000000` walked the table through seven
+      comparisons the user had not asked for. So the assertion is inverted —
+      typing must now change nothing at all — and the recalculation is asserted
+      against the explicit apply below it.
+      ------------------------------------------------------------------
+    */
+    check('nothing is pending when the screen settles', Boolean(applyButton()), false);
+    check(
+      'and the status names the amount being compared',
+      /Comparing at/.test(preferencesStatus()),
+      true,
+    );
+
+    type(amountField(), '1000000');
+    await settle();
+
+    check('the draft holds what was typed', amountField()?.value, '1000000');
+    check(
+      'the comparison does not move while the user types',
+      compareRowValues('Interest Earned'),
+      baselineEarned,
+    );
+    /*
+      Asserted on **both** presentations, not only the one that is easier to
+      read. "Desktop and mobile refresh together" has a quiet counterpart — they
+      must also *not* refresh together — and a mobile card recalculating on a
+      keystroke would be invisible to a desktop-only probe.
+    */
+    check(
+      'nor does the mobile presentation',
+      mobileRowValues('Interest Earned'),
+      baselineMobileEarned,
+    );
+    check(
+      'an unapplied edit is stated, not silent',
+      /Changes not applied/.test(preferencesStatus()),
+      true,
+    );
+    check('and the way to apply it is offered', Boolean(applyButton()), true);
+    check('typing performs no navigation', writes(), 0);
+
+    /*
+      Escape restores the draft to what is actually being compared — the
+      affordance that lets a user abandon an edit without remembering the figure
+      they started from.
+    */
+    pressKey(amountField(), 'Escape');
+    await settle();
+
+    check('Escape restores the applied amount', amountField()?.value, '100000');
+    check('and the pending state clears with it', Boolean(applyButton()), false);
+
+    /*
+      Ten times the deposit — over the ₹5,00,000 band, so this crosses a slab
+      boundary as well as changing the principal.
+
+      **The rate moves too** (change request, 2026-08-02). This assertion used to
+      say the opposite: that the rate was a property of the product and could not
+      be derived from the amount. That was true of the data as it then stood —
+      one rate per product, no rate card — and the client has since asked for the
+      rate *applicable to the amount*, which is what a bank actually quotes.
+    */
+    type(amountField(), '1000000');
+    await settle();
+    click(applyButton());
+    await waitFor(() => compareRowValues('Interest Earned')[0] !== baselineEarned[0], {
+      label: 'returns recomputed for the applied amount',
+    });
+
+    check(
+      'every column recomputes, none is left on the old figure',
+      compareRowValues('Interest Earned').every((value, index) => value !== baselineEarned[index]),
+      true,
+    );
+    check(
+      'the interest rate moves to the band the deposit clears',
+      compareRowValues('Interest Rate').every((value, index) => value !== baselineRate[index]),
+      true,
+    );
+    check(
+      'the winner still comes from the recomputed figures',
+      bestCellIndex('Maturity Value'),
+      baselineWinner,
+    );
+
+    /*
+      The brief's load-bearing requirement: desktop and mobile must always
+      display the same calculated data. Both presentations are in the DOM under
+      jsdom (no media queries), so this compares them directly rather than
+      trusting that one call site feeds both.
+    */
+    for (const label of ['Interest Rate', 'Interest Earned', 'Maturity Value']) {
+      check(
+        `${label} reads identically on desktop and mobile`,
+        mobileRowValues(label),
+        compareRowValues(label),
+      );
+    }
+    check('applying performs no navigation', writes(), 0);
+    check(
+      'and the URL still carries only the selection',
+      app.currentUrl(),
+      '/compare?ids=fd-001,fd-002,fd-003',
+    );
+
+    /*
+      The interaction closes itself: once applied there is nothing left to apply,
+      so the action leaves and the status goes back to naming the figure on
+      screen. A button that stayed would invite a click that did nothing.
+    */
+    check('the action leaves once its work is done', Boolean(applyButton()), false);
+    /*
+      And takes the user's focus with it unless someone catches it: the activated
+      element unmounts, so without the screen's handler focus would land on
+      `<body>` and the next Tab would restart at the top of the page.
+    */
+    check(
+      'focus returns to the field rather than the document',
+      document.activeElement,
+      amountField(),
+    );
+    check(
+      'and the status names the newly applied amount',
+      /Comparing at/.test(preferencesStatus()),
+      true,
+    );
+
+    /*
+      Enter is the keyboard path to the same apply, and it must not be a second
+      implementation of it — a user who never leaves the field gets the identical
+      comparison. Asserted through the figures rather than the field, because a
+      duplicate apply that forgot to normalise the draft would look right here
+      and drift on the next edit.
+    */
+    const appliedAtMillion = compareRowValues('Maturity Value');
+
+    type(amountField(), '0100000');
+    await settle();
+    check('a re-typed amount is pending until confirmed', Boolean(applyButton()), true);
+
+    pressKey(amountField(), 'Enter');
+    await waitFor(() => compareRowValues('Maturity Value')[0] !== appliedAtMillion[0], {
+      label: 'Enter applies the drafted amount',
+    });
+
+    check('Enter applies without touching the button', Boolean(applyButton()), false);
+    check('and the draft is normalised to what is being compared', amountField()?.value, '100000');
+    check(
+      'the figures return to the reference comparison',
+      compareRowValues('Interest Earned'),
+      baselineEarned,
+    );
+
+    /*
+      Below a product's minimum the figures stay — they are correct arithmetic
+      for what was applied — and the column says the deposit could not be opened.
+      Approved answer to "what happens below the minimum": compute, and flag.
+    */
+    check('no column is flagged at a generous amount', belowMinimumCount(), 0);
+
+    type(amountField(), '1000');
+    await settle();
+    check('a below-minimum draft is still only a draft', belowMinimumCount(), 0);
+
+    click(applyButton());
+    await waitFor(() => belowMinimumCount() > 0, { label: 'a column falls below its minimum' });
+
+    check(
+      'the flagged columns still show their returns',
+      compareRowValues('Maturity Value').every((value) => value.length > 0),
+      true,
+    );
+    check('a small deposit is not a validation error', amountError(), null);
+
+    /*
+      An unusable value is a field error, and — the point of the refinement — the
+      comparison simply stays where the user left it. There is no "last valid
+      parse" to fall back on any more: the applied figure is by construction the
+      last one confirmed, so a broken draft cannot reach the table at all.
+    */
+    const heldValues = compareRowValues('Maturity Value');
+    type(amountField(), 'abc');
+    await settle();
+
+    check('a non-numeric amount is rejected in the field', Boolean(amountError()), true);
+    check('the error is announced', amountError()?.getAttribute('role'), 'alert');
+    check('the field is marked invalid', amountField()?.getAttribute('aria-invalid'), 'true');
+    check(
+      'and the table holds the applied figures rather than emptying',
+      compareRowValues('Maturity Value'),
+      heldValues,
+    );
+    /*
+      It is *pending* — something is in the field the comparison is not showing —
+      but it cannot be applied. Disabled rather than absent, so the field's error
+      is the explanation instead of a control quietly disappearing.
+    */
+    check('the action is offered but refused', Boolean(applyButton()), true);
+    check('and it is disabled rather than hidden', applyButton()?.disabled, true);
+
+    click(applyButton());
+    await settle();
+    check('clicking it changes nothing', compareRowValues('Maturity Value'), heldValues);
+
+    pressKey(amountField(), 'Enter');
+    await settle();
+    check('and neither does Enter', compareRowValues('Maturity Value'), heldValues);
+
+    pressKey(amountField(), 'Escape');
+    await settle();
+    check('Escape recovers from an invalid draft', amountField()?.value, '1000');
+    check('and clears the error with it', amountError(), null);
+
+    /* ============================================================== */
     section('L7 · /compare with nothing selected');
 
     await loadCompare('/compare');

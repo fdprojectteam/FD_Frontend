@@ -17,6 +17,7 @@ export {
 export {
   createAmountSchema,
   parseCalculatorAmount,
+  parseDepositAmount,
   type CalculatorAmountResult,
 } from './calculator-input';
 export {
@@ -38,3 +39,4 @@ export { toProductListParams } from './list-params';
 export { selectProductPreview } from './product-preview';
 export { mergeMarketplaceParams, parseMarketplaceUrlValues } from './url-values';
 export { calculateInterestEarned, calculateMaturity } from './maturity';
+export { resolveApplicableRate } from './rate-slabs';

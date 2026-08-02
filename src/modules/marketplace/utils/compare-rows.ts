@@ -14,10 +14,18 @@ import type { ProductDetails } from '../types/product';
  *
  * Pure and React-free, so every rule is assertable without rendering.
  *
- * **It computes no money.** Interest Earned and Maturity Value are read from
- * `estimatedReturns`, which `ProductService` derives once via `calculateMaturity`
- * on the reference amount. Recomputing them here would be a second opinion
- * about a figure the service already owns (Document 07 §15).
+ * **It computes no money, and no rates.** Interest Rate, Interest Earned and
+ * Maturity Value are all read from `estimatedReturns`, which `ProductService`
+ * derives once — resolving the applicable slab and running `calculateMaturity`
+ * on the deposit amount the comparison was requested for. Recomputing any of
+ * them here would be a second opinion about figures the service already owns
+ * (Document 07 §15).
+ *
+ * That the amount is now the *user's* rather than a fixed reference (change
+ * request, 2026-08-02) changes nothing in this file. The row model never knew
+ * which amount it was describing, and still does not — which is exactly why the
+ * deposit amount could become comparison context without touching row order,
+ * formatting, or the winner rules.
  *
  * Input is `ProductDetails` rather than `ProductSummary` because the approved
  * Eligibility row reads `eligibility`, which exists only on the details payload
@@ -81,10 +89,25 @@ function formatEligibility(product: ProductDetails): string {
  */
 const ROWS: readonly RowSpec[] = [
   {
+    /*
+      `estimatedReturns.appliedRate`, **not** `interestRate` (change request,
+      2026-08-02).
+
+      The row has to answer "what does *my* deposit earn", and the headline rate
+      answers "what is this product advertised at". Below the first slab the two
+      are the same figure, which is why every existing screen is unaffected — but
+      they are not the same *fact*, and only one of them is the rate the maturity
+      value two rows down was actually computed from.
+
+      Reading it from `estimatedReturns` is what makes that guarantee structural:
+      the rate and the money it produced are published together by
+      `ProductService` from a single resolution, so this row cannot quote a rate
+      that the rows beneath it disagree with.
+    */
     id: 'interestRate',
     label: 'Interest Rate',
-    format: (product) => formatRate(product.interestRate),
-    winner: { metric: (product) => product.interestRate, direction: 'highest' },
+    format: (product) => formatRate(product.estimatedReturns.appliedRate),
+    winner: { metric: (product) => product.estimatedReturns.appliedRate, direction: 'highest' },
   },
   {
     id: 'tenure',

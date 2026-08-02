@@ -3,6 +3,7 @@
 import { X } from 'lucide-react';
 
 import { BankBadge } from '@/components/business/bank-badge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 // import { cn } from '@/lib/utils';
 
@@ -36,9 +37,15 @@ import { removeLabel } from '../utils/compare-labels';
 export interface CompareColumnHeaderProps {
   product: ProductDetails;
   onRemove: (productId: string) => void;
+  /** The entered deposit amount does not reach this product's minimum. */
+  belowMinimum?: boolean;
 }
 
-export function CompareColumnHeader({ product, onRemove }: CompareColumnHeaderProps) {
+export function CompareColumnHeader({
+  product,
+  onRemove,
+  belowMinimum = false,
+}: CompareColumnHeaderProps) {
   /*
     M2.8 — a removable chip rather than a loose glyph. The 44px target is
     unchanged (`size="icon"`); what changes is that the control reads as a
@@ -60,9 +67,21 @@ export function CompareColumnHeader({ product, onRemove }: CompareColumnHeaderPr
   return (
     <div className="flex items-center gap-3">
       <BankBadge bank={product.bank} decorative />
-      <p className="text-body-lg text-content flex-1 leading-snug font-semibold text-balance">
-        {product.bank.name}
-      </p>
+      <div className="flex flex-1 flex-col items-start gap-1">
+        <p className="text-body-lg text-content leading-snug font-semibold text-balance">
+          {product.bank.name}
+        </p>
+        {/*
+          Stated where the product is named, not beside the figures: the returns
+          below are correct arithmetic for the amount entered — what is wrong is
+          that this deposit cannot be opened with it.
+        */}
+        {belowMinimum ? (
+          <Badge variant="outline" size="sm">
+            Below minimum
+          </Badge>
+        ) : null}
+      </div>
       {removeButton}
     </div>
   );

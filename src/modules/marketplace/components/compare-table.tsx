@@ -52,7 +52,12 @@ import { COMPARE_ROW_EMPHASIS, isBestCell } from '../utils/compare-rows';
  */
 export type CompareTableProps = CompareViewProps;
 
-export function CompareTable({ products, rows, onRemove }: CompareTableProps) {
+export function CompareTable({
+  products,
+  rows,
+  onRemove,
+  belowMinimumIds = [],
+}: CompareTableProps) {
   return (
     // Four columns overflow below the container width; the scroller keeps the
     // table intact rather than compressing cells (risk R7, verified manually).
@@ -91,7 +96,11 @@ export function CompareTable({ products, rows, onRemove }: CompareTableProps) {
                   scope="col"
                   className="border-border-default/50 border-b border-l px-6 pt-4 pb-7"
                 >
-                  <CompareColumnHeader product={product} onRemove={onRemove} />
+                  <CompareColumnHeader
+                    product={product}
+                    onRemove={onRemove}
+                    belowMinimum={belowMinimumIds.includes(product.id)}
+                  />
                 </th>
               ))}
             </tr>

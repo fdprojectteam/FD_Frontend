@@ -48,7 +48,10 @@ right and the harness was wrong.
 
 ## Assertion baseline
 
-**Current: 696** — 150 unit · 283 invariants · 15 boundaries · 248 journeys.
+**Current: 495 measured statically + journeys unrun** — **164** unit · **316**
+invariants · 15 boundaries, all measured and green at M2.9; **journeys were
+rewritten at M2.9 (`L10`) and have not been executed** — see _What could not be
+run at M2.9_ at the end of this file. The last measured journey count is 248.
 
 | Milestone        | Total   | unit | invariants | boundaries | journeys |
 | ---------------- | ------- | ---- | ---------- | ---------- | -------- |
@@ -477,6 +480,34 @@ correctly at runtime and narrows nothing.
 arrows — now 44px — are the equivalent control that keeps the exception
 defensible.
 
+### Deposit amount (+9 invariants measured, +15 journeys **not yet run**)
+
+The comparison gained an editable deposit amount; returns and the best-value
+highlight follow it, the interest rate does not.
+
+**Nine invariant probes, all green.** The field owns nothing and calculates
+nothing; the screen holds the amount as local state; **no amount reaches the
+compare URL layer** (the parameter set stays closed at `?ids=`); the batch takes
+the amount and forwards it to the service; and the **query key carries it** —
+the probe that matters most, because omitting the amount from the key would
+serve one amount's figures for another straight from cache and look entirely
+correct doing it. One existing probe was re-pointed: the batch now takes a
+second argument, so the "ids come from the store" assertion matches the first
+argument and stops there.
+
+**Fifteen journey assertions were written and have not been executed.** The
+sandbox was reset mid-task and rebuilding the application bundle now exceeds the
+45-second per-command ceiling, so `L10` has never run. They are recorded here as
+**unrun, not passing** — the distinction this suite exists to preserve. What
+they assert: every column recomputes on a new amount, the _rate_ does not move,
+the winner is recomputed rather than remembered, changing the amount performs no
+navigation and leaves the URL carrying only the selection, a below-minimum
+column is flagged while still showing its (correct) figures, and a non-numeric
+entry raises an announced field error while the table holds the last valid
+figures.
+
+**Run `npm run verify` locally to confirm them before this goes to the client.**
+
 ### Mobile: carousel → vertical stack (−3, and this is the honest direction)
 
 **The baseline went down, and that is the correct outcome.** The horizontal
@@ -585,8 +616,36 @@ added — the D-A3 probe was **re-pointed** to the new derivation and still
 asserts all three guards, and a probe banning `!` / `as` / `?? []` at the render
 sites was proposed and withdrawn as spelling enforcement.
 
+### M2.9 — draft vs applied deposit amount (2026-08-02)
+
+**17 invariant probes** in one new section, _Draft vs applied_, and a rewritten
+`L10` journey group. The journey's central assertion is **inverted**: typing used
+to have to recalculate the table, and now must change nothing at all. The
+recalculation is asserted against the explicit apply that follows it.
+
+The probes deliberately assert the **separation**, not the calmness. Calmness is
+the consequence — a debounce would reproduce it — and it is the consequence that
+a later refactor would keep while quietly losing the rule. So they count the
+writers of the applied value, pin the keystroke handler to the draft alone, and
+check that the draft leaves the screen exactly once, as the field's `value`.
+
+Two guard the cost of the fix rather than the fix: `keepPreviousData` on the
+comparison batch means an errored refetch now keeps its previous data, so the
+content guard must go on carrying `!isError`.
+
 ## Environment note
 
 `VERIFY_REUSE_BUNDLES=1` skips rebuilding unchanged bundles. It is a local
 convenience only — CI must never set it, or a source change can be verified
 against a stale bundle.
+
+### What could not be run at M2.9 (agent environment)
+
+`npm run verify unit`, `invariants` and `boundaries` all run and are green
+(164 / 316 / 15). **Journeys, `typecheck` and `lint` do not.** The working copy's
+`node_modules` carries Windows binaries and is reached over a slow mount:
+bundling the application for jsdom, `tsc`, and `eslint` each exceed the sandbox's
+per-command budget, and `@esbuild/win32-x64` has to be substituted before the
+static suites will run at all. The rewritten `L10` assertions are therefore
+**written and unexecuted** — the same status the M2.8 carousel assertions carried,
+and they must be run locally before sign-off.

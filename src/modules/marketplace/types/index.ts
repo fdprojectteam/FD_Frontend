@@ -22,4 +22,5 @@ export type {
   ProductFlagId,
   ProductSummary,
   ProductSummaryDto,
+  RateSlab,
 } from './product';

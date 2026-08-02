@@ -7,6 +7,12 @@ export {
 } from './use-compare-selection';
 export { useCompareProducts } from './use-compare-products';
 export { useCompareUrlState } from './use-compare-url-state';
+export {
+  defaultDepositAmount,
+  useComparisonPreferences,
+  type ComparisonPreferences,
+  type UseComparisonPreferencesResult,
+} from './use-comparison-preferences';
 export { useMarketplaceSearchParams } from './use-marketplace-search-params';
 export { useMarketplaceUrlState, type MarketplaceUrlValues } from './use-marketplace-url-state';
 export { useProduct, type UseProductResult } from './use-product';

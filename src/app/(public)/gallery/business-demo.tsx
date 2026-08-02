@@ -74,7 +74,14 @@ const PRODUCTS: ProductSummary[] = [
     benefits: [BENEFITS[0]!, BENEFITS[1]!],
     categories: ['highest-rate'],
     flags: ['highest-rate'],
-    estimatedReturns: { principal: 100_000, interestEarned: 7_978, maturityValue: 107_978 },
+    // At the ₹1,00,000 reference no rate slab applies, so the applied rate is
+    // the headline rate — which is why these published figures are unchanged.
+    estimatedReturns: {
+      principal: 100_000,
+      appliedRate: 7.75,
+      interestEarned: 7_978,
+      maturityValue: 107_978,
+    },
   },
   {
     id: 'demo-2',
@@ -88,7 +95,12 @@ const PRODUCTS: ProductSummary[] = [
     benefits: [BENEFITS[2]!, BENEFITS[1]!, BENEFITS[3]!],
     categories: [],
     flags: [],
-    estimatedReturns: { principal: 100_000, interestEarned: 7_450, maturityValue: 107_450 },
+    estimatedReturns: {
+      principal: 100_000,
+      appliedRate: 7.25,
+      interestEarned: 7_450,
+      maturityValue: 107_450,
+    },
   },
   {
     id: 'demo-3',
@@ -102,7 +114,12 @@ const PRODUCTS: ProductSummary[] = [
     benefits: [BENEFITS[2]!, BENEFITS[3]!],
     categories: ['high-returns'],
     flags: ['high-returns'],
-    estimatedReturns: { principal: 100_000, interestEarned: 15_795, maturityValue: 115_795 },
+    estimatedReturns: {
+      principal: 100_000,
+      appliedRate: 7.4,
+      interestEarned: 15_795,
+      maturityValue: 115_795,
+    },
   },
 ];
 

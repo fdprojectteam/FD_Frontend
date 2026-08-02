@@ -43,13 +43,22 @@ import { COMPARE_ROW_EMPHASIS, isBestCell, STACKED_COMPARE_ROWS } from '../utils
  */
 export type CompareCardsProps = CompareViewProps;
 
-export function CompareCards({ products, rows, onRemove }: CompareCardsProps) {
+export function CompareCards({
+  products,
+  rows,
+  onRemove,
+  belowMinimumIds = [],
+}: CompareCardsProps) {
   return (
     <ul className="flex list-none flex-col gap-5">
       {products.map((product, column) => (
         <li key={product.id}>
           <article className="border-border-default bg-surface-card rounded-card shadow-elevation-1 flex flex-col gap-5 border p-6">
-            <CompareColumnHeader product={product} onRemove={onRemove} />
+            <CompareColumnHeader
+              product={product}
+              onRemove={onRemove}
+              belowMinimum={belowMinimumIds.includes(product.id)}
+            />
 
             <div className="flex flex-col gap-1">
               {rows.map((row) => {

@@ -144,6 +144,22 @@ contract in `m2.7-ui-fidelity-checklist.md`. Decisions D1–D6 recorded.
 | UX refinements (post-audit, approved 2026-08-01) | ✅ |
 | **M2.8 — comparison UI/UX redesign** (presentation only) | ✅ |
 | M2.8 — final polish pass (hierarchy, rhythm, typography) | ✅ |
+| **M2.9 — Comparison Experience Refinement** (draft vs applied deposit amount) | ✅ implemented — journeys/typecheck/lint pending a local run |
+
+**M2.9 (client change request, 2026-08-02).** Editing and applying are now
+separate: the Deposit Amount field holds a **draft**, the comparison is
+calculated from an **applied** value, and the two meet only when the user clicks
+Update Comparison (or presses Enter; Escape restores). Typing changes nothing on
+screen; applying refreshes desktop and mobile together behind one 200ms opacity
+settle, with `keepPreviousData` on the batch so the table never empties into
+skeletons. Decisions, probes and the manual checklist in
+[`m2.9-comparison-experience-refinement.md`](./m2.9-comparison-experience-refinement.md).
+
+Invariants (315), units (164) and boundaries (15) are green. **Journeys,
+`typecheck` and `lint` could not be executed in the agent environment** — the
+working copy's `node_modules` carries Windows binaries and is reached over a
+slow mount, so bundling for jsdom, `tsc` and `eslint` all exceed the sandbox's
+per-command budget. Run them locally before sign-off.
 
 **M2.7 audit (T2.7.8):** measured baseline **689 / 689**, ten exact lists all
 exact, nine findings — **all Minor, none blocking**. Full record, carry-forward

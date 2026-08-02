@@ -32,6 +32,8 @@ export {
 } from '@/modules/marketplace/utils/compare-url';
 export { toProductListParams } from '@/modules/marketplace/utils/list-params';
 export { calculateMaturity } from '@/modules/marketplace/utils/maturity';
+export { resolveApplicableRate } from '@/modules/marketplace/utils/rate-slabs';
+export { defaultDepositAmount } from '@/modules/marketplace/hooks/use-comparison-preferences';
 export { selectProductPreview } from '@/modules/marketplace/utils/product-preview';
 export {
   mergeMarketplaceParams,

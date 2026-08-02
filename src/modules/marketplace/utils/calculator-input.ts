@@ -26,16 +26,30 @@ export type CalculatorAmountResult = { ok: true; amount: number } | { ok: false;
  * declared once — the message has to name the actual figure.
  */
 export function createAmountSchema(minInvestment: number) {
+  return amountSchema().refine(
+    (amount) => amount >= minInvestment,
+    `This deposit starts at ${formatCurrency(minInvestment)}.`,
+  );
+}
+
+/**
+ * The shape rules, without a minimum.
+ *
+ * The comparison's deposit amount applies to **several** products at once, so
+ * there is no single minimum it could be validated against — a per-product
+ * minimum there would either reject an amount that three of four products
+ * accept, or silently pick one product's rule for all of them. The minimum is
+ * still enforced, but as a *per-column observation* rather than a field error
+ * (see `CompareScreen`), which is why the two callers share these rules and
+ * differ only in whether a floor is appended.
+ */
+function amountSchema() {
   return z
     .string()
     .trim()
     .regex(new RegExp(`^\\d{1,${MAX_DIGITS}}$`), 'Enter an amount in rupees, digits only.')
     .transform(Number)
-    .refine((amount) => amount > 0, 'Enter an amount greater than zero.')
-    .refine(
-      (amount) => amount >= minInvestment,
-      `This deposit starts at ${formatCurrency(minInvestment)}.`,
-    );
+    .refine((amount) => amount > 0, 'Enter an amount greater than zero.');
 }
 
 /**
@@ -45,8 +59,15 @@ export function createAmountSchema(minInvestment: number) {
  * handles Zod internals — the component applies a rule, it does not own one.
  */
 export function parseCalculatorAmount(raw: string, minInvestment: number): CalculatorAmountResult {
-  const parsed = createAmountSchema(minInvestment).safeParse(raw);
+  return toResult(createAmountSchema(minInvestment).safeParse(raw));
+}
 
+/** The comparison's deposit amount — same rules, no per-product floor. */
+export function parseDepositAmount(raw: string): CalculatorAmountResult {
+  return toResult(amountSchema().safeParse(raw));
+}
+
+function toResult(parsed: z.ZodSafeParseResult<number>): CalculatorAmountResult {
   if (parsed.success) return { ok: true, amount: parsed.data };
 
   return {

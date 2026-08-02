@@ -4,6 +4,7 @@ import type {
   ProductDetailsDto,
   ProductFlagId,
   ProductSummaryDto,
+  RateSlab,
 } from '@/modules/marketplace/types';
 
 import { banks } from './banks';
@@ -93,6 +94,45 @@ const APPROVED_SEEDS: Seed[] = [
   },
 ];
 
+/**
+ * Rate-card shape shared by every fixture (change request, 2026-08-02).
+ *
+ * ⚠️ **Placeholder figures.** The bands and the deltas below are plausible, not
+ * published — real bank rate cards should replace them before this reaches
+ * anyone's money. The *structure* is what the platform is being built against;
+ * the numbers are a stand-in, and are confined to this file precisely so that
+ * swapping them touches no domain, service, or UI code.
+ *
+ * Two properties are deliberate rather than incidental:
+ *
+ *   • **The first band starts at ₹5,00,000, not ₹0.** Below it no band applies
+ *     and `resolveApplicableRate` falls back to the headline rate — which is
+ *     what keeps every existing figure on Home and Product Details unchanged,
+ *     since all of them are calculated on the ₹1,00,000 reference.
+ *
+ *   • **The ₹2 crore band pays *less*.** Bulk deposits are commonly priced below
+ *     retail, and encoding that here means the resolver is exercised against a
+ *     rate card that does not simply increase — the case a "highest rate wins"
+ *     shortcut would silently get wrong.
+ */
+const SLAB_DELTAS: readonly { minAmount: number; delta: number }[] = [
+  { minAmount: 500_000, delta: 0.1 },
+  { minAmount: 2_500_000, delta: 0.2 },
+  { minAmount: 20_000_000, delta: -0.25 },
+];
+
+/**
+ * Rounded to two decimals: `7.75 + 0.1` is `7.850000000000001` in binary
+ * floating point, and an unrounded rate reaches the comparison as "7.85%" but
+ * loses ties against a literal 7.85 that should have drawn.
+ */
+function buildRateSlabs(baseRate: number): RateSlab[] {
+  return SLAB_DELTAS.map(({ minAmount, delta }) => ({
+    minAmount,
+    annualRate: Math.round((baseRate + delta) * 100) / 100,
+  }));
+}
+
 const RATE_CYCLE = [7.6, 7.35, 7.15, 6.9, 6.75, 7.05];
 const TENURE_CYCLE = [6, 12, 18, 24, 36, 9];
 const MIN_CYCLE = [5_000, 10_000, 25_000, 50_000, 10_000, 15_000];
@@ -128,6 +168,7 @@ function toSummary(seed: Seed, index: number): ProductSummaryDto {
     bank,
     name: `${bank.name} Fixed Deposit`,
     interestRate: seed.rate,
+    rateSlabs: buildRateSlabs(seed.rate),
     tenureMonths: seed.tenureMonths,
     minInvestment: seed.minInvestment,
     interestType: 'cumulative',
