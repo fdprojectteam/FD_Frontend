@@ -1,0 +1,23 @@
+/**
+ * Motion tokens — inventory §14–15 [TED — Temporary Engineering Defaults].
+ * Short durations per Document 13 §14; all motion honors
+ * prefers-reduced-motion (Document 14 §16) — enforced globally in globals.css.
+ */
+:root {
+  --ds-duration-fast: 150ms;
+  --ds-duration-base: 200ms;
+  --ds-duration-slow: 300ms;
+
+  /*
+   * Loading-placeholder pulse loop [TED — approved 2026-07-30].
+   * Exists solely for loading placeholders (skeletons and any future
+   * placeholder surface); it is intentionally far slower than the
+   * interaction durations above so the effect stays visually quiet.
+   * To be validated during visual review.
+   */
+  --ds-duration-pulse: 1500ms;
+
+  --ds-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ds-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}

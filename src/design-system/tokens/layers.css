@@ -1,0 +1,18 @@
+/**
+ * Z-index + opacity tokens — inventory §13, §16 [TED — Temporary Engineering
+ * Defaults]. Layer ordering mirrors the Document 05 §15 overlay system.
+ */
+:root {
+  --ds-z-base: 0;
+  --ds-z-sticky: 100;
+  --ds-z-dropdown: 200;
+  --ds-z-overlay: 300;
+  --ds-z-modal: 400;
+  --ds-z-popover: 500;
+  --ds-z-toast: 600;
+
+  --ds-opacity-disabled: 0.5;
+  --ds-opacity-muted: 0.7;
+  --ds-opacity-hover-overlay: 0.04;
+  --ds-opacity-scrim: 0.5;
+}

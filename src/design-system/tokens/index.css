@@ -1,0 +1,12 @@
+/**
+ * Design token aggregate — single import consumed by app/globals.css.
+ * Provenance for every value: docs/engineering/design-tokens.md.
+ */
+@import './colors.css';
+@import './typography.css';
+@import './spacing.css';
+@import './radius.css';
+@import './elevation.css';
+@import './motion.css';
+@import './sizes.css';
+@import './layers.css';

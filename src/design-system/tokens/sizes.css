@@ -1,0 +1,35 @@
+/**
+ * Size tokens — inventory §8–10, §12.
+ * Icon sizes [DERIVED] (8px grid); button heights [DERIVED from grid +
+ * measurement]; input heights [DERIVED]; container [DERIVED from 12-col
+ * 1200px grid SPEC]. Touch targets ≥44px per Document 14 §10.
+ */
+:root {
+  /* icons */
+  --ds-icon-sm: 16px;
+  --ds-icon-md: 20px;
+  --ds-icon-lg: 24px;
+  --ds-icon-xl: 32px;
+
+  /* buttons */
+  --ds-button-sm: 32px;
+  --ds-button-md: 40px;
+  --ds-button-lg: 48px;
+
+  /* inputs */
+  --ds-input-md: 44px;
+  --ds-input-lg: 48px;
+
+  /* layout */
+  --ds-container-max: 1200px;
+  /*
+   * Narrower reading column used by the product-details screen. Sampled from
+   * the approved design and recorded in design-tokens.md §12 as
+   * "~920px observed … implemented as a narrower prose container in Phase 2";
+   * M2.6 is that phase (T2.6.3).
+   */
+  --ds-container-detail-max: 920px;
+  --ds-container-gutter: 24px;
+  --ds-container-gutter-mobile: 16px;
+  --ds-touch-target-min: 44px;
+}

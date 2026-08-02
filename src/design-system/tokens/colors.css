@@ -1,0 +1,64 @@
+/**
+ * Color tokens — source of truth: docs/engineering/design-tokens.md §1–2e.
+ * Raw palette (--ds-*-N) is consumed ONLY by semantic aliases below.
+ * Components use semantic aliases exclusively.
+ */
+:root {
+  /* ---- Raw palette ---- */
+  /* Primary — SAMPLED from approved UI (decision 2026-07-30) */
+  --ds-purple-700: #4b2e83;
+  --ds-purple-50: #f1ebfb;
+
+  /* Neutrals */
+  --ds-white: #ffffff;
+  --ds-gray-50: #f9fafb;
+  --ds-gray-100: #f3f4f6;
+  --ds-gray-200: #e5e7eb;
+  --ds-gray-400: #9ca3af;
+  --ds-gray-500: #6b7280;
+  --ds-gray-600: #4b5563;
+  --ds-gray-900: #111827;
+  --ds-surface-cool: #f8f9fc; /* SAMPLED: recommendation card fill */
+
+  /* Semantic bases */
+  --ds-green-600: #16a34a;
+  --ds-amber-500: #f59e0b;
+  --ds-red-500: #ef4444;
+  --ds-blue-500: #3882f6;
+
+  /* ---- Semantic: brand ---- */
+  --ds-color-primary: var(--ds-purple-700);
+  --ds-color-primary-subtle: var(--ds-purple-50);
+
+  /* ---- Semantic: surfaces (inventory §2b) ---- */
+  --ds-surface-page: var(--ds-white);
+  --ds-surface-card: var(--ds-white);
+  --ds-surface-subtle: var(--ds-surface-cool);
+  --ds-surface-muted: var(--ds-gray-100);
+  --ds-surface-brand: var(--ds-purple-700);
+  --ds-surface-brand-subtle: var(--ds-purple-50);
+
+  /* ---- Semantic: text (inventory §2c) ---- */
+  --ds-text-color-primary: var(--ds-gray-900);
+  --ds-text-color-secondary: var(--ds-gray-500);
+  --ds-text-color-placeholder: var(--ds-gray-400);
+  --ds-text-color-brand: var(--ds-purple-700);
+  --ds-text-color-on-brand: var(--ds-white);
+
+  /* ---- Semantic: status ---- */
+  --ds-color-success: var(--ds-green-600);
+  --ds-color-warning: var(--ds-amber-500);
+  --ds-color-error: var(--ds-red-500);
+  --ds-color-info: var(--ds-blue-500);
+
+  /* ---- Semantic: borders (inventory §2a) ---- */
+  --ds-border-default: var(--ds-gray-200);
+  --ds-border-strong: var(--ds-gray-400);
+  --ds-border-primary: var(--ds-purple-700);
+  --ds-divider: var(--ds-gray-100);
+
+  /* ---- Focus (inventory §2d — TED, behavior per Document 14 §6) ---- */
+  --ds-focus-ring-color: var(--ds-purple-700);
+  --ds-focus-ring-width: 2px;
+  --ds-focus-ring-offset: 2px;
+}

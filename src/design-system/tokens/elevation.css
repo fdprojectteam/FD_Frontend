@@ -1,0 +1,11 @@
+/**
+ * Elevation tokens — inventory §7 [TED — Temporary Engineering Defaults].
+ * "Soft shadow for elevation" per design system; exact values validated
+ * against the approved UI during Phase 1 component reviews.
+ */
+:root {
+  --ds-elevation-0: none;
+  --ds-elevation-1: 0 1px 2px rgb(17 24 39 / 0.04), 0 4px 12px rgb(17 24 39 / 0.06);
+  --ds-elevation-2: 0 2px 4px rgb(17 24 39 / 0.05), 0 10px 24px rgb(17 24 39 / 0.1);
+  --ds-elevation-overlay: 0 16px 48px rgb(17 24 39 / 0.18);
+}

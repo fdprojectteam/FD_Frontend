@@ -1,0 +1,41 @@
+/**
+ * Typography tokens — inventory §3–4 [SPEC].
+ * Font family: Inter (client decision 2026-07-30), self-hosted variable font
+ * loaded via next/font/local in app/layout.tsx (exposes --font-inter).
+ */
+:root {
+  --ds-font-sans:
+    var(--font-inter, 'Inter'), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* size / line-height / weight triplets */
+  --ds-text-h1-size: 2rem; /* 32px */
+  --ds-text-h1-leading: 2.5rem; /* 40px */
+  --ds-text-h1-weight: 700;
+
+  --ds-text-h2-size: 1.5rem; /* 24px */
+  --ds-text-h2-leading: 2rem; /* 32px */
+  --ds-text-h2-weight: 600;
+
+  --ds-text-h3-size: 1.125rem; /* 18px */
+  --ds-text-h3-leading: 1.75rem; /* 28px */
+  --ds-text-h3-weight: 600;
+
+  --ds-text-body-lg-size: 1rem; /* 16px */
+  --ds-text-body-lg-leading: 1.5rem; /* 24px */
+
+  --ds-text-body-size: 0.875rem; /* 14px */
+  --ds-text-body-leading: 1.25rem; /* 20px */
+
+  --ds-text-caption-size: 0.75rem; /* 12px */
+  --ds-text-caption-leading: 1rem; /* 16px */
+
+  --ds-text-numeric-size: 1.25rem; /* 20px — key figures use 20px+ */
+  --ds-text-numeric-leading: 1.5rem;
+  --ds-text-numeric-weight: 700;
+
+  /* weights */
+  --ds-font-weight-regular: 400;
+  --ds-font-weight-medium: 500;
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+}
