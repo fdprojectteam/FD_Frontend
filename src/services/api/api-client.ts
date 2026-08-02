@@ -74,7 +74,14 @@ function unwrap<T>(payload: ApiSuccessResponse<T> | T): { data: T; meta?: Pagina
     if (envelope.success) {
       return { data: envelope.data, meta: envelope.meta };
     }
-    throw new ApiError({ code: 'INTERNAL_ERROR', message: 'Unexpected error envelope.' });
+    // `source: 'api'` — a 2xx carrying `success: false` is still our API
+    // speaking, however malformed. Only bodies without the envelope are
+    // attributed to the transport (see `normalizeError`).
+    throw new ApiError({
+      code: 'INTERNAL_ERROR',
+      message: 'Unexpected error envelope.',
+      source: 'api',
+    });
   }
   return { data: payload as T };
 }

@@ -49,6 +49,22 @@ async function bundle(entry, outfile, platform) {
     tsconfig: path.join(ROOT, 'tsconfig.json'),
     alias: { 'next/navigation': path.join(ROOT, 'verification', 'harness', 'next-navigation.tsx') },
     define,
+    /**
+     * Node bundles get a `require` shim (2026-08-02).
+     *
+     * The unit entry now exports the error classifier, which reaches axios — a
+     * CommonJS package that `require`s node builtins. Bundled to ESM for node,
+     * those calls become esbuild's "Dynamic require of 'util' is not supported"
+     * stub and the suite dies on import. The shim is the standard remedy and is
+     * scoped to `platform: 'node'`: the app bundle is built for the browser,
+     * where `module` does not exist and this banner would break jsdom.
+     */
+    banner:
+      platform === 'node'
+        ? {
+            js: "import { createRequire as __createRequire } from 'module'; const require = __createRequire(import.meta.url);",
+          }
+        : undefined,
     logLevel: 'error',
   });
   return outPath;

@@ -320,6 +320,88 @@ export async function runInvariantSuite() {
   ok('404 is distinguished from a server error (E1)', /isNotFoundError\(error\)/.test(screen));
   ok('a 404 reaches the not-found boundary', /notFound\(\)/.test(screen));
   ok('a server error offers a retry', /onClick=\{refetch\}/.test(screen));
+
+  section('Invariants · Only the API may say "not found" (2026-08-02)');
+
+  /**
+   * The screen's `notFound()` is a **navigation**, and the only thing standing
+   * between a failed request and it is `isNotFoundError`. That predicate used to
+   * accept any HTTP 404 — including the Next dev server's HTML 404, which is
+   * what answers `/api/v1/*` whenever a request escapes the Service Worker
+   * (`src/app/api/` has no route handlers by design). So an unintercepted
+   * request rendered a 404 page instead of the retryable error card, and did it
+   * intermittently, because interception is intermittent.
+   *
+   * The fix is a provenance field on `ApiError`, not a check at the call site:
+   * one predicate guards a navigation, and it must be impossible to reach with a
+   * failure the API never issued.
+   *
+   * Behaviour is asserted in the unit suite; these probes hold the *structure*
+   * that keeps it true — the parts a refactor could quietly undo while every
+   * behavioural test still passed.
+   */
+  const apiError = sources.get('src/services/api/api-error.ts');
+  const apiClient = sources.get('src/services/api/api-client.ts');
+  const mockBrowser = sources.get('src/mocks/browser.ts');
+
+  ok('the error module exists', Boolean(apiError));
+  ok(
+    'failures carry where they came from',
+    /readonly source: ApiErrorSource/.test(apiError ?? '') &&
+      /this\.source = params\.source \?\? 'transport'/.test(apiError ?? ''),
+  );
+  ok(
+    'a not-found verdict requires the API to have issued it',
+    /export function isNotFoundError[\s\S]*?if \(error\.source !== 'api'\) return false;/.test(
+      apiError ?? '',
+    ),
+  );
+  ok(
+    'and so does the no-retry rule, for the same reason',
+    /export function isClientError[\s\S]*?error\.source === 'api'/.test(apiError ?? ''),
+  );
+  /**
+   * The envelope is the API's signature, and the check is guarded on the object
+   * type: an HTML error page parses as a **string**, and `'…'.success` is
+   * `undefined` rather than a type error — so a body that is plainly not ours
+   * used to fall through wearing the same shape as a real API failure.
+   */
+  ok(
+    'the envelope is what identifies the API, checked as an object',
+    /typeof payload === 'object' && payload\.success === false/.test(apiError ?? ''),
+  );
+
+  /**
+   * An **exact list** of everything allowed to claim `source: 'api'`: the two
+   * envelope parsers, and nothing else. A component or repository asserting it
+   * would be re-opening the defect from a new direction.
+   */
+  check(
+    'only the envelope parsers may speak for the API',
+    [...sources.entries()]
+      .filter(([, text]) => /source: 'api'/.test(text))
+      .map(([file]) => file)
+      .sort(),
+    ['src/services/api/api-client.ts', 'src/services/api/api-error.ts'],
+  );
+  ok('the transport still never decides what a failure means', Boolean(apiClient));
+
+  /**
+   * The other half: a `/api/v1/*` request the mock API does not handle must not
+   * reach the dev server, because whatever the dev server answers will be
+   * mistaken for the API by *something*, eventually. `'bypass'` alone made that
+   * silent for a milestone.
+   */
+  ok(
+    'an unhandled API request is reported rather than passed through',
+    /onUnhandledRequest\(request, print\)/.test(mockBrowser ?? '') &&
+      /print\.error\(\)/.test(mockBrowser ?? '') &&
+      !/onUnhandledRequest: 'bypass'/.test(mockBrowser ?? ''),
+  );
+  ok(
+    'and the API base is matched as a URL, not as a string prefix',
+    /new URL\(env\.apiUrl, window\.location\.origin\)/.test(mockBrowser ?? ''),
+  );
   /**
    * The page must have exactly one h1, wherever it lives. It started in the
    * screen (T2.6.3) and moved into ProductHeader (T2.6.4), so the probe counts

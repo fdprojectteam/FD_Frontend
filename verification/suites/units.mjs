@@ -818,4 +818,106 @@ export async function runUnitSuite() {
     mergeIds('ids=fd-001,,fd-001,fd-002', ['fd-001', 'fd-002']),
     'ids=fd-001,fd-002',
   );
+
+  /* ---------------------------------------------------------------- */
+  section('Unit · error classification — who said "not found" (2026-08-02)');
+
+  /**
+   * The defect these assertions close.
+   *
+   * `/api/v1/*` exists only inside the Service Worker; `src/app/api/` has no
+   * route handlers by design. So any API request that escapes interception is
+   * answered by the **Next dev server**, with its own HTML 404 — and
+   * `isNotFoundError` accepted *any* 404, so "nothing answered this request"
+   * arrived at `ProductDetailScreen` as "this product does not exist" and it
+   * called `notFound()`. The user saw a 404 page instead of the retryable error
+   * card, intermittently, depending on whether the worker happened to be
+   * intercepting.
+   *
+   * These are pure functions and were never unit-tested, which is why a rule
+   * this load-bearing could be this wrong for this long.
+   */
+  const axiosError = (status, data) => ({ isAxiosError: true, response: { status, data } });
+
+  /** What the dev server returns for an unhandled `/api/v1/*` request. */
+  const devServer404 = axiosError(
+    404,
+    '<!DOCTYPE html><html><body>404: This page could not be found.</body></html>',
+  );
+
+  /** What the API returns for a product that genuinely does not exist. */
+  const api404 = axiosError(404, {
+    success: false,
+    message: 'Product not found.',
+    error: { code: 'PRODUCT_NOT_FOUND', details: [] },
+  });
+
+  const api500 = axiosError(500, {
+    success: false,
+    message: 'Unable to retrieve products. Please try again.',
+    error: { code: 'INTERNAL_ERROR', details: [] },
+  });
+
+  check('an enveloped failure is attributed to the API', M.normalizeError(api404).source, 'api');
+  check(
+    'and keeps the business code it was given',
+    M.normalizeError(api404).code,
+    'PRODUCT_NOT_FOUND',
+  );
+  check('a body without the envelope is not', M.normalizeError(devServer404).source, 'transport');
+  check(
+    'though the HTTP status is still reported honestly',
+    M.normalizeError(devServer404).status,
+    404,
+  );
+
+  /* The assertion the whole investigation reduces to. */
+  ok('the API can say a product does not exist', M.isNotFoundError(M.normalizeError(api404)));
+  ok('a 404 from anything else cannot', !M.isNotFoundError(M.normalizeError(devServer404)));
+  ok('and a server error never could', !M.isNotFoundError(M.normalizeError(api500)));
+
+  /**
+   * The retry rule follows the same reasoning. "Never retry a 4xx" is about
+   * *client faults* — a request the API considered and rejected. A 404 the API
+   * never issued is an infrastructure failure, and retrying it is how the screen
+   * recovers on its own once interception is live.
+   */
+  ok('an API 4xx is a client fault and is not retried', M.isClientError(M.normalizeError(api404)));
+  ok(
+    'a transport 404 is not a client fault, so it may be retried',
+    !M.isClientError(M.normalizeError(devServer404)),
+  );
+  ok('a 5xx is never a client fault', !M.isClientError(M.normalizeError(api500)));
+
+  /* Transport failures with no response at all are unchanged. */
+  check(
+    'a network failure stays a network failure',
+    M.normalizeError({ isAxiosError: true }).code,
+    'NETWORK_ERROR',
+  );
+  check(
+    'a timeout stays a timeout',
+    M.normalizeError({ isAxiosError: true, code: 'ECONNABORTED' }).code,
+    'TIMEOUT',
+  );
+  ok(
+    'neither is mistaken for a missing product',
+    !M.isNotFoundError(M.normalizeError({ isAxiosError: true })),
+  );
+
+  /**
+   * An `ApiError` constructed without saying where it came from is a transport
+   * error. Only the envelope parser may claim to speak for the API, so the
+   * default has to be the humble one — a permissive default would let the next
+   * `new ApiError({ status: 404 })` anywhere in the codebase resurrect this bug.
+   */
+  check(
+    'ApiError defaults to transport, never to the API',
+    new M.ApiError({ code: 'NOT_FOUND', message: 'x', status: 404 }).source,
+    'transport',
+  );
+  ok(
+    'so a hand-built 404 is not a verdict either',
+    !M.isNotFoundError(new M.ApiError({ code: 'NOT_FOUND', message: 'x', status: 404 })),
+  );
 }

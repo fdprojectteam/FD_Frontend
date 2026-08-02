@@ -17,6 +17,18 @@ export {
   facetValueLongLabel,
 } from '@/modules/marketplace/utils/filter-labels';
 export { awaitRequestGate, hasRequestGate, setRequestGate } from '@/services/api/request-gate';
+/**
+ * Error classification (2026-08-02). Pure functions over a thrown value, and
+ * until now untested — which is how "any HTTP 404 means the product does not
+ * exist" survived into a screen that navigates on it.
+ */
+export {
+  ApiError,
+  isApiError,
+  isClientError,
+  isNotFoundError,
+  normalizeError,
+} from '@/services/api/api-error';
 export { parseCalculatorAmount } from '@/modules/marketplace/utils/calculator-input';
 export { addLabel, removeLabel, selectLabel } from '@/modules/marketplace/utils/compare-labels';
 export {

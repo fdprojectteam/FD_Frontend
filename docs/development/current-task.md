@@ -145,6 +145,17 @@ contract in `m2.7-ui-fidelity-checklist.md`. Decisions D1–D6 recorded.
 | **M2.8 — comparison UI/UX redesign** (presentation only) | ✅ |
 | M2.8 — final polish pass (hierarchy, rhythm, typography) | ✅ |
 | **M2.9 — Comparison Experience Refinement** (draft vs applied deposit amount) | ✅ implemented — journeys/typecheck/lint pending a local run |
+| **Defect — 404 misclassification** (intermittent 404 page instead of the error card) | ✅ fixed at source |
+
+**The 404 defect (2026-08-02).** A 404 the API never issued was being read as its
+verdict: `/api/v1/*` exists only inside the Service Worker, so an unintercepted
+request was answered by the Next dev server's HTML 404, `isNotFoundError`
+accepted any 404, and `ProductDetailScreen` navigated to the not-found boundary.
+`ApiError` now carries `source: 'api' | 'transport'`, only the envelope parser
+may claim `'api'`, and both `isNotFoundError` and `isClientError` require it.
+Unhandled requests under the API base are no longer silently passed to the
+network. Full account in
+[`api-404-misclassification.md`](./api-404-misclassification.md).
 
 **M2.9 (client change request, 2026-08-02).** Editing and applying are now
 separate: the Deposit Amount field holds a **draft**, the comparison is
