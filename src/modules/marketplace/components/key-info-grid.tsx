@@ -1,7 +1,8 @@
-import { formatCurrency, formatTenure } from '@/utils/format';
+import { formatCurrency } from '@/utils/format';
 
 import { INTEREST_TYPE_LABELS, PAYOUT_LABELS } from '../constants/product-labels';
 import type { ProductSummary } from '../types/product';
+import { formatProductTenure } from '../utils';
 
 /**
  * KeyInfoGrid — the approved "Key information" cards (M2.6, T2.6.4):
@@ -33,7 +34,7 @@ function KeyInfoCell({ label, value }: { label: string; value: string }) {
 
 export function KeyInfoGrid({ product }: KeyInfoGridProps) {
   const cells = [
-    { label: 'Tenure', value: formatTenure(product.tenureMonths) },
+    { label: 'Tenure', value: formatProductTenure(product) },
     { label: 'Interest Type', value: INTEREST_TYPE_LABELS[product.interestType] },
     { label: 'Minimum Investment', value: formatCurrency(product.minInvestment) },
     { label: 'Interest Payout', value: PAYOUT_LABELS[product.payout] },

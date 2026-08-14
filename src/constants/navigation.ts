@@ -39,6 +39,11 @@ export interface NavItem {
 /** Primary navigation — approved UI: Marketplace · Portfolio · Support. */
 export const PRIMARY_NAV: readonly NavItem[] = [
   { label: 'Marketplace', route: ROUTES.home, enabled: true, match: 'exact' },
+  /*
+    The guided path, reachable from every page rather than only from Home.
+    `prefix` so the item stays current for anything under the planner later.
+  */
+  { label: 'Plan by goal', route: ROUTES.goalPlanner, enabled: true, match: 'prefix' },
   { label: 'Portfolio', enabled: false },
   { label: 'Support', enabled: false },
 ] as const;

@@ -1,4 +1,5 @@
-import { formatCurrency, formatRate, formatTenure } from './format';
+import { formatCurrency, formatRate } from './format';
+import { formatProductTenure } from './product-tenure';
 import type { CompareRow, CompareRowId } from '../types/compare';
 import type { ProductDetails } from '../types/product';
 
@@ -112,7 +113,7 @@ const ROWS: readonly RowSpec[] = [
   {
     id: 'tenure',
     label: 'Tenure',
-    format: (product) => formatTenure(product.tenureMonths),
+    format: (product) => formatProductTenure(product),
   },
   {
     id: 'minInvestment',

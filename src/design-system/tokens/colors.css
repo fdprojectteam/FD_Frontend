@@ -37,6 +37,14 @@
   --ds-surface-muted: var(--ds-gray-100);
   --ds-surface-brand: var(--ds-purple-700);
   --ds-surface-brand-subtle: var(--ds-purple-50);
+  /*
+   * A subtle surface *on top of* the brand surface [TED]. The brand-subtle
+   * purple is invisible against purple, so an inset panel on a filled brand
+   * block needs its own value. Derived from white at the existing hover-overlay
+   * scale rather than sampled, so it tracks the palette instead of pinning a
+   * fourth purple.
+   */
+  --ds-surface-on-brand-subtle: rgb(from var(--ds-white) r g b / 0.16);
 
   /* ---- Semantic: text (inventory §2c) ---- */
   --ds-text-color-primary: var(--ds-gray-900);

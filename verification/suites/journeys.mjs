@@ -122,6 +122,238 @@ export async function runJourneySuite() {
       label: `listing request ${fragment}`,
     });
 
+  /* ================================================================ */
+  /* Goal planner — the guided journey, end to end                     */
+  /* ================================================================ */
+
+  {
+    section('G1 · Home → Goal Planner → recommendation → Booking');
+
+    /* ---- Home offers the guided door first ---- */
+
+    await load('/');
+
+    const heroSection = $('#home-hero-title')?.closest('section');
+    const heroLinks = $$('a', heroSection).map((node) => ({
+      text: norm(node.textContent),
+      href: node.getAttribute('href'),
+    }));
+
+    check('the hero primary action is the planner', heroLinks[0], {
+      text: 'Find my FD',
+      href: '/goal-planner',
+    });
+    ok(
+      'and browsing is still offered beside it',
+      heroLinks.some((link) => link.text === 'Browse all FDs' && link.href === '#products'),
+    );
+    ok(
+      'the dead "How it works" control is gone',
+      !$$('button', heroSection).some((node) => norm(node.textContent) === 'How it works'),
+    );
+
+    const calloutSection = $('#home-goal-planner-title')?.closest('section');
+    ok('Home renders the guided callout', Boolean(calloutSection));
+    /*
+      **Intent is carried, not discarded.** Each goal column links with `?goal=`,
+      so choosing here answers the planner's first question. The one bare route
+      on the page is the "not sure yet" link — the path for someone who has not
+      decided.
+    */
+    check(
+      'each goal carries its intent into the planner',
+      $$('a', calloutSection).map((node) => node.getAttribute('href')),
+      [
+        '/goal-planner?goal=emergency',
+        '/goal-planner?goal=education',
+        '/goal-planner?goal=retirement',
+        '/goal-planner',
+      ],
+    );
+    check(
+      'and the duplicate "Find my FD" button is gone from the callout',
+      $$('button', calloutSection).length,
+      0,
+    );
+
+    /* ---- Path B — no goal chosen, so the planner asks ---- */
+
+    async function mountPlanner(url) {
+      app.unmount?.();
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory(url);
+      requests.length = 0;
+      app.mount($('#root'));
+      await settle();
+    }
+
+    await mountPlanner('/goal-planner');
+
+    check(
+      'the planner states where the customer is',
+      norm($('h1')?.textContent),
+      'Find the FD that fits your goal',
+    );
+    ok(
+      'the intro screen is gone — no "Let\u2019s start" to dismiss',
+      !$$('button').some((node) => /Let.s start/.test(norm(node.textContent))),
+    );
+    check(
+      'the first question is asked immediately',
+      norm($('legend')?.textContent).startsWith('What are you saving for?'),
+      true,
+    );
+    check('three goals are offered', $$('fieldset button').length, 3);
+    ok(
+      'and none is preselected',
+      !$$('fieldset button').some((n) => n.getAttribute('aria-pressed') === 'true'),
+    );
+
+    /* ---- Path A — intent arrives, the goal question is skipped ---- */
+
+    await mountPlanner('/goal-planner?goal=education');
+
+    ok(
+      'a goal chosen on Home is not asked for again',
+      !/What are you saving for\?/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'it is acknowledged instead',
+      /Children's Education \u2014 got it/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'and the planner moves straight to the next question',
+      /Are you investing as a senior citizen\?/.test(norm($('legend')?.textContent)),
+    );
+
+    /* ---- An unrecognised goal falls back safely ---- */
+
+    await mountPlanner('/goal-planner?goal=lamborghini');
+
+    ok(
+      'an unknown goal never selects one on the customer\u2019s behalf',
+      !$$('fieldset button').some((n) => n.getAttribute('aria-pressed') === 'true'),
+    );
+    check(
+      'and the ordinary question is asked',
+      norm($('legend')?.textContent).startsWith('What are you saving for?'),
+      true,
+    );
+
+    /* ---- Continue Path B from the goal question ---- */
+
+    await mountPlanner('/goal-planner');
+
+    /*
+      Education, because it is the goal whose ranking the catalogue can serve
+      well — and the one whose acknowledgement names the rule that will run.
+    */
+    click(buttonStartingWith("Children's Education"));
+    await settle();
+
+    ok(
+      'the goal is acknowledged rather than silently accepted',
+      /Children's Education — got it/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'and the platform says what it will prioritise',
+      /mature closest to when you need the money/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'the answered goal stays visible as a trail entry',
+      $$('button').some((node) => norm(node.textContent).startsWith('Change')),
+    );
+
+    /*
+      The senior-citizen question (UC1). It sits here because the benefit is a
+      rate input: asking it after the amount would mean pricing twice.
+    */
+    ok(
+      'the second question asks the investor type',
+      /Are you investing as a senior citizen\?/.test(norm($('legend')?.textContent)),
+    );
+    click(buttonStartingWith('No'));
+    await settle();
+
+    ok('the answer is kept in the trail', /Standard rates/.test(norm(document.body.textContent)));
+
+    ok(
+      'the third question is the amount',
+      /How much are you planning to invest\?/.test(norm($('label[for]')?.textContent)),
+    );
+    /*
+      The supporting line is derived from the catalogue query, which resolves
+      independently of the step machine — so it needs its own settle rather than
+      riding on the click that opened the question.
+    */
+    /*
+      The catalogue query resolves independently of the step machine, so poll
+      briefly rather than assuming one settle covers both. Bounded: if the line
+      never arrives the assertion still fails, which is the point.
+    */
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      if (/From ₹5,000/.test(norm(document.body.textContent))) break;
+      await settle(120);
+    }
+    ok(
+      'the minimum is stated from the catalogue, not from copy',
+      /From ₹5,000/.test(norm(document.body.textContent)),
+    );
+
+    /*
+      A quick amount fills the field; the form's Continue action advances the
+      planner. Both controls are part of the current UI contract.
+    */
+    click(buttonStartingWith('₹1 lakh'));
+    click(buttonByText('Continue'));
+    await settle();
+
+    ok(
+      'the fourth question is the horizon',
+      norm($('legend')?.textContent).startsWith('When will you need the money?'),
+    );
+    ok(
+      'and five years is offered',
+      $$('fieldset button').some((node) => norm(node.textContent).startsWith('5 years')),
+    );
+
+    click(buttonStartingWith('1 year'));
+    await settle();
+
+    /*
+      The target question (UC3). Optional by design — `Skip this` is a real
+      answer, and taking it must leave the engine with no target rather than a
+      target of zero.
+    */
+    ok(
+      'the last question asks for a target, and allows none',
+      /Is your goal a specific amount\?|Is there an amount you.re aiming for\?/.test(
+        norm(document.body.textContent),
+      ),
+    );
+    ok(
+      'declining a target is offered as an explicit answer',
+      $$('button').some((node) => norm(node.textContent) === 'Skip this'),
+    );
+
+    /*
+      The journey stops here, deliberately.
+
+      Everything above is verified in this environment. The results phase —
+      recommendation rendering, the rule-id leak check, the Booking handoff —
+      could not be driven to completion here: the journeys suite already has a
+      pre-existing crash (`journeys.mjs` DOM nodes passed to `check`), and this
+      sandbox terminates the long-running bundle-plus-jsdom process before the
+      suite finishes.
+
+      Those properties are not unverified — they are asserted statically in the
+      invariant suite and over real engine output in the unit suite (no rule id
+      in any component, "Indicative rate"/"Estimated maturity" present, the
+      handoff carrying only a productId). What is missing is the DOM proof, and
+      shipping a journey that cannot be run would be worse than saying so.
+    */
+  }
+
   /* ---------------------------------------------------------------- */
   /* /compare helpers (T2.7.3)                                         */
   /* ---------------------------------------------------------------- */
@@ -527,11 +759,21 @@ export async function runJourneySuite() {
     await waitFor(() => compareColumns().length === 4, { label: 'fourth column' });
     await settle();
 
+    /*
+      Scoped to the Add controls. The dialog paginates once the catalogue is
+      large enough, and its page buttons are also `li > button` — they must stay
+      enabled at the cap, because a customer who has filled their comparison must
+      still be able to browse. Asserting "every button" conflated the two.
+    */
+    const addButtons = () =>
+      $$(`${DIALOG} li button`).filter((node) => /^(Add|Added)$/.test(norm(node.textContent)));
+
     check(
       'at the cap every Add is disabled',
-      $$(`${DIALOG} li button`).every((node) => node.disabled),
+      addButtons().every((node) => node.disabled),
       true,
     );
+    ok('and the picker can still be paged', addButtons().length > 0);
     check(
       'and the limit is announced',
       /maximum/.test(norm($(`${DIALOG} [role="status"]`)?.textContent)),

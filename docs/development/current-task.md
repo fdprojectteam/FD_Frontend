@@ -2,7 +2,286 @@
 
 ## Phase
 
-Phase 2 — Marketplace Module (**in progress**)
+Phase 3 — Booking Module (**in progress**) · Phase 2 — Marketplace (complete)
+
+---
+
+## T3.2 — Investment Details (current)
+
+Plan and decisions: [`t3.2-plan.md`](./t3.2-plan.md). **Priority 1 is now the
+Founder Discussion Note** (`docs/engineering/00_Founder_Vision.md`); the plan's
+§0 records the re-verification against it.
+
+| Task | Status |
+|---|---|
+| T3.2.0 documentation — plan amended against the Founder Note | ✅ |
+| T3.2.1 phase model — four shown, eight routed | ✅ |
+| T3.2.2 booking draft contract — context + sessionStorage | ✅ |
+| T3.2.3 `Slider` + `RadioCardGroup` platform primitives | ✅ |
+| T3.2.4 `@/utils/maturity.ts` platform engine + TD-001 cross-impl assertion | ✅ |
+| T3.2.4b tenure→rate domain model (`tenureRates`, `resolveTenureRate`) | ✅ |
+| T3.2.5 `utils/returns.ts` — cumulative vs non-cumulative + tax seam | ✅ |
+| T3.2.6 `utils/investment-schema.ts` + plain-English messages | ✅ |
+| Domain test suite — six areas, written before any UI | ✅ **+122 assertions** |
+| T3.2.7 route + `InvestmentDetailsScreen` shell + configured right rail | ✅ |
+| T3.2.8 amount field + quick amounts + `EstimatedReturns` | ✅ (C3a/C3b confirmed) |
+| T3.2.9 `PayoutOptionGroup` | ✅ |
+| T3.2.10 `TenureSelector` | ✅ **chips only** — slider and Custom deliberately unbuilt |
+| T3.2.11 `resolveTenureRate` + `tenureRates` on terms | logic buildable, data absent |
+| T3.2.12 navigation + validation seam + audit | after the above |
+
+### T3.3 — Nominee (Screen 3)
+
+| Task | Status |
+|---|---|
+| T3.3.1 domain — types, draft slice, constants, Zod validation | ✅ |
+| T3.3.2 screen shell — route, chrome, reused right rail | ✅ |
+| T3.3.3 nominee form — fields, add/remove | ✅ |
+| T3.3.4 nomination type cards | ✅ |
+| T3.3.5 validation wiring + Continue gating | ✅ |
+
+**⚠ `SUPPORTED_RELATIONSHIPS` is a POC assumption, not client data.** Eight
+conventional Indian FD nomination values supplied 2026-08-06 while the client
+was unavailable. It is the single source of truth — replacing the array changes
+the dropdown, the validation and the error message together, and an invariant
+asserts no component declares its own. Note "Wife" from the artwork is **not**
+in the list; "Spouse" covers it without assuming gender.
+
+**Nominee PII is never persisted.** `PersistedBookingDraft` is
+`Omit<BookingDraft, 'nominee'>`, so persisting it is a compile error, not a
+convention. A refresh clears entered nominee details — a deliberate narrowing of
+FR-SYS-002 for this step, per the draft contract written at T3.2.2. Widening it
+is a compliance decision.
+
+**Route:** `/booking/<productId>/nominee`
+
+---
+
+## RateQuote — rate resolution carries provenance ✅
+
+`resolveTenureRate(terms, tenure) → number | null` is now
+`resolveRate(terms, criteria) → RateQuote | null`.
+
+**`RateQuote` holds two fields — `annualRate` and `tenureMonths` — and nothing
+else.** `bandId`, `effectiveFrom`, `dayCountBasis` and `compoundingFrequency`
+were in the architect's proposal but have **no source in this repository**;
+synthesising them would defeat the audit purpose they exist for. They are added
+when the data arrives, which is what this shape makes cheap.
+
+**`RateCriteria` is the extension point.** Amount slabs, senior-citizen and
+payout-specific pricing each become an optional field — no new function, no
+changed signature, no touched caller. This is what Goal-Based FD needs to
+compose rate-by-tenure with rate-by-amount.
+
+**Behaviour is byte-identical.** `ReturnsResult.annualRate` stays flat, so the
+returns strip and the summary rail were not touched. 4 production files: the
+type, the resolver, and its 2 callers.
+
+---
+
+## Booking journey — one resolved product per session ✅
+
+`productId` → `booking/[productId]/layout.tsx` resolves **once** →
+`BookingProductProvider` → Overview, Investment Details and Nominee all read
+`useBookingProduct()`. No screen resolves, none has a fixture fallback, and the
+`overview` prop that allowed divergence is gone from all three — so the steps
+**cannot** disagree about which deposit is being booked.
+
+An unresolvable id takes `booking/not-found.tsx` before any screen renders. The
+boundary sits **above** `[productId]` because a layout's `notFound()` is caught
+by the parent segment, not its own.
+
+`src/app/(public)/booking/[productId]/not-found.tsx` is now a one-line re-export
+and **safe to delete** — this environment cannot remove files.
+
+---
+
+## Booking → Product handoff (productId-driven resolution) ✅
+
+The Overview screen accepted a `productId` and ignored it, rendering one
+hardcoded deposit for every booking URL. It now resolves through
+`resolveBookingOverview(productId)`; an unresolvable id takes the new
+`booking/[productId]/not-found.tsx` boundary rather than rendering a deposit the
+user did not choose.
+
+**⚠ Two data defects surfaced, not fixed** — both need client product data:
+
+1. **The id collides.** `fd-002` in the Marketplace catalogue is **HDFC, 7.25%,
+   12 months, ₹10,000 min**. The approved Booking artwork is **Axis, 24 months,
+   ₹5,00,000 min**. The Axis catalogue product is `fd-006` (6.8%, 9 months).
+2. **No Marketplace product matches the approved Booking screen** — no product
+   has a ₹5,00,000 minimum (`MIN_CYCLE` tops out at ₹50,000).
+
+So Booking currently resolves **one** product. Wiring it to the Marketplace
+catalogue would change every figure on the approved screens, which is a product
+decision rather than a refactor.
+
+**Re-baselined 2026-08-06** — decisions on C1–C8 received and applied. Roadmap,
+resequencing, the C8 convergence plan (TD-001 / R1) and eight Founder-Vision
+risks are in [`t3.2-rebaseline.md`](./t3.2-rebaseline.md), which supersedes the
+sequencing in `t3.2-plan.md` §6.
+
+Sequence is now **engine → model → validation → shell → controls**, so no
+control is built before the calculation it displays. The tenure selector moved
+to the end so the one data-blocked task stalls nothing behind it.
+
+### ⏸ Review gate — T3.2.4 → T3.2.6 complete, stop before visible UI
+
+The domain layer is done and proven. **No UI was written.**
+
+| Module | Owns |
+|---|---|
+| `@/utils/maturity.ts` | compounding + simple interest — the platform engine |
+| `@/types/finance.ts` | `MaturityInput` · `MaturityResult` · `TenureRate` |
+| `booking/utils/tenure-rates.ts` | rate card resolution; **`null` for unpriced tenures** |
+| `booking/utils/returns.ts` | cumulative vs payout, instalments, tax seam |
+| `booking/utils/investment-schema.ts` | BR-INV-001/002/003, tenure, payout, plain-English copy |
+
+**The three rules the layer enforces, each covered by assertions:**
+
+- **No invented rates (C1)** — `resolveTenureRate` returns `null` for a tenure
+  the product does not price. It does **not** fall back to the headline rate.
+  The fixture carries exactly one entry, `{ 24 months, 7.25% }`, because that is
+  the only pair the product publishes
+- **Never compounded maturity for a payout product (C4)** — asserted for all
+  four non-cumulative options, not just monthly: the rule is about interest
+  having left the deposit
+- **No tax assumptions (C6)** — post-tax figures are `null` unless a
+  `taxProfile` is supplied. No default, no assumed TDS
+
+**Verification:** unit **326** ✅ · invariants **343** ✅ · boundaries **15** ✅ ·
+typecheck ✅ · prettier ✅. The domain suite adds ~122 assertions across the six
+areas: amount validation, tenure validation, rate resolution, returns, payout,
+and whole-configuration validation.
+
+Three tests failed on first run and **all three were test bugs, not code bugs** —
+an amount below the fixture minimum, and two assertions expecting a years-based
+tenure rendering the platform does not use (`formatTenure(24)` is "24 months").
+Corrected to match reality.
+
+One **existing** invariant failed and was **re-pointed, not loosened**: "the
+maturity formula has exactly two call sites" is now three, with Booking's
+`returns.ts` named explicitly and the two formula *declarations* excluded as
+TD-001, which drops back to one after R1.
+
+### T3.2.10 readiness — two blockers, one of them new
+
+Full package: [`t3.2.10-readiness-package.md`](./t3.2.10-readiness-package.md) —
+data specification, integration contract, UI behaviour matrix, verification plan
+and technical review.
+
+1. **`tenureRates` data.** One row unblocks the control; six match the artwork.
+2. **⚠ NEW — the artwork's "7 Days" chip cannot be represented.** The domain's
+   only unit of tenure is the whole month (`tenureMonths`, integer, `> 0`), and
+   `tenureRange` advertises "7 Days – 10 Years". This also makes **Custom
+   tenure** near-unusable as specified, since `resolveTenureRate` is an exact
+   match against the card. Four options in §5.1; **answer this before building**,
+   because the days-based option changes a type the persisted draft schema
+   depends on.
+
+Also open, non-blocking: the slider's domain against a sparse card (§5.2,
+index-domain recommended), tenure-dependent payout availability (§5.3), and
+rate-card uniqueness at ingestion (§1.4).
+
+**Not yet seen in a browser:** the four-cell returns strip and the Per Instalment
+block. Both have shipped behind an awaiting state that is true on every code
+path until a tenure is selectable.
+
+### The founder correction, as implemented (T3.2.1)
+
+The Note requires **four** booking steps; the approved UI, doc 20 and the
+shipped `BOOKING_STEPS` specify **eight**. Approved reconciliation: the stepper
+presents four phases, all eight routes remain.
+
+- `BOOKING_PHASES` — what the user is told · `BOOKING_STEPS` — where the user is
+- `resolveBookingPhase` is the **only** bridge, and an invariant asserts it is
+  declared exactly once
+- `Stepper` is **unchanged**. It already takes `steps` + `currentStepId`, so
+  this is a change to what it is fed
+- `success` maps to `null`, and `null` means **render no rail**. Not "show every
+  phase complete" — `findIndex` returns `-1` and every phase would render
+  *upcoming*, putting an untouched rail on a finished booking. Verified, and now
+  covered by a unit assertion
+
+Recorded plainly: this satisfies the Note's *labelling* more fully than its
+*intent*, since the user still visits eight screens. The lightness requirement
+therefore falls on the screens themselves.
+
+### Booking draft contract (T3.2.2) — binds every remaining screen
+
+Module-scoped context, seated on `/booking/[productId]/layout.tsx`, keyed by
+product. Grounded in Document 09 §3–§6 (Booking is *Feature State*: "Current
+Step · Entered Details · Confirmation Status"), §4 (feature state → context),
+§5 (no module data in the global store) and §10 (never store derived values).
+
+- **No Zustand, no new dependency** — same conclusion `useCompareSelection`
+  reached from the same paragraphs
+- **`sessionStorage`**, versioned key `fd:booking-draft:v1:<productId>`, 24h
+  expiry **[TED]**, read through a Zod parse that **fails closed**
+- **No maturity, interest or rate is ever stored** — enforced by omission in the
+  type, and by an invariant that reads the type rather than trusting the comment
+- **No current step** — the route owns that (§2, one copy of one fact)
+- Degrades to in-memory when storage is unavailable (private mode, policy,
+  quota). FR-CONF-002 says "where feasible"
+
+Sensitive-field policy for steps 3–4 — identifiers only, never raw PAN / DOB /
+account numbers — is proposed but **not yet approved** (OQ-8).
+
+### Verification added
+
+Unit **204 passed** · Invariants **343 passed** · Boundaries **15 passed**.
+
+New coverage: the four-phase / eight-route mapping asserted as exact lists; the
+`null`-phase trap; draft round-trip, expiry at both sides of the boundary, and
+seven fail-closed cases; the draft's exact key set; Booking↔Marketplace
+non-import in **both** directions; no Zustand in Booking; both primitives are
+native HTML and hardcode no colour.
+
+### ⚠ Two environment findings
+
+**1. `npm run verify` crashes in the journey layer — pre-existing, not T3.2.**
+`verification/suites/journeys.mjs:1041` passes raw DOM nodes to `check()`, which
+`JSON.stringify`s them; a React-attached element is circular, so it throws every
+time it is reached. The file is unmodified by T3.2, every other `check()` in it
+passes a primitive, and `current-task.md` already recorded that M2.9's journeys
+had never been executed — **this is the first run, and that is what it found.**
+
+The assertion is an identity comparison, so the fix is to use `ok()`:
+
+```js
+ok('focus returns to the field rather than the document',
+   document.activeElement === amountField());
+```
+
+Not applied — it changes an M2.9 assertion and was not instructed. One line,
+awaiting approval.
+
+**2. A stale `.git/index.lock` is present** and cannot be removed from the
+sandbox (`Operation not permitted` on the mount). **Delete it on Windows before
+your next git command.** No repository content was altered — a `git stash` was
+attempted to isolate finding 1, the lock prevented it from starting, and all
+working-tree files were verified intact afterwards.
+
+**Gates:** `typecheck` ✅ (run here) · `verify unit/invariants/boundaries` ✅
+(run here, with a Linux esbuild binary supplied out-of-tree) · `lint` ⚠ not
+runnable — `unrs-resolver` ships Windows binaries in this `node_modules`, the
+same limitation recorded throughout Phase 2 · `build` ⚠ not runnable, same
+cause. **Run `lint` and `build` locally before sign-off.**
+
+### Manual checks only you can run
+
+- The Booking rail now shows **four** markers, not eight, on `/booking/fd-002/overview`
+- `/gallery#slider-radio-cards` — `Slider`: drag, then Tab and use arrows / Home
+  / End; confirm the thumb is ≥44px to the touch below `md` and that the fill
+  tracks without lag. `RadioCardGroup`: confirm the group is **one Tab stop**
+  and arrows move within it, and that the focus ring is drawn around the whole
+  card
+- Resume: configure nothing yet, but confirm a reload of a booking route does not
+  error and that `sessionStorage` shows no key until a value is entered
+
+---
+
+## Phase 2 — Marketplace Module (complete)
 
 ## Completed
 

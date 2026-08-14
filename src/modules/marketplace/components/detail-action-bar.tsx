@@ -1,4 +1,6 @@
 import { ArrowRight, Check, Plus } from 'lucide-react';
+import type { Route } from 'next';
+import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 
@@ -37,10 +39,17 @@ export interface DetailActionBarProps {
   isComparing: boolean;
   /** True when the comparison is full and this product is not in it. */
   compareDisabled: boolean;
+  /** The Booking Overview route when Booking has data for this product. */
+  bookingHref?: Route;
   onCompare: () => void;
 }
 
-export function DetailActionBar({ isComparing, compareDisabled, onCompare }: DetailActionBarProps) {
+export function DetailActionBar({
+  isComparing,
+  compareDisabled,
+  bookingHref,
+  onCompare,
+}: DetailActionBarProps) {
   return (
     <div className="border-border-default bg-surface-page sticky bottom-0 border-t md:static md:border-t-0">
       <div className="container-page flex items-center justify-end gap-3 py-4 md:pt-8">
@@ -67,10 +76,25 @@ export function DetailActionBar({ isComparing, compareDisabled, onCompare }: Det
           )}
         </Button>
 
-        <Button variant="primary" size="lg" aria-disabled="true" className="flex-1 md:flex-none">
-          Continue to Booking
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </Button>
+        {bookingHref ? (
+          <Button asChild variant="primary" size="lg" className="flex-1 md:flex-none">
+            <Link href={bookingHref}>
+              Continue to Booking
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            size="lg"
+            disabled
+            aria-label="Booking unavailable for this product"
+            title="Booking is not available for this product yet"
+            className="flex-1 md:flex-none"
+          >
+            Booking unavailable
+          </Button>
+        )}
       </div>
     </div>
   );

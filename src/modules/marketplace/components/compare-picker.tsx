@@ -15,8 +15,9 @@ import { Pagination } from '@/components/ui/pagination';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import type { ProductSummary } from '../types/product';
+import { formatProductTenure } from '../utils';
 import { addLabel } from '../utils/compare-labels';
-import { formatTenure } from '../utils/format';
+// import { formatTenure } from '../utils/format';
 
 /**
  * ComparePicker — the approved "Add another FD" dialog (M2.7, T2.7.6).
@@ -115,7 +116,7 @@ export function ComparePicker({
                     <div className="flex flex-1 flex-col gap-0.5">
                       <p className="text-body text-content font-medium">{product.bank.name}</p>
                       <p className="text-caption text-content-muted">
-                        {formatTenure(product.tenureMonths)}
+                        {formatProductTenure(product)}
                       </p>
                     </div>
 

@@ -31,6 +31,7 @@
   --color-surface-muted: var(--ds-surface-muted);
   --color-surface-brand: var(--ds-surface-brand);
   --color-surface-brand-subtle: var(--ds-surface-brand-subtle);
+  --color-surface-on-brand-subtle: var(--ds-surface-on-brand-subtle);
 
   /* ---- Text colors → text-content, text-content-muted, … ---- */
   --color-content: var(--ds-text-color-primary);
@@ -208,6 +209,158 @@
 }
 
 /*
+ * ---------------------------------------------------------------------------
+ * Reveal, stagger and measured height — the Motion UX Specification
+ * (docs/engineering/motion-architecture.md).
+ *
+ * Three additions to the motion inventory, and deliberately no more. The
+ * vocabulary is closed: fade, subtle translate, height expand/collapse,
+ * staggered reveal. No library was added — `@starting-style` and
+ * `transition-behavior` now cover enter/exit natively, and the one thing CSS
+ * still cannot do cross-browser (animating to an intrinsic height, since
+ * `interpolate-size` is Chromium-only) is closed by `useMeasuredHeight`.
+ * ---------------------------------------------------------------------------
+ */
+
+/*
+ * Reveal — fade plus a single short rise. The only translate in the system.
+ *
+ * `backwards` fill is not cosmetic: a staggered child would otherwise paint at
+ * full opacity during its delay and then jump to the start of the animation.
+ * Every consumer of a delay depends on it.
+ */
+@keyframes ds-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(var(--ds-reveal-distance));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-reveal {
+  animation: ds-reveal var(--ds-duration-base) var(--ds-ease-out) backwards;
+}
+
+/*
+ * Stagger — sequence ordering declared once by the parent.
+ *
+ * Capped at five steps so a long list cannot push the sequence past the 320ms
+ * budget: the sixth child and everything after it share the fifth delay. The
+ * cap is the reason this is a container class rather than a per-item inline
+ * `animationDelay`, which cannot express a ceiling.
+ *
+ * Applies to any child running a delay-aware animation **or transition** — a
+ * sequence is a sequence whether its members are entering the page or
+ * responding to a hover, and the goal illustrations need the second kind.
+ * It sets only the delay, never the animation or transition itself.
+ */
+.ds-stagger > *:nth-child(2) {
+  animation-delay: calc(var(--ds-duration-stagger) * 1);
+  transition-delay: calc(var(--ds-duration-stagger) * 1);
+}
+
+.ds-stagger > *:nth-child(3) {
+  animation-delay: calc(var(--ds-duration-stagger) * 2);
+  transition-delay: calc(var(--ds-duration-stagger) * 2);
+}
+
+.ds-stagger > *:nth-child(4) {
+  animation-delay: calc(var(--ds-duration-stagger) * 3);
+  transition-delay: calc(var(--ds-duration-stagger) * 3);
+}
+
+.ds-stagger > *:nth-child(5) {
+  animation-delay: calc(var(--ds-duration-stagger) * 4);
+  transition-delay: calc(var(--ds-duration-stagger) * 4);
+}
+
+.ds-stagger > *:nth-child(n + 6) {
+  animation-delay: calc(var(--ds-duration-stagger) * 5);
+  transition-delay: calc(var(--ds-duration-stagger) * 5);
+}
+
+/*
+ * Measured height — the transition CSS cannot express alone.
+ *
+ * `useMeasuredHeight` writes the observed content height into
+ * `--ds-measured-height` and flags `data-height-animating` for the duration of
+ * the change. `overflow: hidden` is scoped to that flag rather than applied at
+ * rest, so focus rings, sticky children and dropdowns are never clipped by a
+ * container that is not currently moving.
+ */
+.ds-auto-height {
+  height: var(--ds-measured-height, auto);
+  transition: height var(--ds-duration-base) var(--ds-ease-in-out);
+}
+
+.ds-auto-height[data-height-animating='true'] {
+  overflow: hidden;
+}
+
+/*
+ * De-emphasis, on the approved opacity scale (inventory §16). Exists so a
+ * component can recede an element without writing `opacity-70`, which would be
+ * the same number with no provenance.
+ */
+@utility opacity-muted {
+  opacity: var(--ds-opacity-muted);
+}
+
+/*
+ * Stroke draw — the sixth and final motion primitive
+ * (docs/engineering/motion-visual-specification.md §10.1).
+ *
+ * A path completing left to right. Used only by the product marks, where a line
+ * being drawn means a value becoming known: a goal understood on Home, a step
+ * answered in the planner, an amount connected to its maturity.
+ *
+ * `pathLength="1"` on the SVG path normalises the geometry, so one dash length
+ * works for every path in the system regardless of its real length — no
+ * component measures anything, and no path carries a magic number.
+ *
+ * The dash properties are set **only inside `motion-safe`**. Under reduced
+ * motion they are never applied at all, so the path is simply a drawn path
+ * rather than a hidden one waiting on an animation that will not run. That is
+ * the difference between degrading and disappearing.
+ */
+@keyframes ds-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-draw {
+  @media (prefers-reduced-motion: no-preference) {
+    stroke-dasharray: 1;
+    animation: ds-draw var(--ds-duration-draw) var(--ds-ease-out) backwards;
+  }
+}
+
+/*
+ * The same geometry as a *transition* rather than an entrance, for a path that
+ * draws in response to hover or focus and retreats when it is lost.
+ */
+@utility transition-draw {
+  @media (prefers-reduced-motion: no-preference) {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset var(--ds-duration-draw) var(--ds-ease-out);
+  }
+}
+
+@utility draw-complete {
+  stroke-dashoffset: 0;
+}
+
+/*
  * Generic quiet pulse for loading placeholders (T1.11 — approved).
  * (Motion inventory: expand/collapse, fade, pulse — five primitives total.)
  * Opacity only: no shimmer, gradient, wave, transform, or scale. Uses the
@@ -284,6 +437,80 @@
   max-width: calc(100% - (2 * var(--ds-space-4)));
 }
 
+/*
+ * Slider track and thumb (T3.2.3).
+ *
+ * Lives here rather than in the component because a range input's track and
+ * thumb are only reachable through vendor pseudo-elements, which utility
+ * classes cannot target. Every value below is a token; nothing is hardcoded.
+ *
+ * The two vendor blocks are duplicated rather than combined into one selector
+ * list on purpose: browsers drop an entire rule when any selector in it is
+ * unrecognised, so `::-webkit-slider-thumb, ::-moz-range-thumb` would silently
+ * style neither.
+ *
+ * `--ds-slider-fill` is supplied by the component as a percentage.
+ */
+.ds-slider {
+  --ds-slider-track-height: 4px;
+  --ds-slider-thumb-size: 20px;
+}
+
+.ds-slider::-webkit-slider-runnable-track {
+  height: var(--ds-slider-track-height);
+  border-radius: var(--ds-radius-full);
+  background: linear-gradient(
+    to right,
+    var(--ds-color-primary) 0%,
+    var(--ds-color-primary) var(--ds-slider-fill, 0%),
+    var(--ds-border-default) var(--ds-slider-fill, 0%),
+    var(--ds-border-default) 100%
+  );
+}
+
+.ds-slider::-moz-range-track {
+  height: var(--ds-slider-track-height);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-border-default);
+}
+
+.ds-slider::-moz-range-progress {
+  height: var(--ds-slider-track-height);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-color-primary);
+}
+
+.ds-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--ds-slider-thumb-size);
+  height: var(--ds-slider-thumb-size);
+  /* Centres the thumb on a track thinner than it is. */
+  margin-top: calc((var(--ds-slider-track-height) - var(--ds-slider-thumb-size)) / 2);
+  border: 2px solid var(--ds-white);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-color-primary);
+  box-shadow: var(--ds-elevation-1);
+  transition: transform var(--ds-duration-fast) var(--ds-ease-out);
+}
+
+.ds-slider::-moz-range-thumb {
+  width: var(--ds-slider-thumb-size);
+  height: var(--ds-slider-thumb-size);
+  border: 2px solid var(--ds-white);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-color-primary);
+  box-shadow: var(--ds-elevation-1);
+  transition: transform var(--ds-duration-fast) var(--ds-ease-out);
+}
+
+.ds-slider:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+.ds-slider:hover:not(:disabled)::-moz-range-thumb {
+  transform: scale(1.1);
+}
+
 body {
   background: var(--ds-surface-page);
   color: var(--ds-text-color-primary);
@@ -305,5 +532,14 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+
+    /*
+     * Delays must be neutralised too, not only durations. A staggered reveal
+     * uses `backwards` fill, so a surviving delay would leave each item
+     * invisible for its full delay and then pop in — a reduced-motion setting
+     * producing a worse effect than the animation it replaced.
+     */
+    animation-delay: 0ms !important;
+    transition-delay: 0ms !important;
   }
 }

@@ -9,6 +9,7 @@ import { ActiveFilters } from './active-filters';
 import { CompareEntryBar } from './compare-entry-bar';
 import { FeaturedBanks } from './featured-banks';
 import { FilterBar } from './filter-bar';
+import { GoalPlannerCallout } from './goal-planner-callout';
 import { HomeHero } from './home-hero';
 import { ProductGridSection } from './product-grid-section';
 import { RecommendedRow, type RecommendedEntry } from './recommended-row';
@@ -224,6 +225,16 @@ export function HomeScreen() {
         )}
       >
         <HomeHero spotlightProduct={spotlight} />
+
+        {/*
+          The guided entry point, directly under the hero.
+
+          The first decision a customer makes is "do I know what I want?" — and
+          everything below this line assumes the answer is yes. Placing it after
+          the search bar would offer the guided path only to people who had
+          already given up on the unguided one.
+        */}
+        <GoalPlannerCallout />
 
         {/*
         No local Suspense boundary here. It existed in M2.3 to isolate the

@@ -6,7 +6,9 @@
  * importing a feature module. Only the transport shape (DTO) belongs here,
  * beside the endpoint that returns it.
  */
-export type { Bank, TrustIndicator, TrustIndicatorId } from '@/types/finance';
+import type { BankCategory } from '@/types/finance';
+
+export type { Bank, BankCategory, TrustIndicator, TrustIndicatorId } from '@/types/finance';
 
 export interface BankDto {
   id: string;
@@ -16,4 +18,6 @@ export interface BankDto {
   /** Logo path served by the API; `null` when the bank has none. */
   logoUrl: string | null;
   rating: string | null;
+  /** Disclosure metadata only — see `BankCategory`. Carries no business rule. */
+  category?: BankCategory;
 }

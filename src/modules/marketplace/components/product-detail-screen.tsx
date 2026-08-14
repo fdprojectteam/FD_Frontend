@@ -7,9 +7,12 @@ import { useMemo, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { isBookableProduct } from '@/constants/booking';
 import { ROUTES } from '@/constants/routes';
 import { isNotFoundError } from '@/services/api';
+import { publishedTenure, toWholeMonths } from '@/utils/finance';
 
+import { formatProductTenure } from '../utils';
 import { BenefitChipList } from './benefit-chip-list';
 import { DetailActionBar } from './detail-action-bar';
 import { EligibilityPanel } from './eligibility-panel';
@@ -20,8 +23,10 @@ import { ProductHeader } from './product-header';
 import { TrustBadgeRow } from './trust-badge-row';
 import { useCompareSelection } from '../hooks/use-compare-selection';
 import { useProduct } from '../hooks/use-product';
+import { estimateReturnsFor } from '../services/product-service';
 import type { MaturityResult } from '../types/calculator';
-import { calculateMaturity } from '../utils/maturity';
+// import { calculateMaturity } from '../utils/maturity';
+// import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * ProductDetailScreen — composition root for `/marketplace/[productId]`
@@ -117,12 +122,15 @@ export function ProductDetailScreen({ productId }: ProductDetailScreenProps) {
     if (!product) return undefined;
     if (calculatedAmount === null) return product.estimatedReturns;
 
-    return calculateMaturity({
-      principal: calculatedAmount,
-      annualRate: product.interestRate,
-      tenureMonths: product.tenureMonths,
-    });
+    /*
+      One implementation of the pricing rule, in the service that already owns
+      it. The screen renders what it is given and computes nothing.
+    */
+    return estimateReturnsFor(product, calculatedAmount) ?? undefined;
   }, [calculatedAmount, product]);
+
+  const calculatorSupported =
+    product !== undefined && toWholeMonths(publishedTenure(product)) !== null;
 
   if (isError && isNotFoundError(error)) {
     notFound();
@@ -182,12 +190,29 @@ export function ProductDetailScreen({ productId }: ProductDetailScreenProps) {
               )}
             </DetailSection>
 
-            {product ? (
+            {product && calculatorSupported ? (
               <InvestmentCalculator
                 product={product}
                 result={maturity ?? product.estimatedReturns}
                 onCalculate={setCalculatedAmount}
               />
+            ) : product ? (
+              <section
+                aria-labelledby="calculator-unavailable-title"
+                className="border-border-default bg-surface-card rounded-card flex flex-col gap-2 border p-6"
+              >
+                <h2
+                  id="calculator-unavailable-title"
+                  className="text-body-lg text-content font-semibold"
+                >
+                  Maturity estimate unavailable
+                </h2>
+                <p className="text-body text-content-muted">
+                  This product is published for {formatProductTenure(product)}. We need the
+                  bank&apos;s day-count basis before calculating an estimated maturity, so no
+                  estimate is shown.
+                </p>
+              </section>
             ) : (
               <PendingSection label="calculator" className="h-72 w-full" />
             )}
@@ -227,11 +252,16 @@ export function ProductDetailScreen({ productId }: ProductDetailScreenProps) {
         from md (D7); the bottom padding above reserves room for it so the last
         accordion is never obscured.
       */}
-      <DetailActionBar
-        isComparing={compare.has(productId)}
-        compareDisabled={compare.isFull && !compare.has(productId)}
-        onCompare={() => compare.toggle(productId)}
-      />
+      {product && !isError ? (
+        <DetailActionBar
+          isComparing={compare.has(product.id)}
+          compareDisabled={compare.isFull && !compare.has(product.id)}
+          bookingHref={
+            isBookableProduct(product.id) ? ROUTES.bookingOverview(product.id) : undefined
+          }
+          onCompare={() => compare.toggle(product.id)}
+        />
+      ) : null}
     </div>
   );
 }

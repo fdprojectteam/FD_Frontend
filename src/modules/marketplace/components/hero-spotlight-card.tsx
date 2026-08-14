@@ -1,7 +1,8 @@
-import { formatCurrency, formatRate, formatTenure } from '@/utils/format';
+import { formatCurrency, formatRate } from '@/utils/format';
 
 import { REFERENCE_AMOUNT } from '../constants/filters';
 import type { ProductSummary } from '../types/product';
+import { formatProductTenure } from '../utils';
 
 /**
  * HeroSpotlightCard — the brand panel from the approved Home hero (M2.3):
@@ -25,7 +26,7 @@ export function HeroSpotlightCard({ product }: HeroSpotlightCardProps) {
         <span className="text-caption opacity-70">Highest rate available today</span>
         <span className="text-h1 font-bold tabular-nums">{formatRate(product.interestRate)}</span>
         <span className="text-body">
-          {product.bank.name} · {formatTenure(product.tenureMonths)}
+          {product.bank.name} · {formatProductTenure(product)}
         </span>
       </div>
 

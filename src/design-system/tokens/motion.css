@@ -17,7 +17,31 @@
    */
   --ds-duration-pulse: 1500ms;
 
+  /*
+   * Sequenced-reveal step [TED — approved with the Motion UX Specification].
+   * The interval between members of a staggered reveal. Deliberately short:
+   * five steps must still complete inside the 320ms sequence budget
+   * (docs/engineering/motion-architecture.md §2.3).
+   */
+  --ds-duration-stagger: 60ms;
+
+  /*
+   * Stroke draw [TED — approved with the Motion & Visual Specification].
+   * Deliberately the slowest interaction duration in the system: a line
+   * completing has to be legible *as* a line completing, and at 200ms it reads
+   * as a flicker rather than a gesture. It applies to stroke geometry only —
+   * never to opacity, colour, size or position.
+   */
+  --ds-duration-draw: 300ms;
+
   --ds-ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ds-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /*
+   * The only translate distance in the system [TED]. Reveals rise by this
+   * much and nothing else moves. It does NOT scale with viewport: motion
+   * distance proportional to screen size reads as sluggish on small screens.
+   */
+  --ds-reveal-distance: 8px;
 }

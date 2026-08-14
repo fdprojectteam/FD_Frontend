@@ -1,0 +1,185 @@
+'use client';
+
+import { ChevronLeft } from 'lucide-react';
+import Link from 'next/link';
+import { useMemo } from 'react';
+
+import { SafetyNote } from '@/components/business';
+import { Card } from '@/components/ui/card';
+import { Stepper } from '@/components/ui/stepper';
+import { ROUTES } from '@/constants/routes';
+
+import { BookingAssuranceStrip } from './booking-assurance-strip';
+import { BookingStepActions } from './booking-step-actions';
+import { InvestmentSummary } from './investment-summary';
+import { SelectedFdSummary } from './selected-fd-summary';
+import { BOOKING_PHASES, resolveBookingPhase } from '../constants/phases';
+import { useBookingProduct } from '../hooks/use-booking-product';
+import { buildInvestmentSummaryRows } from '../utils/investment-summary';
+
+/**
+ * BookingOverviewScreen — step 1 of the approved booking journey (T3.1).
+ *
+ * The screen answers one question and collects nothing: *is this the Fixed
+ * Deposit I meant to invest in?* Spec 21a is explicit that no data entry happens
+ * here, which is why there is no form, no validation, and no draft state.
+ *
+ * **The route's sole owner** (invariant I3/I2a, as on every other screen in this
+ * codebase): it holds the data, derives the row model, and hands sections plain
+ * values and callbacks. The sections beneath own no state, no router and no
+ * query, so any of them can be reused on a later step unchanged.
+ *
+ * **Data is a fixture, and the seam is real.** `overview` is a prop with a
+ * fixture default, not an import buried three components down — so introducing
+ * `useBookingOverview(productId)` is a change to this file's first three lines
+ * and nothing else. The type it will return already exists.
+ *
+ * **What is deliberately absent.** No API calls (not yet specified), no booking
+ * session (created on Continue, once the endpoint exists), no Save for Later
+ * (the draft-persistence decision is still open, so the control is *hidden*
+ * rather than shipped inert — an affordance that silently does nothing is worse
+ * on a financial screen than one that is not there yet). Continue navigates
+ * nowhere for the same reason step 2 does not exist; the callback is wired and
+ * the destination is the one line that changes.
+ *
+ * Layout follows the approved screen: a full-width header with the stepper,
+ * title and assurances, then a two-column body — the deposit on the left, the
+ * terms and next step on the right — collapsing to one column below `md`, with
+ * the summary *after* the deposit card in source order so the reading sequence
+ * is the same at both widths.
+ */
+export interface BookingOverviewScreenProps {
+  productId: string;
+}
+
+export function BookingOverviewScreen({ productId }: BookingOverviewScreenProps) {
+  /*
+    The deposit comes from the booking session, resolved once by the layout —
+    not from a prop and not from a fixture. There is deliberately no way to hand
+    this screen a different product from the one the other two steps are using.
+  */
+  const overview = useBookingProduct();
+
+  const { deposit, assurances, importantInformation, nextStep } = overview;
+
+  const phaseId = resolveBookingPhase('overview');
+
+  /**
+   * The summary's single derivation site. Memoised on the deposit rather than
+   * rebuilt each render — nine rows is cheap, but the rule that the row model
+   * has one owner is what keeps the two panels quoting the same figures.
+   */
+  const summaryRows = useMemo(() => buildInvestmentSummaryRows(deposit), [deposit]);
+
+  /**
+   * Continue creates or resumes the booking session (spec 21a §10) and moves to
+   * Investment Details. Both are T3.2 work: the endpoint is unspecified and the
+   * route does not exist, so this is the seam rather than a redirect to a 404.
+   */
+  const handleContinue = () => {
+    // Intentionally unimplemented until T3.2 — see the docstring above.
+  };
+
+  return (
+    <div className="flex flex-col gap-8 py-8 md:gap-10 md:py-12">
+      <div className="container-page flex flex-col gap-8 md:gap-10">
+        {/*
+          The same back affordance the Marketplace screens use, in the same
+          position and with the same treatment. The approved screen labels it
+          "Back to Marketplace"; spec 21a §5 calls the secondary CTA "Back to
+          Product". The design wins here and the bottom action row carries the
+          product-level Back, so both destinations exist — worth confirming at
+          sign-off.
+        */}
+        <Link
+          href={ROUTES.home}
+          className="focus-ring text-body text-content-muted hover:text-content inline-flex w-fit items-center gap-1 rounded-md font-medium"
+        >
+          <ChevronLeft aria-hidden="true" className="size-4" />
+          Back to Marketplace
+        </Link>
+
+        {/*
+          Four phases, not eight steps (T3.2.1). Overview and Investment Details
+          are both "Details" — the Founder Note's first phase — so this screen
+          and the next one show the same marker current. `resolveBookingPhase`
+          owns that mapping; this screen only names the route it is.
+
+          The null branch is the documented contract, not defensive padding:
+          terminal outcomes (Success) render no rail, and passing null through
+          would draw four *upcoming* phases on a finished booking.
+        */}
+        {phaseId ? (
+          <Stepper steps={[...BOOKING_PHASES]} currentStepId={phaseId} label="Booking progress" />
+        ) : null}
+
+        {/*
+          Title block and assurances share a row from `md` and stack below it.
+          `items-start` rather than `items-center`: the title block is two lines
+          and the assurance cards are one, and centring them would let the
+          heading drift as the description wraps at different widths.
+        */}
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 md:gap-8">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-h1 text-content">Booking Overview</h1>
+            <p className="text-body-lg text-content-muted">
+              Review the Fixed Deposit you’ve selected. Click “Continue” to proceed with your
+              investment.
+            </p>
+          </div>
+
+          <BookingAssuranceStrip assurances={assurances} />
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
+          {/* Two thirds on desktop, first everywhere — it is what the user came to check. */}
+          <div className="flex flex-col gap-4 md:col-span-2">
+            <SelectedFdSummary deposit={deposit} importantInformation={importantInformation} />
+
+            {/*
+              The coverage note the client document requires "at the time of
+              recommendation **and** booking". The recommendation side has had it
+              since the Goal-Based FD reveal; this is the booking side.
+
+              The same component as the recommendation renders, not a second
+              copy: a compliance sentence maintained in two places drifts, and
+              the drift is invisible until someone reads both screens.
+
+              It sits below the deposit rather than in the assurance strip
+              because the strip states platform assurances — encryption, support
+              — and this states a condition on the product itself.
+            */}
+            <SafetyNote className="border-border-default rounded-card border p-4" />
+          </div>
+
+          <div className="flex flex-col gap-6">
+            <InvestmentSummary rows={summaryRows} />
+
+            {/*
+              "Next Step" states what Continue does before it is pressed — the
+              spec's transparency requirement, and the reason the primary action
+              needs no explanatory tooltip.
+            */}
+            <Card variant="outlined" className="flex items-start gap-3 p-5">
+              <span className="bg-surface-brand-subtle text-content-brand flex size-10 shrink-0 items-center justify-center rounded-full">
+                <ChevronLeft aria-hidden="true" className="size-5 rotate-180" />
+              </span>
+
+              <div className="flex min-w-0 flex-col gap-1">
+                <h2 className="text-body-lg text-content font-semibold">Next Step</h2>
+                <p className="text-body text-content-muted">{nextStep}</p>
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        <BookingStepActions
+          backHref={ROUTES.product(productId)}
+          backLabel="Back to product"
+          continueLabel="Continue"
+          onContinue={handleContinue}
+        />
+      </div>
+    </div>
+  );
+}

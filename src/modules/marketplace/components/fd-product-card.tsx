@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatTenure } from '@/utils/format';
+import { formatCurrency } from '@/utils/format';
 
 import { BenefitChipList } from './benefit-chip-list';
 import { REFERENCE_AMOUNT } from '../constants/filters';
 import type { ProductFlagId, ProductSummary } from '../types/product';
+import { formatProductTenure } from '../utils';
 
 /**
  * FDProductCard — the approved Marketplace product card (M2.2).
@@ -92,7 +93,7 @@ export const FDProductCard = forwardRef<HTMLElement, FDProductCardProps>(
               <div className="flex flex-col gap-1">
                 <dt className="text-caption text-content-muted">Tenure</dt>
                 <dd className="text-body text-content font-medium">
-                  {formatTenure(product.tenureMonths)}
+                  {formatProductTenure(product)}
                 </dd>
               </div>
               <div className="flex flex-col gap-1">

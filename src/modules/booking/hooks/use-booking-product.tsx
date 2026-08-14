@@ -1,0 +1,128 @@
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { notFound } from 'next/navigation';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
+
+import { Skeleton } from '@/components/ui/skeleton';
+
+import { createBookingOverviewService } from '../services/booking-overview-service';
+import type { BookingOverview } from '../types/booking';
+
+/**
+ * The deposit being booked — resolved once per booking session.
+ *
+ * ## Why this exists
+ *
+ * Overview resolved its deposit from `productId` while Investment Details and
+ * Nominee each defaulted to a hardcoded fixture. Three screens, three
+ * mechanisms, one fact — and the two that defaulted would have shown the
+ * approved Axis deposit no matter which product the user had actually chosen.
+ *
+ * The resolution now happens **once**, in `booking/[productId]/layout.tsx`, and
+ * every screen reads it from here. There is no prop to override it and nothing
+ * to resolve a second time, so the three screens cannot disagree about which
+ * deposit the user is partway through booking.
+ *
+ * ## Why it is separate from `useBookingDraft`
+ *
+ * They are different kinds of state and it is worth keeping them apart:
+ *
+ * - **The product is immutable session context** — resolved from the URL,
+ *   never edited, identical for the life of the booking.
+ * - **The draft is mutable feature state** — the amount, tenure, payout and
+ *   nominee the user is entering.
+ *
+ * Folding the product into the draft would make `useBookingDraft()` return
+ * something that is not a draft, and would put an immutable value behind an API
+ * whose whole purpose is mutation.
+ *
+ * ## What replaces it
+ *
+ * A `useBookingOverview(productId)` query, when the Booking API exists. The
+ * layout is the only file that changes; every screen already reads a hook and
+ * knows nothing about where the object came from.
+ */
+const BookingProductContext = createContext<BookingOverview | null>(null);
+
+export interface BookingProductProviderProps {
+  /** The id from the route. The deposit is resolved from it, here, once. */
+  productId: string;
+  children: ReactNode;
+}
+
+/**
+ * Resolves the deposit for `productId` and holds it for the booking session.
+ *
+ * ## Why resolution is on the client
+ *
+ * It used to happen in the route's server layout, which worked only for the one
+ * deposit that resolves from a local fixture. Every other id fell through to the
+ * catalogue over HTTP — and the catalogue is served by MSW, which runs **in the
+ * browser only**. A server component fetching `/api/v1/...` has no origin to
+ * resolve the relative base URL against and no worker to answer it, so the
+ * request failed and surfaced as `ApiError`.
+ *
+ * Moving resolution here puts Booking on the same footing as every other
+ * data-driven screen in this codebase: React Query, the existing repository, the
+ * existing service. Nothing about the transport, the contract or the fail-closed
+ * behaviour changes — only *where* the call is made.
+ *
+ * ## Still resolved once, still fails closed
+ *
+ * One query per booking session, keyed on the id, shared by all three steps
+ * through this context. `notFound()` on an id the catalogue does not know, so an
+ * unknown product still reaches Booking's not-found boundary rather than
+ * rendering a substitute deposit.
+ */
+export function BookingProductProvider({ productId, children }: BookingProductProviderProps) {
+  const service = useMemo(() => createBookingOverviewService(), []);
+
+  const { data, isPending, isError } = useQuery({
+    queryKey: ['booking', 'overview', productId],
+    queryFn: () => service.findByProductId(productId),
+  });
+
+  if (isPending) return <BookingProductSkeleton />;
+
+  /*
+    `null` is the catalogue saying it has no such product; an error is the
+    transport failing. Both mean this screen cannot state which deposit is being
+    booked, and on a screen about money that must not be guessed at.
+  */
+  if (isError || !data) notFound();
+
+  return <BookingProductContext.Provider value={data}>{children}</BookingProductContext.Provider>;
+}
+
+/** The shape of the Booking chrome while the deposit is in flight. */
+function BookingProductSkeleton() {
+  return (
+    <div
+      className="container-page flex flex-col gap-6 py-8 md:py-12"
+      role="status"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading the deposit you selected…</span>
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}
+
+/**
+ * Throws outside a provider rather than falling back to a fixture.
+ *
+ * A fallback is precisely the defect being removed: a booking screen that
+ * quietly renders *some* deposit is worse than one that fails to render, because
+ * the first ships and the second is caught the moment it is opened.
+ */
+export function useBookingProduct(): BookingOverview {
+  const overview = useContext(BookingProductContext);
+
+  if (!overview) {
+    throw new Error('useBookingProduct must be used within a BookingProductProvider.');
+  }
+
+  return overview;
+}

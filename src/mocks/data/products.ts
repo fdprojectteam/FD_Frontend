@@ -34,6 +34,14 @@ interface Seed {
   benefits: Benefit[];
   categories: ProductCategoryId[];
   flags: ProductFlagId[];
+  /**
+   * Suppresses the placeholder amount bands.
+   *
+   * Used only by products whose rate the client document states outright: a band
+   * would shift the published figure at ₹5,00,000 and above, and the document's
+   * rates are the point of those products.
+   */
+  noSlabs?: boolean;
 }
 
 /** The six products visible in the approved Marketplace Home. */
@@ -92,6 +100,133 @@ const APPROVED_SEEDS: Seed[] = [
     categories: ['short-term'],
     flags: ['short-term'],
   },
+  /*
+    ⚠️ Sample data, from the client source document — Use Case 1, which names
+    **Axis Bank, 2 years / 730 days, base rate 7.00%**, with the senior-citizen
+    benefit applied on top.
+
+    It exists because no 24-month deposit in this catalogue published a
+    senior-citizen benefit, so the documented scenario had nothing to apply the
+    uplift to and R-ELIG-001 could fire on no recommendation. Only the bank,
+    tenure and base rate are taken from the document; the minimum is the
+    catalogue's existing entry level and nothing else is invented.
+  */
+  {
+    bankId: 'axis',
+    rate: 7.0,
+    tenureMonths: 24,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.senior, BENEFITS.autoRenewal],
+    categories: ['senior-citizen'],
+    flags: [],
+  },
+  /*
+    ⚠️ Sample data, from the client source document — Use Case 2, which names
+    three whole-month deposits: **AU Small Finance Bank, 3 years, 7.20%**,
+    **ICICI Bank, 3 years, 7.00%**, and **SBI, 10 years, 7.85%**.
+
+    `noSlabs` on all three: the document states these rates outright, and the
+    catalogue's placeholder amount bands would move them at the very amounts
+    UC2 uses. Only bank, tenure and rate are taken; minimums are the catalogue's
+    existing entry level and nothing else is invented.
+
+    The fourth UC2 deposit — Equitas, **91 days** — is not here. It cannot be
+    expressed in whole months, and the served catalogue and Marketplace UI are
+    month-based. It is published separately as `UC2_DAY_BASED_PRODUCT` below.
+  */
+  {
+    bankId: 'au-small-finance',
+    rate: 7.2,
+    tenureMonths: 36,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
+  {
+    bankId: 'icici',
+    rate: 7.0,
+    tenureMonths: 36,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
+  {
+    bankId: 'sbi',
+    rate: 7.85,
+    tenureMonths: 120,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.senior, BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
+  /*
+    ⚠️ Sample data, from the client source document — Use Case 3, whose
+    recommendation table names **four** five-year deposits:
+
+      Equitas Small Finance Bank   5 years   7.50%
+      AU Small Finance Bank        5 years   7.50%
+      Suryoday Small Finance Bank  5 years   7.50%
+      IDFC FIRST Bank              5 years   7.20%
+
+    All four are published here, at the document's own rates, with `noSlabs` so
+    the catalogue's placeholder amount bands cannot move a figure the document
+    states outright. Nothing else about them is invented: minimums are the
+    catalogue's existing entry level, and no premature-withdrawal terms, maximum
+    or partner copy are supplied.
+
+    Three of them were missing until this pass, which is why the documented
+    four-bank diversification had only one deposit to choose from.
+  */
+  {
+    bankId: 'equitas',
+    rate: 7.5,
+    tenureMonths: 60,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
+  {
+    bankId: 'au-small-finance',
+    rate: 7.5,
+    tenureMonths: 60,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
+  {
+    bankId: 'suryoday',
+    rate: 7.5,
+    tenureMonths: 60,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
+  /*
+    IDFC FIRST — the document's fourth five-year leg, "the next highest suitable
+    sample rate for the remaining amount".
+
+  */
+  {
+    bankId: 'idfc-first',
+    rate: 7.2,
+    tenureMonths: 60,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.senior, BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
 ];
 
 /**
@@ -133,6 +268,27 @@ function buildRateSlabs(baseRate: number): RateSlab[] {
   }));
 }
 
+/**
+ * The senior-citizen benefit, in percentage points.
+ *
+ * ⚠️ **Sample data, taken from the client source document** — not a production
+ * financial rule and not invented here. `FD_PoC_Rule_Based_Use_Cases_for_
+ * Founding_Tech_Team.pdf`, Use Case 1, states it directly:
+ *
+ * > Base rate 7.00% · Senior citizen benefit **0.50%** · Effective rate 7.50%
+ *
+ * It is applied only to products whose published benefits already advertise a
+ * senior-citizen rate (`BENEFITS.senior`), so it does not silently appear on
+ * products that never claimed one. Like every other rate in this file it is a
+ * prototype figure: the document is explicit that eligibility and rates must be
+ * verified from partner-bank sources before production.
+ *
+ * Confined to this file on purpose. The domain reads it through
+ * `FixedDepositTerms.seniorCitizenDelta`, so replacing it with real per-bank
+ * data touches no engine, service or UI code.
+ */
+const SENIOR_CITIZEN_DELTA = 0.5;
+
 const RATE_CYCLE = [7.6, 7.35, 7.15, 6.9, 6.75, 7.05];
 const TENURE_CYCLE = [6, 12, 18, 24, 36, 9];
 const MIN_CYCLE = [5_000, 10_000, 25_000, 50_000, 10_000, 15_000];
@@ -168,7 +324,14 @@ function toSummary(seed: Seed, index: number): ProductSummaryDto {
     bank,
     name: `${bank.name} Fixed Deposit`,
     interestRate: seed.rate,
-    rateSlabs: buildRateSlabs(seed.rate),
+    rateSlabs: seed.noSlabs === true ? [] : buildRateSlabs(seed.rate),
+    /*
+      Published only where the product already advertises a senior-citizen rate.
+      A product that makes no such claim carries no delta, rather than a zero.
+    */
+    ...(seed.benefits.includes(BENEFITS.senior)
+      ? { seniorCitizenDelta: SENIOR_CITIZEN_DELTA }
+      : {}),
     tenureMonths: seed.tenureMonths,
     minInvestment: seed.minInvestment,
     interestType: 'cumulative',
@@ -179,7 +342,49 @@ function toSummary(seed: Seed, index: number): ProductSummaryDto {
   };
 }
 
-export const productSummaries: ProductSummaryDto[] = buildSeeds().map(toSummary);
+/**
+ * The fourth UC2 deposit — **Equitas Small Finance Bank, 91 days, 6.85%**.
+ *
+ * ⚠️ Sample data, from the client source document.
+ *
+ * ## It is served, and it is matched on days
+ *
+ * The engine now compares terms **within a unit**, so this deposit is a
+ * candidate for a 91-day goal and for nothing else — no month-based goal can see
+ * it, and it never becomes "3 months". It carries `tenureMonths: 0` because it
+ * has no whole-month equivalent; `tenure` is the truth.
+ *
+ * No estimated maturity is produced for it. Compounding needs a month count, and
+ * a day-count basis is something the bank publishes, not something the platform
+ * decides.
+ */
+export const UC2_DAY_BASED_PRODUCT: ProductSummaryDto = {
+  id: 'fd-uc2-equitas-91d',
+  bank: banks.find((bank) => bank.id === 'equitas')!,
+  name: 'Equitas Small Finance Bank Fixed Deposit',
+  interestRate: 6.85,
+  rateSlabs: [],
+  /* Zero: the term is not expressible in whole months. `tenure` carries the truth. */
+  tenureMonths: 0,
+  tenure: { value: 91, unit: 'days' },
+  minInvestment: 10_000,
+  interestType: 'cumulative',
+  payout: 'at-maturity',
+  benefits: [BENEFITS.flexible],
+  categories: ['short-term'],
+  flags: [],
+};
+
+/*
+  The 91-day deposit is appended rather than seeded, because it is the one
+  product whose term the month-based `Seed` shape cannot express. The engine
+  compares terms within a unit, so it is a candidate for a 91-day goal and
+  invisible to every month-based one — it is never "3 months".
+*/
+export const productSummaries: ProductSummaryDto[] = [
+  ...buildSeeds().map(toSummary),
+  UC2_DAY_BASED_PRODUCT,
+];
 
 export function findProductSummary(id: string): ProductSummaryDto | undefined {
   return productSummaries.find((product) => product.id === id);

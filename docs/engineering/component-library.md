@@ -93,6 +93,29 @@ The eleven platform components in `src/components/ui`. All are domain-agnostic, 
 
 ---
 
+## Slider — `slider.tsx` · `#slider-radio-cards`
+
+**Purpose.** Single bounded numeric value the user scrubs rather than types (T3.2.3). First consumer: Booking's tenure rail.
+**Use when** the value is continuous-ish and its position within a range is itself meaningful. **Do not use** for an unbounded amount — that is `Input`.
+**Built on** native `input[type=range]`, so arrow/Home/End keys, `role="slider"`, live `aria-valuenow`/`min`/`max`, pointer capture and form participation all come from the browser. No dependency added.
+**Props.** `value` `min` `max` `step` `label` `labelHidden` `valueText` `caption` `disabled` + native input attributes · ref → `HTMLInputElement`.
+**Accessibility.** `label` is required and bound via `htmlFor`. `valueText` → `aria-valuetext`, because "24" and "24 Months" are different announcements and only the consumer knows the unit. Focus ring via `focus-ring`.
+**Styling.** Track and thumb live in `globals.css` under `.ds-slider` — vendor pseudo-elements are unreachable from utility classes. The fill is a gradient driven by the `--ds-slider-fill` custom property, so nothing has to be kept in sync with the thumb. Thumb transition only; the fill is never animated. 44px hit area below `md`.
+**Edge case covered.** `min === max` (a product offering one tenure) does not divide by zero.
+
+---
+
+## RadioCardGroup — `radio-card-group.tsx` · `#slider-radio-cards`
+
+**Purpose.** One choice from a small set where each option needs an icon, a title and a line of explanation (T3.2.3). First consumer: Booking's interest payout options.
+**Use when** a plain radio list would not carry enough meaning. **Do not use** for multi-select — that is a group of `Chip`s.
+**Built on** a `<fieldset>` + `<legend>` + real `input[type=radio]`, so the whole group is one Tab stop with arrow-key movement inside it — the behaviour div-based implementations most often get wrong. No `aria-*` attribute appears in the file.
+**Props.** `label` `labelHidden` `labelAdornment` `options` (`{ id, title, description?, icon?, disabled? }`) `value` `onChange` `name` `className`. Generic over the option id type, so consumers keep their own union.
+**Accessibility.** The legend is the group's accessible name. The radio is restyled but never hidden: it keeps its box and its focus, and the ring is drawn on the whole card via `has-[:focus-visible]` using the token shorthand `Input` already uses. Selection is signalled by border, fill **and** a tick — never colour alone.
+**Responsive.** Stacks below `md`, three across from `md`; full-width cards keep targets past 44px.
+
+---
+
 ## Motion inventory (project record)
 
 Exactly five animation primitives exist. **No additional animation primitives may be introduced during Phase 1 without explicit approval.**
@@ -109,7 +132,7 @@ All durations/easings come from motion tokens; the global `prefers-reduced-motio
 
 ## Shared utilities
 
-`cn()` (`src/lib/utils.ts`) — the only class-composition helper; extended so token type-scale utilities are not mistaken for colors. Global utilities: `focus-ring`, `container-page`, `overlay-scrim`, `overlay-viewport-height`, `overlay-viewport-width`, plus the five animation utilities above.
+`cn()` (`src/lib/utils.ts`) — the only class-composition helper; extended so token type-scale utilities are not mistaken for colors. Global utilities: `focus-ring`, `container-page`, `container-detail`, `overlay-scrim`, `overlay-viewport-height`, `overlay-viewport-width`, `overlay-panel-max-w`, plus the five animation utilities above. Global component styles: `.ds-slider` (T3.2.3) — the one place vendor pseudo-elements are styled, because utility classes cannot reach them.
 
 ## Dependencies (all exact-pinned)
 

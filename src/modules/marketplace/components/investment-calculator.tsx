@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 
 import type { MaturityResult } from '../types/calculator';
 import type { ProductSummary } from '../types/product';
+import { formatProductTenure } from '../utils';
 import { parseCalculatorAmount } from '../utils/calculator-input';
-import { formatTenure } from '../utils/format';
+// import { formatTenure } from '../utils/format';
 
 /**
  * InvestmentCalculator — the approved calculator card (M2.6, T2.6.5).
@@ -102,7 +103,7 @@ export function InvestmentCalculator({ product, result, onCalculate }: Investmen
             size="lg"
             readOnly
             aria-readonly="true"
-            value={formatTenure(product.tenureMonths)}
+            value={formatProductTenure(product)}
           />
         </div>
 

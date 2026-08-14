@@ -12,6 +12,7 @@ import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { ROUTES } from '@/constants/routes';
+import { GoalPlannerScreen } from '@/modules/goal-based-fd';
 import { CompareScreen } from '@/modules/marketplace/components/compare-screen';
 import { HomeScreen } from '@/modules/marketplace/components/home-screen';
 import { CompareSelectionProvider } from '@/modules/marketplace/hooks/use-compare-selection';
@@ -53,7 +54,12 @@ let root: Root | null = null;
  */
 function ScreenForRoute() {
   const pathname = usePathname();
-  return pathname === ROUTES.compare ? <CompareScreen /> : <HomeScreen />;
+
+  if (pathname === ROUTES.compare) return <CompareScreen />;
+  /* The planner is a real route with a real screen; the harness renders it as the router would. */
+  if (pathname === ROUTES.goalPlanner) return <GoalPlannerScreen />;
+
+  return <HomeScreen />;
 }
 
 /**

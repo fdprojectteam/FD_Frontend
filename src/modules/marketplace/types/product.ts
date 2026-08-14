@@ -1,4 +1,4 @@
-import type { Bank, Benefit, TrustIndicator } from '@/types/finance';
+import type { Bank, Benefit, Tenure, TrustIndicator } from '@/types/finance';
 
 import type { BankDto } from './bank';
 
@@ -69,6 +69,21 @@ export interface ProductSummaryDto {
   bank: BankDto;
   name: string;
   interestRate: number;
+  /**
+   * The senior-citizen uplift in percentage points, where the product publishes
+   * one. Absent means it publishes none — never zero.
+   */
+  seniorCitizenDelta?: number;
+  /**
+   * The term in its published unit, when it is not whole months.
+   *
+   * Optional: a product that omits it publishes a whole-month term and
+   * `tenureMonths` is authoritative. A day-based deposit carries it, and
+   * `tenureMonths` is then `0` — the value the candidate filters and the rate
+   * resolver already reject, so such a product is excluded from the month-based
+   * engine rather than rounded into it.
+   */
+  tenure?: Tenure;
   tenureMonths: number;
   minInvestment: number;
   interestType: InterestType;
@@ -112,6 +127,18 @@ export interface ProductSummary {
    * the user's own money would earn, without either recomputing the other.
    */
   interestRate: number;
+  /**
+   * The senior-citizen uplift in percentage points, where the product publishes
+   * one. Absent means it publishes none — never zero.
+   */
+  seniorCitizenDelta?: number;
+  /**
+   * The term in its published unit, when it is not whole months.
+   *
+   * Passed through from the DTO so the display layer can print what the bank
+   * published. Absent means whole months, and `tenureMonths` is authoritative.
+   */
+  tenure?: Tenure;
   tenureMonths: number;
   minInvestment: number;
   interestType: InterestType;

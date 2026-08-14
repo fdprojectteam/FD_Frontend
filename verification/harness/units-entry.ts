@@ -44,13 +44,167 @@ export {
 } from '@/modules/marketplace/utils/compare-url';
 export { toProductListParams } from '@/modules/marketplace/utils/list-params';
 export { calculateMaturity } from '@/modules/marketplace/utils/maturity';
-export { resolveApplicableRate } from '@/modules/marketplace/utils/rate-slabs';
+/**
+ * Canonical since R1 step 2. Imported from the platform layer rather than from
+ * Marketplace's re-export, so the suite asserts the implementation that actually
+ * runs — the same six figures, the same resolver, one address.
+ */
+export { resolveApplicableRate, resolveProductRate } from '@/utils/finance';
 export { defaultDepositAmount } from '@/modules/marketplace/hooks/use-comparison-preferences';
 export { selectProductPreview } from '@/modules/marketplace/utils/product-preview';
 export {
   mergeMarketplaceParams,
   parseMarketplaceUrlValues,
 } from '@/modules/marketplace/utils/url-values';
+
+/* ---- Booking (T3.2) ---- */
+export { BOOKING_STEPS } from '@/modules/booking/constants/steps';
+export { BOOKING_PHASES, resolveBookingPhase } from '@/modules/booking/constants/phases';
+/**
+ * Draft persistence. Exported so the *rules* — versioning, expiry, failing
+ * closed on a malformed payload — are asserted directly rather than inferred
+ * from a screen. These are the rules that decide whether a user's progress
+ * survives, so they are the ones worth testing without a DOM in the way.
+ */
+export {
+  DRAFT_MAX_AGE_MS,
+  clearDraft,
+  draftStorageKey,
+  readDraft,
+  writeDraft,
+} from '@/modules/booking/utils/draft-storage';
+
+/**
+ * The Booking domain layer (T3.2.4–T3.2.6).
+ *
+ * Exported before any UI exists, deliberately: these six modules decide what a
+ * deposit is worth and whether a configuration may be booked. Every one of them
+ * is pure, so every one is assertable without a DOM — and a wrong number here
+ * is wrong on every screen that displays it.
+ */
+export {
+  calculateInterestEarned,
+  calculateMaturity as calculatePlatformMaturity,
+  calculateSimpleInterest,
+} from '@/utils/maturity';
+export {
+  defaultTenure,
+  isSupportedTenure,
+  resolveRate,
+  selectableTenures,
+  validateRateCard,
+} from '@/modules/booking/utils/tenure-rates';
+export { calculateReturns, isCumulativePayout } from '@/modules/booking/utils/returns';
+export {
+  validateAmount,
+  validateInvestmentConfiguration,
+  validatePayoutOption,
+  validateTenure,
+} from '@/modules/booking/utils/investment-schema';
+export {
+  BOOKING_OVERVIEWS_BY_PRODUCT_ID,
+  BOOKING_OVERVIEW_FIXTURE,
+} from '@/modules/booking/fixtures/booking-overview';
+export {
+  bookableProductIds,
+  resolveBookingOverview,
+} from '@/modules/booking/utils/deposit-catalogue';
+export {
+  buildConfiguredSummaryRows,
+  buildInvestmentSummaryRows,
+} from '@/modules/booking/utils/investment-summary';
+export { PAYOUT_OPTION_LABELS } from '@/modules/booking/constants/payout-options';
+export {
+  DEFAULT_QUICK_AMOUNTS,
+  MAX_QUICK_AMOUNTS,
+  resolveQuickAmounts,
+} from '@/modules/booking/utils/quick-amounts';
+export { formatCompactCurrency } from '@/utils/format';
+
+/* ---- Product Master (Steps 1–3) ---- */
+export {
+  parseProductMaster,
+  parseProductMasters,
+  toProductMaster,
+} from '@/services/product-master';
+
+/* ---- Goal-Based FD (rule engine) ---- */
+export {
+  BLOCKED_RULES,
+  GOAL_TENURE_PREFERENCE,
+  GOAL_TYPES,
+  assessTarget,
+  blockedRuleWarnings,
+  compareCandidates,
+  exceedsHorizon,
+  isExactTenureMatch,
+  GOAL_DESCRIPTIONS,
+  GOAL_ICONS,
+  HORIZON_PRESETS,
+  PLANNER_STEPS,
+  RULE_LABELS,
+  acknowledgementFor,
+  STEP_HINTS,
+  bookingHandoffHref,
+  parseGoalParam,
+  recommendForGoal,
+  recommendForPlan,
+  allocateForGoal,
+  DEFAULT_ALLOCATION_POLICY,
+  NO_CONCENTRATION_POLICY,
+  PLAN_HORIZON_PRESETS,
+  planHorizonLabel,
+  compareTenure,
+  supportsMaturity,
+  DEPOSIT_INSURANCE_COVERAGE,
+  selectCandidates,
+  toBookingHandoff,
+  TARGET_ADJUSTMENTS,
+} from '@/modules/goal-based-fd';
+/* Tenure model (UC2) — exact conversions only, day terms never rounded. */
+export {
+  days,
+  formatTenureExact,
+  isMonthExpressible,
+  isSameTenure,
+  months,
+  toWholeMonths,
+  years,
+} from '@/utils/finance';
+export { UC2_DAY_BASED_PRODUCT, productSummaries } from '@/mocks/data/products';
+export { formatProductTenure } from '@/modules/marketplace/utils';
+/* Booking resolution for any catalogue product (documented UC1/UC2/UC3 deposits). */
+export {
+  createBookingOverviewService,
+  toBookingOverview,
+} from '@/modules/booking/services/booking-overview-service';
+export { GOAL_ENTRIES } from '@/modules/marketplace/constants/goal-entry';
+
+/* ---- Nominee (T3.3.1) ---- */
+export {
+  DEFAULT_NOMINATION_TYPE,
+  NOMINATION_TYPES,
+  SUPPORTED_RELATIONSHIPS,
+  TOTAL_SHARE_PERCENT,
+} from '@/modules/booking/constants/nominee';
+export { emptyNominee, emptyNomineeConfiguration } from '@/modules/booking/constants/booking-draft';
+export {
+  parseSharePercent,
+  totalSharePercent,
+  validateNominee,
+  validateNomineeConfiguration,
+} from '@/modules/booking/utils/nominee-schema';
+export {
+  DEFAULT_PAYOUT_OPTION,
+  PAYOUT_OPTION_DESCRIPTIONS,
+  PAYOUT_OPTION_ORDER,
+} from '@/modules/booking/constants/payout-options';
+export {
+  defaultPayoutOption,
+  isSupportedPayout,
+  reconcilePayoutOption,
+  resolvePayoutOptions,
+} from '@/modules/booking/utils/payout-options';
 
 /**
  * Compile-time guard for decision D1 = A′.

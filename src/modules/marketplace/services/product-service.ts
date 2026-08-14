@@ -1,4 +1,6 @@
 import type { Paginated } from '@/services/repository';
+import type { MaturityResult } from '@/types/finance';
+import { publishedTenure, resolveApplicableRate, toWholeMonths } from '@/utils/finance';
 
 import { REFERENCE_AMOUNT } from '../constants/filters';
 import { productRepository, type ProductRepository } from '../repositories';
@@ -10,7 +12,6 @@ import type {
   ProductSummaryDto,
 } from '../types/product';
 import { calculateMaturity } from '../utils/maturity';
-import { resolveApplicableRate } from '../utils/rate-slabs';
 
 /**
  * ProductService — business operations for FD products (M2.1).
@@ -29,6 +30,41 @@ import { resolveApplicableRate } from '../utils/rate-slabs';
  * one refactor apart from disagreeing, and the disagreement would render
  * perfectly: a plausible rate above a maturity value computed from another.
  */
+/**
+ * The returns a given amount earns on a product — rate resolution and maturity
+ * in one place.
+ *
+ * ## Why it is here and not on the screen
+ *
+ * The Product Details calculator recomputed both when the user typed an amount,
+ * which put a second implementation of the pricing rule in a component. Two
+ * implementations of one rule are one refactor apart from disagreeing, and the
+ * disagreement renders perfectly: a plausible rate above a maturity computed
+ * from another.
+ *
+ * `toSummary` below and this function now share the one resolver, so the
+ * reference figure on arrival and the figure after typing come from the same
+ * rule by construction.
+ *
+ * Returns `null` when the product's term is not expressible in whole months —
+ * a deposit published in days has no month count to compound over, and the
+ * platform does not assume a day-count basis.
+ */
+export function estimateReturnsFor(
+  product: Pick<ProductSummary, 'interestRate' | 'rateSlabs' | 'tenureMonths' | 'tenure'>,
+  amount: number,
+): (MaturityResult & { appliedRate: number }) | null {
+  const tenureMonths = toWholeMonths(publishedTenure(product));
+  if (tenureMonths === null) return null;
+
+  const appliedRate = resolveApplicableRate(product.interestRate, amount, product.rateSlabs);
+
+  return {
+    appliedRate,
+    ...calculateMaturity({ principal: amount, annualRate: appliedRate, tenureMonths }),
+  };
+}
+
 function toSummary(dto: ProductSummaryDto, referenceAmount: number): ProductSummary {
   const appliedRate = resolveApplicableRate(dto.interestRate, referenceAmount, dto.rateSlabs);
 
@@ -39,6 +75,8 @@ function toSummary(dto: ProductSummaryDto, referenceAmount: number): ProductSumm
         principal: referenceAmount,
         annualRate: appliedRate,
         tenureMonths: dto.tenureMonths,
+        /* Passed through so the display layer can print the published unit. */
+        ...(dto.tenure === undefined ? {} : { tenure: dto.tenure }),
       }),
       appliedRate,
     },

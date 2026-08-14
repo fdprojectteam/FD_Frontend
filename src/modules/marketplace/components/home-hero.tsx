@@ -1,7 +1,9 @@
 import { ArrowRight, ShieldCheck, Star } from 'lucide-react';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ROUTES } from '@/constants/routes';
 
 import { HeroSpotlightCard } from './hero-spotlight-card';
 import type { ProductSummary } from '../types/product';
@@ -13,10 +15,17 @@ import type { ProductSummary } from '../types/product';
  * (desktop only, decision D1). Presentation-only: the spotlight product is
  * selected by HomeScreen.
  *
- * "Explore Fixed Deposits" jumps to the product listing, which exists as
- * of M2.4 — it is a real in-page anchor, retiring the M2.3 placeholder.
- * "How it works" has no destination yet, so it keeps the approved T1.13
- * pattern: visually identical, aria-disabled, no href.
+ * ## CTA hierarchy — guided first (decision A1)
+ *
+ * The primary action is **"Find my FD"**, into the goal planner. A new customer
+ * arriving here usually cannot answer "which deposit?", and the previous primary
+ * ("Explore Fixed Deposits") handed them a 24-product list and left them to it.
+ * Browsing is still one click away as the secondary — customers who already know
+ * what they want lose nothing.
+ *
+ * This also retires "How it works", which had been `aria-disabled` with no
+ * destination since M2.3. A dead control was occupying the second-most valuable
+ * position on the page.
  *
  * Rendering the anchor through Button `asChild` keeps a single button
  * implementation; `asChild` bypasses icon composition, so the trailing
@@ -48,21 +57,21 @@ export function HomeHero({ spotlightProduct }: HomeHeroProps) {
         </h1>
 
         <p className="text-body-lg text-content-muted max-w-xl">
-          Compare Fixed Deposits from 50+ RBI-regulated banks in one place — transparent rates, no
-          hidden terms.
+          Compare Fixed Deposits from 50+ RBI-regulated banks — transparent rates, no hidden terms,
+          and a planner that matches deposits to your goal.
         </p>
 
         <div className="flex flex-wrap items-center gap-4">
           <Button size="lg" asChild>
-            <a href="#products">
-              Explore Fixed Deposits
+            <Link href={ROUTES.goalPlanner}>
+              Find my FD
               <span aria-hidden="true" className="inline-flex shrink-0">
                 <ArrowRight className="size-4" />
               </span>
-            </a>
+            </Link>
           </Button>
-          <Button size="lg" variant="secondary" aria-disabled="true">
-            How it works
+          <Button size="lg" variant="secondary" asChild>
+            <a href="#products">Browse all FDs</a>
           </Button>
         </div>
 

@@ -29,6 +29,7 @@ import { BusinessPrimitivesDemo, CategoryCardDemo, ProductCardDemo } from './bus
 import { ChipDemo } from './chip-demo';
 import { DialogDemo } from './dialog-demo';
 import { PaginationDemo } from './pagination-demo';
+import { SliderDemo } from './slider-demo';
 import { ToastDemo } from './toast-demo';
 
 /**
@@ -51,6 +52,7 @@ const COMPONENT_INDEX = [
   { id: 'toast', label: 'Toast' },
   { id: 'pagination', label: 'Pagination' },
   { id: 'skeleton', label: 'Skeleton' },
+  { id: 'slider-radio-cards', label: 'Slider & Radio Cards' },
   { id: 'business-primitives', label: 'Business' },
   { id: 'product-card', label: 'Product Card' },
   { id: 'category-cards', label: 'Categories' },
@@ -102,9 +104,10 @@ export default function GalleryPage() {
         </span>
         <h1 className="text-h1 text-content">Platform Component Library</h1>
         <p className="text-body-lg text-content-muted max-w-2xl">
-          The eleven platform components (T1.1–T1.11): Button, Input, Card, Badge, Chip, Select,
-          Accordion, Dialog, Toast, Pagination, and Skeleton. Every variant, size, and state below
-          is composed exclusively from approved design tokens.
+          The platform components: Button, Input, Card, Badge, Chip, Select, Accordion, Dialog,
+          Toast, Pagination and Skeleton (T1.1–T1.11), plus Stepper (T3.1) and Slider and
+          RadioCardGroup (T3.2.3). Every variant, size, and state below is composed exclusively from
+          approved design tokens.
         </p>
 
         <nav aria-label="Component index" className="flex flex-wrap gap-2 pt-2">
@@ -727,8 +730,17 @@ export default function GalleryPage() {
       </GallerySection>
 
       <GallerySection
-        id="business-primitives"
+        id="slider-radio-cards"
         index="17"
+        title="Slider & Radio Cards"
+        description="Two primitives added in T3.2.3, both built on native HTML with no new dependency. Slider is an input[type=range] with a token-styled track; RadioCardGroup is a fieldset of real radios, so the group is one Tab stop and arrows move within it. Check keyboard operation and the disabled and single-value cases."
+      >
+        <SliderDemo />
+      </GallerySection>
+
+      <GallerySection
+        id="business-primitives"
+        index="18"
         title="Business Primitives"
         description="Marketplace building blocks composed from the frozen library: bank identity, trust signals, money, rates, and benefit tags. Static fixtures — no API."
       >
@@ -737,7 +749,7 @@ export default function GalleryPage() {
 
       <GallerySection
         id="product-card"
-        index="18"
+        index="19"
         title="FD Product Card"
         description="The approved product card. Presentation-only: values arrive through props, actions are emitted as callbacks, and the card itself is not a link."
       >
@@ -746,7 +758,7 @@ export default function GalleryPage() {
 
       <GallerySection
         id="category-cards"
-        index="19"
+        index="20"
         title="Category Cards"
         description="The five approved 'Recommended for you' categories on the subtle surface. The first tile is interactive to show the button variant."
       >

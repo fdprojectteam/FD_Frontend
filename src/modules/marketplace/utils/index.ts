@@ -1,3 +1,4 @@
+export { formatProductTenure } from './product-tenure';
 export {
   formatAmount,
   formatCurrency,
@@ -39,4 +40,5 @@ export { toProductListParams } from './list-params';
 export { selectProductPreview } from './product-preview';
 export { mergeMarketplaceParams, parseMarketplaceUrlValues } from './url-values';
 export { calculateInterestEarned, calculateMaturity } from './maturity';
-export { resolveApplicableRate } from './rate-slabs';
+/** Canonical implementation is `@/utils/finance` (R1 step 2). Re-exported for existing callers. */
+export { resolveApplicableRate } from '@/utils/finance';

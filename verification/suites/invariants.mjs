@@ -271,12 +271,20 @@ export async function runInvariantSuite() {
 
   const routes = sources.get('src/constants/routes.ts');
   /**
-   * Two from T2.7.3: the product builder and `compare`, which became a real
-   * route. `marketplace` stays an unasserted plain string — it is a phantom,
-   * and leaving it untyped is what makes a premature link fail to compile
-   * rather than ship a 404 (E4).
+   * Two from T2.7.3 — the product builder and `compare`, which became a real
+   * route — a third from T3.1 (`bookingOverview`), a fourth from T3.2.7
+   * (`bookingInvestmentDetails`) and a fifth from T3.3.2 (`bookingNominee`).
+   * `marketplace` stays an unasserted plain string: it is a phantom, and leaving
+   * it untyped is what makes a premature link fail to compile rather than ship a
+   * 404 (E4).
+   *
+   * **Re-pointed, not relaxed** — at T3.3.2, at Goal-Based FD Step 5 for
+   * `goalPlanner`, and again for `goalPlannerPlan` (client source document, Use
+   * Case 2). The probe still names an exact number, so the eighth cast has to
+   * arrive with a route behind it and an edit here, which is the whole point of
+   * counting rather than pattern-matching.
    */
-  check('routes.ts asserts exactly two Routes (E4)', (routes.match(/as Route/g) ?? []).length, 2);
+  check('routes.ts asserts exactly seven Routes (E4)', (routes.match(/as Route/g) ?? []).length, 7);
   /**
    * Re-pointed at T2.7.3b. The previous probe was named "and nowhere else" but
    * read only `routes.ts`, so it could never have seen the casts in the URL
@@ -285,9 +293,16 @@ export async function runInvariantSuite() {
    *
    * The honest invariant is an exact **file list**: a cast is permitted where a
    * runtime query string is composed, which `typedRoutes` cannot check
-   * statically. Three such places exist, one per composition site. A fourth
-   * appearing — especially in a component — means a screen has learned how a
-   * URL is shaped, and this probe must fail rather than absorb it.
+   * statically. A new entry appearing — especially in a *component* — means a
+   * screen has learned how a URL is shaped, and this probe must fail rather than
+   * absorb it.
+   *
+   * **Re-pointed, not relaxed** (Home → planner intent preservation). The fourth
+   * entry is `constants/goal-entry.ts`, which composes `?goal=…` so a goal chosen
+   * on Home is carried into the planner instead of being asked again. It is a
+   * constants file, not a component: the URL shape is declared in one place and
+   * the section that renders it only reads `goal.href`. That is the same
+   * discipline the other three follow.
    */
   check(
     'and a runtime Route cast exists only where a query string is composed (E4)',
@@ -296,6 +311,7 @@ export async function runInvariantSuite() {
       .map(([file]) => file)
       .sort(),
     [
+      'src/modules/marketplace/constants/goal-entry.ts',
       'src/modules/marketplace/hooks/use-compare-url-state.ts',
       'src/modules/marketplace/hooks/use-marketplace-url-state.ts',
       'src/modules/marketplace/utils/compare-url.ts',
@@ -517,7 +533,16 @@ export async function runInvariantSuite() {
   const schema = sources.get('src/modules/marketplace/utils/calculator-input.ts');
 
   ok('the calculator never imports the maturity formula', !/calculateMaturity/.test(calculator));
-  ok('the screen owns the calculation', /calculateMaturity\(/.test(screen));
+  /**
+   * **The service owns the calculation, and the screen renders it.**
+   *
+   * Stronger than the previous "the screen owns it": the calculator amount and
+   * the reference figure now come from one function, `estimateReturnsFor`, in
+   * the service that already resolved the rate. Two implementations of one
+   * pricing rule are one refactor apart from disagreeing.
+   */
+  ok('the screen computes nothing itself', !/calculateMaturity\(/.test(screen));
+  ok('and reads returns from the service', /estimateReturnsFor\(/.test(screen));
   ok(
     'the default figures come from the product, not a computation',
     /product\.estimatedReturns/.test(screen),
@@ -712,8 +737,10 @@ export async function runInvariantSuite() {
   );
   ok('selection state is exposed as a toggle', /aria-pressed=\{isComparing\}/.test(actionBar));
   ok(
-    'booking navigation is stateless and inert until Phase 3',
-    /aria-disabled="true"/.test(actionBar) && !/href/.test(actionBar) && !/amount/.test(actionBar),
+    'booking navigation preserves the product id and fails closed when unavailable',
+    /bookingHref/.test(actionBar) &&
+      /Booking unavailable/.test(actionBar) &&
+      !/amount/.test(actionBar),
   );
 
   ok('the listing reflects the same selection', /useCompareSelection\(\)/.test(home));
@@ -885,10 +912,26 @@ export async function runInvariantSuite() {
     /alt=\{decorative \? '' : bank\.name\}/.test(badge),
   );
 
+  /**
+   * Only a **data layer** may contain a logo path. Components receive `Bank`
+   * and render `bank.logoUrl`; the moment one builds `/banks/${id}.svg` for
+   * itself, the naming scheme has two owners and the second one is wrong on the
+   * first bank whose file is a `.png`.
+   *
+   * Exempt, as an exact list of *kinds* rather than of files:
+   *   • `src/mocks/` — the mock API's own data;
+   *   • `fixtures/` — a stand-in for a server payload (T3.1). A payload
+   *     legitimately carries a logo URL, and the folder name is what keeps the
+   *     exemption from creeping into a component: no component lives in one;
+   *   • the dev-only gallery, which demonstrates the badge itself.
+   */
   const logoBuilders = [...sources.entries()]
     .filter(
       ([file, text]) =>
-        file.startsWith('src/') && !file.startsWith('src/mocks/') && /'\/banks\//.test(text),
+        file.startsWith('src/') &&
+        !file.startsWith('src/mocks/') &&
+        !file.includes('/fixtures/') &&
+        /'\/banks\//.test(text),
     )
     .map(([file]) => file);
   check(
@@ -997,19 +1040,45 @@ export async function runInvariantSuite() {
   /**
    * Stated as an exact list rather than "only the service": the details screen
    * legitimately calls the formula for the interactive calculator (M2.6,
-   * T2.6.5), where the user supplies the principal. What must not appear is a
-   * *third* call site — in particular the comparison, whose figures are
+   * T2.6.5), where the user supplies the principal. What must not appear is an
+   * *unaccounted* call site — in particular the comparison, whose figures are
    * already derived upstream (plan H3).
+   *
+   * **Re-pointed at T3.2.4, not loosened.** Booking added two entries, and both
+   * are accounted for below. The probe deliberately keeps naming an exact list:
+   * a probe that is relaxed to a count or an upper bound is how an invariant
+   * quietly stops being one.
+   *
+   * `src/utils/maturity.ts` is excluded alongside Marketplace's copy because
+   * both *declare* the formula rather than call it. That there are two
+   * declarations is **TD-001**, contained by six cross-implementation
+   * assertions in the unit suite and scheduled for removal by refactor R1
+   * (`docs/engineering/shared-finance-layer.md`). After R1 this exclusion list
+   * drops back to one entry.
    */
+  const FORMULA_DECLARATIONS = [
+    'src/modules/marketplace/utils/maturity.ts',
+    'src/utils/maturity.ts', // TD-001 — removed by R1
+  ];
   const maturityCallers = [...sources.entries()]
     .filter(
-      ([file, text]) =>
-        file !== 'src/modules/marketplace/utils/maturity.ts' && /calculateMaturity\(/.test(text),
+      ([file, text]) => !FORMULA_DECLARATIONS.includes(file) && /calculateMaturity\(/.test(text),
     )
     .map(([file]) => file)
     .sort();
-  check('the maturity formula still has exactly two call sites', maturityCallers, [
-    'src/modules/marketplace/components/product-detail-screen.tsx',
+  /*
+    Three, not four: the Product Details screen no longer calls the formula —
+    `estimateReturnsFor` in the service does, for both the reference figure and
+    the calculator amount.
+  */
+  check('the maturity formula still has exactly three call sites', maturityCallers, [
+    // Booking's returns model — the only Booking caller, and it composes the
+    // formula with payout rules rather than calling it from a component.
+    'src/modules/booking/utils/returns.ts',
+    // Goal-Based FD's rule engine — one call per recommendation, from the quote
+    // resolved for that principal. Re-pointed rather than loosened when the
+    // fourth consumer arrived.
+    'src/modules/goal-based-fd/utils/engine.ts',
     'src/modules/marketplace/services/product-service.ts',
   ]);
 
@@ -1419,8 +1488,12 @@ export async function runInvariantSuite() {
   const slabCallers = [...sources.entries()]
     .filter(
       ([file, text]) =>
+        // Re-export shims and the canonical declaration are not call sites.
         file !== 'src/modules/marketplace/utils/rate-slabs.ts' &&
         file !== 'src/modules/marketplace/utils/index.ts' &&
+        file !== 'src/utils/finance/rates.ts' &&
+        file !== 'src/utils/finance/index.ts' &&
+        file !== 'src/utils/index.ts' &&
         /resolveApplicableRate\s*\(/.test(text),
     )
     .map(([file]) => file);
@@ -1578,7 +1651,7 @@ export async function runInvariantSuite() {
 
   // The cell's content — and with it the C9 contract — has one implementation.
   const cellContentFiles = [...sources.entries()]
-    .filter(([file, text]) => /bestQualifier\s*\(|NO_VALUE/.test(text))
+    .filter(([text]) => /bestQualifier\s*\(|NO_VALUE/.test(text))
     .map(([file]) => file)
     .filter((file) => file !== 'src/modules/marketplace/utils/compare-rows.ts')
     .filter((file) => file !== 'src/modules/marketplace/utils/index.ts')
@@ -2038,4 +2111,2318 @@ export async function runInvariantSuite() {
     'and it still navigates nothing — the pure layer has no router',
     !/next\/navigation|router\./.test(compareUrl ?? ''),
   );
+
+  /* ================================================================ */
+  section('Invariants · Booking module boundaries (T3.2)');
+
+  const bookingFiles = [...sources.entries()].filter(([file]) =>
+    file.startsWith('src/modules/booking/'),
+  );
+
+  ok('the Booking module has files to police', bookingFiles.length > 0);
+
+  /**
+   * The boundary that matters most while two modules are being built at once.
+   * ESLint enforces it too; asserting it here means a disabled rule or a
+   * loosened config cannot quietly let Booking reach into Marketplace.
+   */
+  check(
+    'no Booking file imports from Marketplace',
+    bookingFiles.filter(([, text]) => /@\/modules\/marketplace/.test(text)).map(([file]) => file),
+    [],
+  );
+
+  /**
+   * Priority 4 of the standing instruction: Marketplace is not modified without
+   * explicit instruction. Stated as a probe so the constraint is checkable
+   * rather than remembered — no Marketplace file may reach into Booking either,
+   * which is how an "innocent" shared helper starts a two-way dependency.
+   */
+  check(
+    'no Marketplace file imports from Booking',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/marketplace/'))
+      .filter(([, text]) => /@\/modules\/booking/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * Document 09 §4/§5 place the booking draft in the feature tier and reserve
+   * the global store for application-wide state. A Zustand import inside
+   * Booking would be the drift this plan argued against in writing.
+   */
+  check(
+    'Booking holds its draft in module context, not the global store',
+    bookingFiles.filter(([, text]) => /zustand|@\/store/.test(text)).map(([file]) => file),
+    [],
+  );
+
+  /**
+   * Document 09 §10 and BR-INV-004: derived figures are recalculated, never
+   * stored. The draft type is where that rule is enforced by omission, so the
+   * probe reads the type rather than trusting the comment above it.
+   */
+  const draftType = sources.get('src/modules/booking/types/draft.ts');
+  ok('the draft type exists', Boolean(draftType));
+  ok(
+    'and declares no maturity, interest or rate field',
+    !/\b(maturityValue|maturityAmount|interestEarned|totalInterest|annualRate|interestRate)\b\s*[?:]/.test(
+      draftType ?? '',
+    ),
+  );
+
+  /**
+   * Two vocabularies, one bridge (T3.2.1). A screen that mapped a route to a
+   * phase for itself is how step five and step six come to disagree about which
+   * quarter of the journey they are in.
+   */
+  check(
+    'the step → phase mapping is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export function resolveBookingPhase/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/constants/phases.ts'],
+  );
+  check(
+    'BOOKING_PHASES is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export const BOOKING_PHASES/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/constants/phases.ts'],
+  );
+
+  /**
+   * Every screen that renders progress must feed `Stepper` the *phases*.
+   * Passing `BOOKING_STEPS` would put eight markers back on the screen and
+   * silently undo the Founder Note correction.
+   */
+  const stepperConsumers = bookingFiles.filter(([, text]) => /<Stepper\b/.test(text));
+  ok('at least one Booking screen renders the rail', stepperConsumers.length > 0);
+  check(
+    'no Booking screen feeds Stepper the eight-step list',
+    stepperConsumers
+      .filter(([, text]) => /steps=\{\[\.\.\.BOOKING_STEPS\]\}/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /* ================================================================ */
+  section('Invariants · Investment Details shell (T3.2.7)');
+
+  const detailsScreen = sources.get('src/modules/booking/components/investment-details-screen.tsx');
+  ok('the screen exists', Boolean(detailsScreen));
+
+  /**
+   * The screen **consumes** the domain layer; it does not restate any of it.
+   * Four tasks went into giving these rules one owner each, and a screen that
+   * recomputed a return or re-derived a rate would be the second opinion the
+   * module has spent those tasks avoiding.
+   *
+   * Re-pointed at T3.2.8: the screen now *calls* `calculateReturns` and
+   * `validateAmount`, which is consumption. What it must never do is implement
+   * either — so the probes below assert it holds no arithmetic and no limits of
+   * its own.
+   */
+  ok(
+    'the screen implements no maturity arithmetic',
+    !/calculateMaturity|calculateSimpleInterest|\*\*\s*\(|Math\.pow/.test(detailsScreen ?? ''),
+  );
+  ok('and resolves no rate for itself', !/resolveRate/.test(detailsScreen ?? ''));
+  ok(
+    'and compares no amount against a limit of its own',
+    !/minInvestment\s*[<>]|maxInvestment\s*[<>]|amount\s*[<>]/.test(detailsScreen ?? ''),
+  );
+  ok('it delegates the verdict to the validator', /validateAmount\(/.test(detailsScreen ?? ''));
+  ok('and the figures to the returns engine', /calculateReturns\(/.test(detailsScreen ?? ''));
+
+  /**
+   * The C3b rule lives in a pure function, not in the component. A chip filter
+   * written in JSX could not be asserted against the validator, and "every chip
+   * is valid" would become a claim rather than a property.
+   */
+  ok(
+    'quick amounts are resolved, never listed inline',
+    /resolveQuickAmounts\(/.test(detailsScreen ?? '') &&
+      !/100_000|500_000|1_000_000/.test(detailsScreen ?? ''),
+  );
+
+  const quickAmounts = sources.get('src/modules/booking/utils/quick-amounts.ts');
+  ok('quick-amount resolution is a pure module', Boolean(quickAmounts));
+  ok('and it is React-free', !/from 'react'|useState|useMemo/.test(quickAmounts ?? ''));
+
+  /**
+   * C3a — the chips set a value, so no label may carry a plus. A `+` on an
+   * absolute control is a wrong instruction on a money field, and the artwork's
+   * own labels were recorded as a UI inconsistency rather than implemented.
+   */
+  const quickChips = sources.get('src/modules/booking/components/quick-amount-chips.tsx');
+  ok('the quick-amount chips exist', Boolean(quickChips));
+  ok('and no chip label carries a plus (C3a)', !/["'`]\s*\+\s*₹/.test(quickChips ?? ''));
+  ok(
+    'the chips compute nothing — they render what they are given',
+    !/minInvestment|maxInvestment|validateAmount|calculateReturns/.test(quickChips ?? ''),
+  );
+
+  /**
+   * The returns strip renders figures it did not compute (C4 is enforced in
+   * `returns.ts`, and enforcing it twice is how the two copies come to
+   * disagree).
+   */
+  const returnsStrip = sources.get('src/modules/booking/components/estimated-returns.tsx');
+  ok('the returns strip exists', Boolean(returnsStrip));
+  ok(
+    'and computes nothing',
+    !/calculateReturns|calculateMaturity|calculateSimpleInterest|principal \+|\* \(1/.test(
+      returnsStrip ?? '',
+    ),
+  );
+  ok(
+    'it announces recalculation politely, never as an alert',
+    /aria-live="polite"/.test(returnsStrip ?? '') && !/role="alert"/.test(returnsStrip ?? ''),
+  );
+
+  const bookingAmountField = sources.get(
+    'src/modules/booking/components/investment-amount-field.tsx',
+  );
+  ok('the amount field exists', Boolean(bookingAmountField));
+  ok(
+    'it validates nothing — the message arrives as a prop',
+    !/validateAmount|minInvestment\s*[<>]|maxInvestment\s*[<>]/.test(bookingAmountField ?? ''),
+  );
+  /**
+   * `type="number"` discards grouping separators, adds spinners nobody wants on
+   * a deposit, and scrolls the value on a trackpad. `inputMode` gives the mobile
+   * keypad without any of that.
+   */
+  ok(
+    'it is a text input with a numeric keypad, not type=number',
+    /inputMode="numeric"/.test(bookingAmountField ?? '') &&
+      !/type="number"/.test(bookingAmountField ?? ''),
+  );
+  ok('its error is announced', /role="alert"/.test(bookingAmountField ?? ''));
+  ok(
+    'and the bounds are described, not merely drawn',
+    /aria-describedby/.test(bookingAmountField ?? ''),
+  );
+  ok(
+    'the rail is derived through the row model, not assembled inline',
+    /buildConfiguredSummaryRows/.test(detailsScreen ?? ''),
+  );
+  /**
+   * The configuration lives in the draft, never in the screen.
+   *
+   * **Re-pointed at T3.2.8, not loosened.** The probe was `!/useState/`, which
+   * was right while the shell held nothing at all and became wrong the moment
+   * the amount field needed a *touched* flag — whether a user has left a field
+   * is a property of this visit, not of the booking, and persisting it would
+   * mean a resumed draft opened mid-scold.
+   *
+   * So the probe now names the permitted local state exactly. A second entry
+   * has to arrive with an argument for why it is not configuration, and
+   * `amount`, `tenureMonths` or `payoutOption` appearing here would fail
+   * immediately — which is the property that actually matters.
+   */
+  ok(
+    'the configuration comes from the draft context',
+    /useBookingDraft\(\)/.test(detailsScreen ?? ''),
+  );
+  check(
+    'and the only local state is the touched flag — no configuration field',
+    [...(detailsScreen ?? '').matchAll(/const \[(\w+),[^\]]*\]\s*=\s*useState/g)].map((m) => m[1]),
+    ['amountTouched'],
+  );
+
+  /**
+   * Scope guard, **re-pointed at T3.2.8**. The amount field and quick amounts
+   * have landed; the tenure and payout controls have not. Asserted so "this
+   * task only" stays a checkable property rather than a promise in a commit
+   * message.
+   */
+  /**
+   * Re-pointed again at T3.2.10. The tenure **chips** have landed; the slider
+   * and the Custom affordance have not, and both are deliberate omissions
+   * rather than oversights — the slider needs a domain decision Design has not
+   * made, and Custom cannot resolve against an exact-match rate card without
+   * inventing a rate.
+   */
+  ok('the tenure chips are wired', /<TenureSelector\b/.test(detailsScreen ?? ''));
+  ok(
+    'the slider and Custom tenure remain unbuilt, as scoped',
+    !/<Slider\b/.test(detailsScreen ?? '') && !/Custom/.test(detailsScreen ?? ''),
+  );
+
+  /* ---- Tenure selection (T3.2.10) ---- */
+
+  const tenureSelector = sources.get('src/modules/booking/components/tenure-selector.tsx');
+  ok('the tenure selector exists', Boolean(tenureSelector));
+
+  /**
+   * Tenure is one value chosen from a set, so the group is a `radiogroup` with
+   * `aria-checked` — not the `aria-pressed` toggles `Chip` exposes, which would
+   * announce N independent on/off buttons and imply two tenures could be
+   * selected at once.
+   */
+  ok(
+    'the chips are a radiogroup, not independent toggles',
+    /role="radiogroup"/.test(tenureSelector ?? '') &&
+      /role="radio"/.test(tenureSelector ?? '') &&
+      /aria-checked/.test(tenureSelector ?? '') &&
+      !/aria-pressed/.test(tenureSelector ?? ''),
+  );
+  ok(
+    'it is one tab stop with roving focus',
+    /tabIndex=\{tabbable \? 0 : -1\}/.test(tenureSelector ?? ''),
+  );
+  ok('and arrow keys move the selection', /ArrowRight|ArrowLeft/.test(tenureSelector ?? ''));
+  /**
+   * Focus must move **with** the selection. Without this the newly checked
+   * radio takes `tabIndex={0}` while the browser's focus ring stays on the one
+   * the user just left — two options claiming to be current, which is the
+   * confusion the radiogroup pattern exists to prevent (WAI-ARIA APG).
+   */
+  ok(
+    'and focus follows the selection, not just the checked state',
+    /radios\.current\.get\([^)]*\)\?\.focus\(\)/.test(tenureSelector ?? ''),
+  );
+  ok(
+    'the radios are registered by tenure, so a changed rate card cannot stale a reference',
+    /radios\.current\.set\(tenure\.tenureMonths/.test(tenureSelector ?? '') &&
+      /radios\.current\.delete\(tenure\.tenureMonths\)/.test(tenureSelector ?? ''),
+  );
+  ok(
+    'it computes nothing — no rate, no returns, no validation',
+    !/resolveRate|calculateReturns|validateTenure|tenureRates/.test(tenureSelector ?? ''),
+  );
+  ok(
+    'and it lists no tenure of its own',
+    !/\b(7|3|6|12|24|36)\s*,/.test(tenureSelector ?? '') &&
+      !/TENURE_OPTIONS/.test(tenureSelector ?? ''),
+  );
+  ok('it hardcodes no colour', !/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(tenureSelector ?? ''));
+
+  /**
+   * The chips come from the rate card, never from `tenureRange` — the range is
+   * the advertised family, the card is what the bank has quoted.
+   */
+  ok(
+    'the screen derives tenures from the rate card',
+    /selectableTenures\(/.test(detailsScreen ?? '') && !/tenureRange/.test(detailsScreen ?? ''),
+  );
+  ok('and seeds a default tenure', /defaultTenure\(/.test(detailsScreen ?? ''));
+  /**
+   * Continue is disabled while its handler is an intentional seam (T3.2.12). An
+   * enabled primary action that silently does nothing reads as a broken screen
+   * rather than an unfinished one — and `continueDisabled` drives a real
+   * `disabled` attribute, so the control leaves the tab order rather than merely
+   * dimming.
+   */
+  ok(
+    'Continue is disabled while its handler is a seam',
+    /continueDisabled/.test(detailsScreen ?? ''),
+  );
+  /**
+   * Tenure and payout are reconciled in **one** write, so the draft can never
+   * hold a tenure with a payout the product no longer offers, even for a frame.
+   */
+  ok(
+    'changing tenure reconciles the payout in the same write',
+    /setInvestment\(\{\s*tenureMonths,\s*payoutOption: reconcilePayoutOption\(/.test(
+      detailsScreen ?? '',
+    ),
+  );
+
+  /* ================================================================ */
+  section('Invariants · Goal-Based FD boundaries and rules');
+
+  const gbfFiles = [...sources.keys()].filter((file) =>
+    file.startsWith('src/modules/goal-based-fd/'),
+  );
+
+  ok('the Goal-Based FD module exists', gbfFiles.length > 0);
+
+  /**
+   * **Independence.** `06-architecture.md` builds Goal-Based FD as an additive
+   * feature that consumes the FD domain; the ESLint boundary forbids
+   * module → module outright. Asserted here too, so a disabled lint rule cannot
+   * quietly couple the rule engine to a screen.
+   */
+  for (const sibling of ['marketplace', 'booking']) {
+    check(
+      `no Goal-Based FD file imports ${sibling}`,
+      gbfFiles.filter((file) =>
+        new RegExp(`from '@/modules/${sibling}`).test(sources.get(file) ?? ''),
+      ),
+      [],
+    );
+  }
+  check(
+    'and none imports mocks',
+    gbfFiles.filter((file) => /@\/mocks/.test(sources.get(file) ?? '')),
+    [],
+  );
+
+  /**
+   * **Rate resolution goes through the platform finance layer.** The engine may
+   * not compute a rate, and it may not restate the band-selection rule — that is
+   * `@/utils/finance`'s job and there is exactly one implementation of it.
+   */
+  check(
+    'rate resolution happens in exactly one Goal-Based FD file',
+    gbfFiles.filter((file) => /resolveProductRate\(/.test(sources.get(file) ?? '')),
+    ['src/modules/goal-based-fd/utils/candidates.ts'],
+  );
+  ok(
+    'and it imports the resolver from the platform layer',
+    /from '@\/utils\/finance'/.test(
+      sources.get('src/modules/goal-based-fd/utils/candidates.ts') ?? '',
+    ),
+  );
+  check(
+    'no Goal-Based FD file re-implements band selection',
+    gbfFiles.filter((file) => /minAmount/.test(sources.get(file) ?? '')),
+    [],
+  );
+  check(
+    'and none declares a rate resolver of its own',
+    gbfFiles.filter((file) => /export function resolve\w*Rate/.test(sources.get(file) ?? '')),
+    [],
+  );
+
+  /**
+   * **No invented or default rate.** The engine drops a product it cannot price
+   * rather than substituting one — `04-rule-engine.md` §16, *"must not invent
+   * rates"*. A `?? someRate` or a hardcoded percentage anywhere in this module
+   * is that rule being broken.
+   */
+  ok(
+    'an unpriceable product is dropped, not defaulted',
+    /if \(quote === null\) continue;/.test(
+      sources.get('src/modules/goal-based-fd/utils/candidates.ts') ?? '',
+    ),
+  );
+  for (const file of gbfFiles) {
+    const text = sources.get(file) ?? '';
+    /* Strip comments and doc blocks — prose may legitimately discuss rates. */
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    ok(
+      `${file.split('/').pop()} hardcodes no rate`,
+      !/\b\d+\.\d+\s*(?:,|;|\)|\})/.test(code.replace(/formatRate|toFixed/g, '')),
+    );
+    ok(
+      `${file.split('/').pop()} has no rate fallback`,
+      !/annualRate\s*\?\?|baseRate\s*\?\?|rate\s*\|\|/.test(code),
+    );
+  }
+
+  /**
+   * **Blocked rules are declared, not approximated.** Each entry names data that
+   * does not exist; none of them may acquire a default.
+   */
+  const blocked = sources.get('src/modules/goal-based-fd/constants/blocked-rules.ts');
+  ok('the blocked-rule registry exists', Boolean(blocked));
+  for (const ruleId of [
+    'R-ELIG-002',
+    'R-GOAL-004',
+    'R-TENURE-002',
+    '§8.availability',
+    '§8.maximum-investment',
+    '§11.diversification',
+  ]) {
+    ok(`${ruleId} is declared blocked`, blocked?.includes(ruleId));
+  }
+
+  /**
+   * **R-ELIG-001 was unblocked by data, not by a default.** The client source
+   * document supplies the 0.50% benefit, so the rule now runs. Two things must
+   * hold: it is gone from the blocked registry, and the delta lives in the
+   * fixture rather than anywhere that could compute one.
+   */
+  ok('R-ELIG-001 is no longer declared blocked', !/ruleId: 'R-ELIG-001'/.test(blocked ?? ''));
+  check(
+    'the senior-citizen delta is fixture data, not engine logic',
+    [...sources.entries()]
+      .filter(([, text]) => /SENIOR_CITIZEN_DELTA\s*=/.test(text))
+      .map(([file]) => file),
+    ['src/mocks/data/products.ts'],
+  );
+  check(
+    'and no module computes a senior uplift of its own',
+    gbfFiles.filter((file) =>
+      /seniorCitizenDelta\s*[+*]|\+\s*0\.5\b/.test(sources.get(file) ?? ''),
+    ),
+    [],
+  );
+  /* The blocked capabilities must not appear as engine fields. */
+  for (const field of ['maxInvestment', 'eligibility']) {
+    check(
+      `no Goal-Based FD type declares "${field}"`,
+      gbfFiles
+        .filter((file) => file.includes('/types/'))
+        .filter((file) => new RegExp(`\\b${field}\\??:`).test(sources.get(file) ?? '')),
+      [],
+    );
+  }
+
+  /**
+   * **Product availability is still unmodelled**, which is what the `status`
+   * guard was protecting: `§8.availability` is blocked because the catalogue
+   * serves no availability field, and a `status` on a *product* would be that
+   * rule being faked.
+   *
+   * `GoalPlanStatus` is a different thing entirely — why a *goal* produced no
+   * allocation leg — so the probe now names what it actually forbids instead of
+   * banning a word. The protection is stronger, not weaker: it also catches
+   * `availability` and `productStatus`, which the old spelling missed.
+   */
+  check(
+    'no Goal-Based FD type models product availability',
+    gbfFiles
+      .filter((file) => file.includes('/types/'))
+      .filter((file) =>
+        /\b(?:availability|productStatus)\??:|\bstatus\??:\s*(?:'active'|'available')/.test(
+          sources.get(file) ?? '',
+        ),
+      ),
+    [],
+  );
+  ok('and §8.availability remains declared blocked', /'§8\.availability'/.test(blocked ?? ''));
+  ok(
+    'the plan status describes goals, not products',
+    /export type GoalPlanStatus[\s\S]*?'tenure-unsupported'[\s\S]*?'no-match'/.test(
+      sources.get('src/modules/goal-based-fd/types/plan.ts') ?? '',
+    ),
+  );
+
+  /**
+   * **No thresholds invented for the goal rules.** The R-GOAL rules are
+   * comparative — "prefer short-duration", "prefer longer-term" — and name no
+   * number. A month constant in the ranking layer would be a business rule
+   * nobody approved, wearing the appearance of one that was.
+   */
+  const ranking = sources.get('src/modules/goal-based-fd/utils/ranking.ts');
+  const goals = sources.get('src/modules/goal-based-fd/constants/goals.ts');
+  ok(
+    'ranking encodes no month threshold',
+    !/\b(?:months?|tenure\w*)\s*[<>]=?\s*\d+/i.test(ranking ?? ''),
+  );
+  ok(
+    'and the goal catalogue maps to comparators rather than numbers',
+    /'shortest'/.test(goals ?? '') &&
+      /'closest-to-horizon'/.test(goals ?? '') &&
+      /'longest'/.test(goals ?? '') &&
+      !/\d{1,3}\s*\/\*|:\s*\d+,/.test(goals ?? ''),
+  );
+
+  /**
+   * **The engine is pure and fetches nothing.** One service file owns the
+   * request, and it calls `findAll` once — the N+1 the readiness review
+   * prohibited has exactly one place it could appear.
+   */
+  check(
+    'only the service layer fetches',
+    gbfFiles.filter((file) => /findAll\(|findById\(|repository\./.test(sources.get(file) ?? '')),
+    ['src/modules/goal-based-fd/services/goal-recommendation-service.ts'],
+  );
+  ok(
+    'and it fetches the catalogue once, with no per-product detail request',
+    /await repository\.findAll\(\)/.test(
+      sources.get('src/modules/goal-based-fd/services/goal-recommendation-service.ts') ?? '',
+    ) &&
+      !/findById/.test(
+        sources.get('src/modules/goal-based-fd/services/goal-recommendation-service.ts') ?? '',
+      ),
+  );
+  /**
+   * **The rule layer is React-free.** Scoped to `utils` / `constants` / `types` /
+   * `services` rather than the whole module, because Step 5 added a screen and a
+   * query hook and those are supposed to use React.
+   *
+   * Re-pointed rather than deleted when the UI arrived: the property being
+   * protected was never "this module has no React", it was "no rule needs a DOM
+   * to be evaluated". A probe widened to include components would have failed;
+   * one deleted would have stopped guarding anything.
+   */
+  const gbfRuleLayer = gbfFiles.filter(
+    (file) => !file.includes('/components/') && !file.includes('/hooks/'),
+  );
+  check(
+    'the rule layer imports no React',
+    gbfRuleLayer.filter((file) => /from 'react'|useState|useMemo/.test(sources.get(file) ?? '')),
+    [],
+  );
+  check(
+    'and no rule file is a client component',
+    gbfRuleLayer.filter((file) => /'use client'/.test(sources.get(file) ?? '')),
+    [],
+  );
+
+  /** Determinism (§19) — no clock, no randomness anywhere in the module. */
+  check(
+    'nothing in the engine is time- or random-dependent',
+    gbfFiles.filter((file) => /Math\.random|Date\.now|new Date\(/.test(sources.get(file) ?? '')),
+    [],
+  );
+
+  /* ---- The planner UI (UX redesign) ---- */
+
+  const gbfComponents = gbfFiles.filter((file) => file.includes('/components/'));
+  const homeHero = sources.get('src/modules/marketplace/components/home-hero.tsx');
+  const homeScreen = sources.get('src/modules/marketplace/components/home-screen.tsx');
+  const callout = sources.get('src/modules/marketplace/components/goal-planner-callout.tsx');
+
+  ok('the planner has a UI', gbfComponents.length > 0);
+
+  /**
+   * **No rule id reaches the screen.** The ids are internal vocabulary. They may
+   * appear as *keys* into `RULE_LABELS` — hence the exclusion of the constants
+   * file — but never as rendered text.
+   */
+  for (const file of gbfComponents) {
+    const text = sources.get(file) ?? '';
+    ok(
+      `${file.split('/').pop()} renders no rule id`,
+      !/\bR-[A-Z]+-\d{3}\b/.test(text) && !/§\d/.test(text),
+    );
+  }
+  ok(
+    'the label map is the only place rule ids appear in presentation',
+    /RULE_LABELS/.test(sources.get('src/modules/goal-based-fd/constants/presentation.ts') ?? ''),
+  );
+
+  /**
+   * **Estimated, not promised.** Booking resolves the terms the customer is
+   * offered; the planner illustrates. The wording has to say so.
+   */
+  const bestFit = sources.get('src/modules/goal-based-fd/components/best-fit-card.tsx');
+  ok('the best-fit card labels the rate as indicative', /Indicative rate/.test(bestFit ?? ''));
+  ok(
+    'and states that Booking confirms the figures',
+    /confirmed on the booking screen/.test(bestFit ?? ''),
+  );
+  ok(
+    'the maturity is labelled estimated wherever it is shown',
+    /Estimated maturity/.test(
+      sources.get('src/modules/goal-based-fd/components/maturity-flow.tsx') ?? '',
+    ) &&
+      /Estimated maturity/.test(
+        sources.get('src/modules/goal-based-fd/components/compact-recommendation-card.tsx') ?? '',
+      ),
+  );
+
+  /**
+   * **No invented financial claim** (decision A4). The UI restates rules; it
+   * does not grade a deposit or promise a return.
+   */
+  for (const file of gbfComponents) {
+    const text = sources.get(file) ?? '';
+    ok(
+      `${file.split('/').pop()} makes no comparative or guaranteed claim`,
+      !/\b(guaranteed returns?|competitive rate|best rate|highest rate)\b/i.test(text),
+    );
+  }
+
+  /** The UI computes nothing — every figure is read off the recommendation. */
+  for (const file of gbfComponents) {
+    const text = sources.get(file) ?? '';
+    ok(
+      `${file.split('/').pop()} runs no finance calculation`,
+      !/calculateMaturity|resolveProductRate|resolveApplicableRate|\*\*\s*\(/.test(text),
+    );
+  }
+
+  /**
+   * Motion is opt-in and token-driven. `motion-safe:` plus the existing global
+   * reduced-motion reset means no component declares its own media query, and a
+   * hand-rolled `@keyframes` in a component would escape both.
+   */
+  for (const file of gbfComponents) {
+    const text = sources.get(file) ?? '';
+    ok(
+      `${file.split('/').pop()} declares no local keyframes or motion media query`,
+      !/@keyframes|prefers-reduced-motion/.test(text),
+    );
+  }
+
+  /* ---- No duplicate journey (Home → planner) ---- */
+
+  const plannerScreen = sources.get('src/modules/goal-based-fd/components/goal-planner-screen.tsx');
+  const plannerPage = sources.get('src/app/(public)/goal-planner/page.tsx');
+  const plannerFlow = sources.get('src/modules/goal-based-fd/hooks/use-planner-flow.ts');
+  const goalEntry = sources.get('src/modules/marketplace/constants/goal-entry.ts');
+
+  /**
+   * **The intro screen is gone.** It showed the goal vocabulary a second time
+   * and a button whose only function was to be dismissed, so the goals appeared
+   * three times before the customer answered anything.
+   */
+  ok(
+    'no planner intro component exists',
+    !sources.has('src/modules/goal-based-fd/components/planner-intro.tsx'),
+  );
+  check(
+    'and nothing renders a "Let’s start" control',
+    gbfComponents.filter((file) => /Let.s start/.test(sources.get(file) ?? '')),
+    [],
+  );
+  check(
+    'the goal vocabulary is rendered by exactly one planner component',
+    gbfComponents.filter((file) => /GOAL_DESCRIPTIONS/.test(sources.get(file) ?? '')),
+    ['src/modules/goal-based-fd/components/goal-step.tsx'],
+  );
+
+  /**
+   * **Intent is read, narrowed, and seeded — not stored twice.** The param goes
+   * through `parseGoalParam` (a URL is user input) and becomes the flow's
+   * *initial value*, so there is no second copy of the answer to keep in sync.
+   */
+  ok('the planner reads the goal parameter', /useSearchParams\(\)/.test(plannerScreen ?? ''));
+  ok(
+    'and narrows it before trusting it',
+    /parseGoalParam\(searchParams\.get\('goal'\)\)/.test(plannerScreen ?? ''),
+  );
+  ok(
+    'the parameter seeds the existing flow rather than a second store',
+    /usePlannerFlow\(initialGoal\)/.test(plannerScreen ?? '') &&
+      /export function usePlannerFlow\(initialGoal\?: GoalType\)/.test(plannerFlow ?? ''),
+  );
+  ok(
+    'an arriving goal starts the flow past the goal question',
+    /initialGoal === undefined \? 'goal' : 'investor'/.test(plannerFlow ?? ''),
+  );
+  ok('and the route contains the prerender bailout', /<Suspense>/.test(plannerPage ?? ''));
+
+  /** The URL shape is declared once, in constants — never inside a component. */
+  ok('Home goal entries carry the goal parameter', /\?goal=/.test(goalEntry ?? ''));
+  check(
+    'and no Marketplace component composes that query string itself',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/marketplace/components/'))
+      .filter(([, text]) => /\?goal=/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /* ---- Home discoverability ---- */
+
+  ok('the Home hero links to the planner', /ROUTES\.goalPlanner/.test(homeHero ?? ''));
+  ok(
+    'and it is the primary action, with browse as secondary',
+    /Find my FD/.test(homeHero ?? '') &&
+      /variant="secondary"[\s\S]{0,120}Browse all FDs/.test(homeHero ?? ''),
+  );
+  ok(
+    'the dead "How it works" control is gone',
+    !/How it works/.test(homeHero ?? '') && !/aria-disabled/.test(homeHero ?? ''),
+  );
+  ok('Home renders the guided callout', /<GoalPlannerCallout \/>/.test(homeScreen ?? ''));
+  ok(
+    'the callout sits above the search bar',
+    (homeScreen ?? '').indexOf('<GoalPlannerCallout') < (homeScreen ?? '').indexOf('<SearchBar'),
+  );
+  ok(
+    'and the planner is reachable from every page through the nav',
+    /ROUTES\.goalPlanner/.test(sources.get('src/constants/navigation.ts') ?? ''),
+  );
+
+  /**
+   * **Marketplace still imports nothing from the goal module.** The callout
+   * knows a route and three labels; the boundary is intact in both directions.
+   */
+  check(
+    'no Marketplace file imports the goal module',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/marketplace/'))
+      .filter(([, text]) => /@\/modules\/goal-based-fd/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the callout builds its link through ROUTES',
+    /ROUTES\.goalPlanner/.test(callout ?? '') && !/['"`]\/goal-planner/.test(callout ?? ''),
+  );
+
+  /**
+   * **One call to action per screen.** `Find my FD` used to be rendered as a
+   * button in the hero *and* in this section, and the section's body repeated
+   * the hero's sentence almost word for word. The goal columns are the action
+   * here; the only remaining generic entry is a quiet text link.
+   */
+  /**
+   * **The section carries exactly one call to action.**
+   *
+   * It used to carry none — the columns were the action and a quiet text link
+   * was the only generic entry. The approved design now leads with artwork and
+   * an explicit CTA, so the rule changed from "no button" to "not more than
+   * one": the defect being guarded against was always *duplicate* calls to
+   * action competing with the hero, not the existence of one.
+   */
+  ok(
+    'the Goal Selection section carries at most one call to action',
+    ((callout ?? '').match(/<Button/g) ?? []).length <= 1,
+  );
+  ok(
+    'and it does not repeat the hero’s sentence',
+    !/Tell us what you.re planning for/.test(callout ?? ''),
+  );
+  ok('the "Guided" eyebrow is gone', !/>\s*Guided\s*</.test(callout ?? ''));
+  /**
+   * The columns moved into `GoalEntryList` when selection acquired a state —
+   * a goal chosen on Home is acknowledged there before the page changes, and
+   * that needs a client component. The assertions below are about the rendered
+   * **section**, not about one file, so they read both sources: splitting the
+   * file must not be able to silently drop a property.
+   */
+  const goalEntryList = sources.get('src/modules/marketplace/components/goal-entry-list.tsx');
+  const goalSection = `${callout ?? ''}\n${goalEntryList ?? ''}`;
+
+  ok('the goal columns are their own component', Boolean(goalEntryList));
+  /**
+   * **Each goal is one self-contained, artwork-led panel.**
+   *
+   * The single-surface hairline treatment was replaced by the approved
+   * artwork-led design. What must still hold is that a goal is *one* target with
+   * *one* piece of artwork — not a card containing further cards, and not a goal
+   * split across two clickable regions.
+   */
+  ok(
+    'each goal is a single panel with its own artwork',
+    /GoalMark/.test(goalSection) && (goalSection.match(/<Link/g) ?? []).length <= 4,
+  );
+  ok('and each column meets the touch-target floor', /min-h-16|min-h-\[/.test(goalSection));
+  ok(
+    'the artwork is decorative, never the label',
+    /alt=""/.test(sources.get('src/components/business/goal-mark.tsx') ?? '') &&
+      /aria-hidden/.test(sources.get('src/components/business/goal-mark.tsx') ?? ''),
+  );
+
+  /**
+   * **Only the columns are client code.** The heading, the supporting copy and
+   * the footer link have no interactive state and must not be dragged onto the
+   * client by the selection acknowledgement.
+   */
+  ok('the columns are a client component', /^'use client';/.test(goalEntryList ?? ''));
+  ok('but the section around them is not', !/^'use client';/.test(callout ?? ''));
+
+  /* ---- Step 5 — the Booking handoff ---- */
+
+  const handoffSource = sources.get('src/modules/goal-based-fd/utils/booking-handoff.ts');
+
+  ok('the handoff contract exists', Boolean(handoffSource));
+
+  /**
+   * **`productId` is the whole contract.** Declared in one file, built through
+   * `ROUTES`, and carrying two fields. A third field is the regression this
+   * catches — that is how a rate would arrive in Booking.
+   */
+  check(
+    'the handoff is declared in exactly one file',
+    gbfFiles.filter((file) => /export function toBookingHandoff/.test(sources.get(file) ?? '')),
+    ['src/modules/goal-based-fd/utils/booking-handoff.ts'],
+  );
+  ok(
+    'BookingHandoff carries only an id, a destination and bookability',
+    /export interface BookingHandoff \{[\s\S]*?productId: string;[\s\S]*?href: Route;[\s\S]*?bookable: boolean;\s*\}/.test(
+      handoffSource ?? '',
+    ) &&
+      !/rate|maturity|quote/i.test(
+        (handoffSource ?? '').split('export interface BookingHandoff')[1]?.split('}')[0] ?? '',
+      ),
+  );
+  ok(
+    'both destinations are built through ROUTES, never as inline strings',
+    /ROUTES\.bookingOverview\(productId\)/.test(handoffSource ?? '') &&
+      /ROUTES\.product\(productId\)/.test(handoffSource ?? '') &&
+      !/['"`]\/booking\//.test(handoffSource ?? '') &&
+      !/['"`]\/marketplace\//.test(handoffSource ?? ''),
+  );
+  ok(
+    'and the handoff reads only productId off the recommendation',
+    /const \{ productId \} = recommendation;/.test(handoffSource ?? ''),
+  );
+
+  /**
+   * **Every recommendation reaches a real screen.** Booking resolves one deposit
+   * today; the rest open that product's Marketplace page. Neither branch may be
+   * a dead end, and the bookable list is one shared fact rather than a copy.
+   */
+  ok(
+    'a non-bookable recommendation still has a destination',
+    /isBookableProduct\(productId\)[\s\S]*?ROUTES\.product\(productId\)/.test(handoffSource ?? ''),
+  );
+  ok(
+    'bookability is read from the shared constant',
+    /@\/constants\/booking/.test(handoffSource ?? ''),
+  );
+
+  /**
+   * **No rate or maturity is passed as booking authority.** The engine's figures
+   * are an illustration; Booking resolves the terms it offers. Asserted on the
+   * source so the guarantee survives a refactor of the object literal.
+   */
+  for (const forbidden of ['quote', 'maturity', 'annualRate', 'baseRate', 'target']) {
+    ok(
+      `the handoff contract declares no "${forbidden}"`,
+      !new RegExp(`^\\s*${forbidden}\\??:`, 'm').test(handoffSource ?? ''),
+    );
+  }
+
+  /**
+   * **One booking flow.** Goal-Based FD may link to Booking's entry point and
+   * nothing else — no deeper step, and no route of its own that duplicates one.
+   */
+  const bookingRouteUsage = gbfFiles.filter((file) =>
+    /ROUTES\.booking\w+/.test(sources.get(file) ?? ''),
+  );
+  check('only the handoff file builds a Booking route', bookingRouteUsage, [
+    'src/modules/goal-based-fd/utils/booking-handoff.ts',
+  ]);
+  check(
+    'and it uses the Overview entry point, not a later step',
+    [...(handoffSource ?? '').matchAll(/ROUTES\.(booking\w+)/g)].map((match) => match[1]),
+    ['bookingOverview'],
+  );
+  check(
+    'no Goal-Based FD route duplicates a booking step',
+    [...sources.keys()].filter(
+      (file) => file.startsWith('src/app/') && /goal/.test(file) && /booking/.test(file),
+    ),
+    [],
+  );
+
+  /**
+   * **Booking is unchanged by the handoff.** It still resolves the id itself and
+   * still takes the not-found boundary — Goal-Based FD hands over an id and
+   * makes no promise that it resolves.
+   *
+   * The resolution moved from this layout into `BookingProductProvider` (the
+   * catalogue is served by a browser-only worker, so a server component could
+   * not fetch it). The guarantee is unchanged and asserted one file across:
+   * Booking owns its own resolution, and an id it cannot resolve renders
+   * nothing.
+   */
+  const handoffBookingLayout = sources.get('src/app/(public)/booking/[productId]/layout.tsx');
+  const bookingProductHook = sources.get('src/modules/booking/hooks/use-booking-product.tsx');
+  ok(
+    'Booking still resolves the productId itself',
+    /createBookingOverviewService\(\)/.test(bookingProductHook ?? '') &&
+      /service\.findByProductId\(productId\)/.test(bookingProductHook ?? ''),
+  );
+  ok(
+    'and still fails closed on an id it cannot resolve',
+    /if \(isError \|\| !data\) notFound\(\);/.test(bookingProductHook ?? ''),
+  );
+  /*
+    The layout hands the id down and awaits nothing. Its own segment is a Server
+    Component, and the catalogue's transport does not exist there — a fetch
+    reintroduced here is the exact defect that made every non-curated product
+    fail with `ApiError`.
+  */
+  ok(
+    'and the layout itself fetches nothing',
+    !/findByProductId|createBookingOverviewService|createProductMasterRepository/.test(
+      handoffBookingLayout ?? '',
+    ),
+  );
+  ok(
+    'passing the id down instead',
+    /<BookingProductProvider[\s\S]*?productId=\{productId\}/.test(handoffBookingLayout ?? ''),
+  );
+  ok(
+    'Booking accepts no rate or maturity from a caller',
+    !/searchParams/.test(handoffBookingLayout ?? ''),
+  );
+  /**
+   * **Both planner routes are siblings of Booking, not inside it.** Multi-goal
+   * planning is a second entry point (`/goal-planner/plan`), and like the first
+   * it ends at Booking rather than living within it — the handoff stays one
+   * direction.
+   */
+  check(
+    'the goal planner routes sit outside Booking',
+    [...sources.keys()].filter((file) => file.startsWith('src/app/(public)/goal-planner/')).sort(),
+    ['src/app/(public)/goal-planner/page.tsx', 'src/app/(public)/goal-planner/plan/page.tsx'],
+  );
+  ok(
+    'and the multi-goal route reads no search params',
+    !/useSearchParams|searchParams/.test(
+      sources.get('src/app/(public)/goal-planner/plan/page.tsx') ?? '',
+    ),
+  );
+
+  /* ================================================================ */
+  section('Invariants · Platform rate resolver (R1 step 2, D1)');
+
+  const platformRates = sources.get('src/utils/finance/rates.ts');
+  const marketplaceSlabs = sources.get('src/modules/marketplace/utils/rate-slabs.ts');
+
+  ok('the platform resolver exists', Boolean(platformRates));
+
+  /**
+   * **One implementation, not two.** The whole point of the move is that
+   * Marketplace and the platform cannot drift, so Marketplace's file must hold a
+   * re-export and no logic. This is the assertion that fails if someone
+   * "restores" the original body to avoid an import change.
+   */
+  check(
+    'resolveApplicableRate is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export function resolveApplicableRate/.test(text))
+      .map(([file]) => file),
+    ['src/utils/finance/rates.ts'],
+  );
+  ok(
+    'Marketplace holds a re-export, not a second implementation',
+    /export \{ resolveApplicableRate \} from '@\/utils\/finance';/.test(marketplaceSlabs ?? '') &&
+      !/reduce|minAmount/.test(marketplaceSlabs ?? ''),
+  );
+  /*
+    The import gained `publishedTenure` and `toWholeMonths` when the service took
+    over the calculator's returns, so the assertion names the resolver rather
+    than the whole import line. What matters is unchanged: the service uses the
+    canonical resolver and declares none of its own.
+  */
+  ok(
+    'and the service imports the canonical resolver',
+    /import \{[^}]*\bresolveApplicableRate\b[^}]*\} from '@\/utils\/finance';/s.test(
+      sources.get('src/modules/marketplace/services/product-service.ts') ?? '',
+    ),
+  );
+
+  /**
+   * Business behaviour preserved (authorisation was import re-point only). The
+   * three rules that define this resolver, read off the moved source:
+   * amount-below-band falls back, the highest *band* wins rather than the
+   * highest rate, and band rates are absolute.
+   */
+  ok(
+    'no applicable band falls back to the base rate',
+    /return applicable\?\.annualRate \?\? baseRate;/.test(platformRates ?? ''),
+  );
+  ok(
+    'the highest band cleared wins, not the highest rate',
+    /if \(amount < band\.minAmount\) return incumbent;/.test(platformRates ?? '') &&
+      /band\.minAmount <= incumbent\.minAmount/.test(platformRates ?? ''),
+  );
+
+  /** The platform layer is reachable by any module — that is why it moved. */
+  ok('the resolver imports no feature module', !/@\/modules\//.test(platformRates ?? ''));
+  ok('and no mocks', !/@\/mocks/.test(platformRates ?? ''));
+
+  /**
+   * `resolveProductRate` composes the law stated on `TenureRate`: the tenure
+   * sets the base rate, the amount band may override it. It must not invent a
+   * tenure the product does not publish.
+   */
+  ok(
+    'resolveProductRate refuses an unpublished tenure',
+    /tenureMonths !== terms\.tenureMonths\) return null;/.test(platformRates ?? ''),
+  );
+  ok(
+    'and composes base rate with amount bands rather than restating the rule',
+    /resolveApplicableRate\(terms\.baseRate, amount, terms\.rateSlabs\)/.test(platformRates ?? ''),
+  );
+
+  /** Booking's tenure resolver is untouched — a different axis, deliberately left. */
+  ok(
+    'Booking still owns its tenure resolver',
+    /export function resolveRate\(terms: DepositTerms, criteria: RateCriteria\)/.test(
+      sources.get('src/modules/booking/utils/tenure-rates.ts') ?? '',
+    ),
+  );
+
+  /** `RateCriteria.amount` is optional, so every existing caller still compiles. */
+  ok(
+    'RateCriteria.amount is optional',
+    /\n  amount\?: number;/.test(sources.get('src/types/finance.ts') ?? ''),
+  );
+
+  /* ================================================================ */
+  section('Invariants · Product Master boundary (Steps 1–3)');
+
+  const masterType = sources.get('src/types/product-master.ts');
+  const masterMapper = sources.get('src/services/product-master/product-master-mapper.ts');
+  const masterRepo = sources.get('src/services/product-master/product-master-repository.ts');
+
+  ok('the Product Master type exists', Boolean(masterType));
+  ok('the mapper exists', Boolean(masterMapper));
+  ok('the repository exists', Boolean(masterRepo));
+
+  /** One declaration. Two would be exactly the duplication this boundary exists to end. */
+  check(
+    'ProductMaster is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export type ProductMaster =/.test(text))
+      .map(([file]) => file),
+    ['src/types/product-master.ts'],
+  );
+  check(
+    'and the DTO → ProductMaster conversion has exactly one home',
+    [...sources.entries()]
+      .filter(([, text]) => /export function toProductMaster/.test(text))
+      .map(([file]) => file),
+    ['src/services/product-master/product-master-mapper.ts'],
+  );
+
+  /**
+   * The boundary that makes this additive: `src/types` may import only from
+   * `src/types`, and `src/services` may not import modules at all
+   * (`eslint.config.mjs`). Asserted here too, so a disabled lint rule cannot
+   * quietly let the platform depend on Marketplace.
+   */
+  for (const [name, text] of [
+    ['the type', masterType],
+    ['the mapper', masterMapper],
+    ['the repository', masterRepo],
+  ]) {
+    ok(`${name} imports nothing from any feature module`, !/@\/modules\//.test(text ?? ''));
+    ok(`${name} imports nothing from mocks`, !/@\/mocks/.test(text ?? ''));
+  }
+
+  /**
+   * **No invented business data.** Every field the Addendum names but the
+   * payload cannot supply must be absent from the type — not defaulted, not
+   * optional-with-a-fallback. This probe reads the type rather than trusting the
+   * mapper.
+   */
+  for (const field of [
+    'status',
+    'maxInvestment',
+    'prematureWithdrawal',
+    'supportedPayouts',
+    'tenureRates',
+    'eligibility',
+    'autoRenewal',
+    'partnerSla',
+  ]) {
+    ok(
+      `ProductMaster declares no "${field}"`,
+      !new RegExp(`\\b${field}\\??:`).test(masterType ?? ''),
+    );
+  }
+  /**
+   * **ProductMaster stores no resolved/effective rate** (re-pointed at D1).
+   *
+   * This previously read "stores no rate at all", which was the wrong line to
+   * draw: `baseRate` and `rateSlabs` are *published* product data, exactly like
+   * `minInvestment`. Excluding the base rate left the master carrying the amount
+   * overrides with nothing to override — and since the catalogue's bands begin
+   * at ₹5,00,000, no rate at all was obtainable for normal amounts.
+   *
+   * The line that matters is between **published** and **resolved**. What a
+   * particular deposit earns depends on an amount the master does not have; it
+   * is a `RateQuote` from `resolveProductRate`, and it is never stored.
+   *
+   * Re-pointed rather than deleted — a probe that is deleted instead of re-aimed
+   * is how an invariant quietly stops being one.
+   */
+  ok(
+    'ProductMaster declares its published base rate',
+    /\bbaseRate: number;/.test(masterType ?? ''),
+  );
+  for (const derived of ['appliedRate', 'effectiveRate', 'quote', 'estimatedReturns']) {
+    ok(
+      `ProductMaster stores no resolved rate — no "${derived}"`,
+      !new RegExp(`\\b${derived}\\??:`).test(masterType ?? ''),
+    );
+  }
+  /** The wire name does not survive the mapping; `baseRate` is the platform name. */
+  ok(
+    'the master does not re-use the wire name "interestRate"',
+    !/\binterestRate\??: *number/.test(masterType ?? ''),
+  );
+  ok(
+    'and the mapper renames interestRate rather than computing a rate',
+    /baseRate: record\.interestRate,/.test(masterMapper ?? '') &&
+      !/resolveApplicableRate|resolveProductRate|calculateMaturity/.test(masterMapper ?? ''),
+  );
+
+  /** The discriminant is a literal, so a second product type is an addition. */
+  ok(
+    'the union is discriminated by productType',
+    /productType: 'fixed-deposit'/.test(masterType ?? ''),
+  );
+
+  /** Fails closed — a bad record is dropped, never coerced into a product. */
+  ok('the mapper parses rather than casts', /safeParse\(/.test(masterMapper ?? ''));
+  ok(
+    'and returns null on a mismatch',
+    /return parsed\.success \? .* : null;/.test(masterMapper ?? '') ||
+      /: null;/.test(masterMapper ?? ''),
+  );
+
+  /** Consumes the existing endpoint through the existing generic factory. */
+  ok(
+    'the repository reuses the platform read-repository factory',
+    /createApiReadRepository/.test(masterRepo ?? ''),
+  );
+  ok(
+    'and exposes only the two approved reads',
+    /findAll\(/.test(masterRepo ?? '') &&
+      /findById\(/.test(masterRepo ?? '') &&
+      !/\bcreate\(|\bupdate\(|\bremove\(/.test(masterRepo ?? ''),
+  );
+
+  /**
+   * **Goal-Based FD is the only module that consumes the master.**
+   *
+   * Re-pointed again now that **Step 5 (Booking migration) is implemented**:
+   * Booking derives a deposit from the master so every recommended product is
+   * bookable, rather than holding one hand-authored fixture.
+   *
+   * The property still worth protecting is **Marketplace**, which keeps its own
+   * view model and is not migrated. This list growing a Marketplace entry is the
+   * regression to catch.
+   */
+  check(
+    'only Goal-Based FD and Booking consume ProductMaster',
+    [
+      ...new Set(
+        [...sources.entries()]
+          .filter(([file]) => file.startsWith('src/modules/'))
+          .filter(([, text]) => /product-master|ProductMaster/.test(text))
+          .map(([file]) => file.split('/').slice(0, 3).join('/')),
+      ),
+    ].sort(),
+    ['src/modules/booking', 'src/modules/goal-based-fd'],
+  );
+
+  /* ---- The four architectures this task must leave untouched ---- */
+
+  /**
+   * RateQuote unchanged — still exactly the two fields the rate card can source.
+   * Read as a field set, not a whitespace-sensitive regex over the whole
+   * declaration, so a reformat does not fail it and an added field cannot pass.
+   */
+  const rateQuoteBody = /export interface RateQuote \{([\s\S]*?)\n\}/.exec(
+    sources.get('src/types/finance.ts') ?? '',
+  )?.[1];
+  ok('RateQuote is still declared', Boolean(rateQuoteBody));
+  check(
+    'and still carries exactly annualRate and tenureMonths',
+    [...(rateQuoteBody ?? '').matchAll(/^\s{2}(\w+)\??:/gm)].map((match) => match[1]),
+    ['annualRate', 'tenureMonths'],
+  );
+
+  /** tenureMonths unchanged — the day-count migration is not started. */
+  check(
+    'no file declares tenureDays',
+    [...sources.entries()].filter(([, text]) => /\btenureDays\b/.test(text)).map(([f]) => f),
+    [],
+  );
+
+  /**
+   * TD-001 unchanged. The duplicate-declaration probe above already counts the
+   * two maturity engines; this states the intent in the words of this task —
+   * Product Master does not repay TD-001, and did not quietly make it worse by
+   * adding a third.
+   */
+  check(
+    'the two maturity engines are still exactly two',
+    [...sources.keys()].filter((file) => /(^|\/)maturity\.ts$/.test(file)).sort(),
+    ['src/modules/marketplace/utils/maturity.ts', 'src/utils/maturity.ts'],
+  );
+
+  /* ---- productId-driven booking resolution ---- */
+
+  const overviewScreen = sources.get('src/modules/booking/components/booking-overview-screen.tsx');
+  const overviewPage = sources.get('src/app/(public)/booking/[productId]/overview/page.tsx');
+  const catalogue = sources.get('src/modules/booking/utils/deposit-catalogue.ts');
+
+  ok('the deposit catalogue exists', Boolean(catalogue));
+
+  const detailsScreenSrc = sources.get(
+    'src/modules/booking/components/investment-details-screen.tsx',
+  );
+  const nomineeScreenSrc = sources.get('src/modules/booking/components/nominee-screen.tsx');
+  const bookingLayout = sources.get('src/app/(public)/booking/[productId]/layout.tsx');
+
+  /**
+   * **One resolution per booking session.**
+   *
+   * Overview resolved from `productId` while Investment Details and Nominee each
+   * defaulted to a hardcoded fixture — three screens, three mechanisms, one
+   * fact, and a booking that could have priced one product while describing
+   * another. Resolution now happens once, in the layout.
+   */
+  /*
+    Resolution still happens once per session — one query, keyed on the id,
+    shared by all three steps — but it happens in `BookingProductProvider`
+    rather than in the layout.
+
+    The layout is a Server Component and the catalogue is served by MSW, which
+    runs in the browser only; a relative base URL has no origin there and no
+    worker to answer it. So every product except the one backed by a local
+    fixture failed with `ApiError`. Moving the call to the client provider puts
+    Booking on the same transport as every other data-driven screen here.
+  */
+  const bookingProvider = sources.get('src/modules/booking/hooks/use-booking-product.tsx');
+
+  ok('the booking session provider exists', Boolean(bookingProvider));
+  check(
+    'the deposit is resolved in exactly one place',
+    [...sources.entries()]
+      .filter(([, text]) => /findByProductId\(productId\)/.test(text))
+      .filter(([file]) => !file.includes('booking-overview-service'))
+      .map(([file]) => file),
+    ['src/modules/booking/hooks/use-booking-product.tsx'],
+  );
+  check(
+    'and the curated fixture has exactly one consumer',
+    [...sources.entries()]
+      .filter(([, text]) => /resolveBookingOverview\(/.test(text))
+      .filter(([file]) => !file.endsWith('utils/deposit-catalogue.ts'))
+      .map(([file]) => file),
+    ['src/modules/booking/services/booking-overview-service.ts'],
+  );
+  ok(
+    'the provider resolves from productId and holds it for the session',
+    /findByProductId\(productId\)/.test(bookingProvider ?? '') &&
+      /BookingProductContext\.Provider/.test(bookingProvider ?? ''),
+  );
+  ok(
+    'and does so on the client, where the catalogue transport exists',
+    /^'use client';/m.test(bookingProvider ?? ''),
+  );
+  /*
+    One query per session, keyed on the id. A key that omitted the id would
+    serve one product's deposit under another product's URL.
+  */
+  ok(
+    'through a single query keyed on the product id',
+    /queryKey: \[[^\]]*productId\]/.test(bookingProvider ?? '') &&
+      (bookingProvider ?? '').match(/useQuery\(/g)?.length === 1,
+  );
+  ok('and takes the not-found boundary when it cannot', /notFound\(\)/.test(bookingProvider ?? ''));
+  /*
+    No Server Component in the Booking route tree may fetch the catalogue. This
+    is the regression guard for the defect itself, not for one file's contents:
+    a fetch in any non-`'use client'` file under the route reintroduces it.
+  */
+  check(
+    'no server component in the Booking route fetches the catalogue',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/app/(public)/booking/'))
+      .filter(([, text]) => !/^'use client';/m.test(text))
+      .filter(([, text]) =>
+        /findByProductId|createBookingOverviewService|createProductMasterRepository/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the layout still owns the session and keys it by product',
+    /<BookingProductProvider key=\{productId\} productId=\{productId\}>/.test(bookingLayout ?? ''),
+  );
+  ok(
+    'the not-found boundary sits above the layout that throws',
+    sources.has('src/app/(public)/booking/not-found.tsx'),
+  );
+
+  /**
+   * No screen may reintroduce a fixture fallback or an overridable prop —
+   * either would let one step render a different product from the others.
+   */
+  for (const [name, text] of [
+    ['Overview', overviewScreen],
+    ['Investment Details', detailsScreenSrc],
+    ['Nominee', nomineeScreenSrc],
+  ]) {
+    ok(
+      `${name} reads the deposit from the booking session`,
+      /useBookingProduct\(\)/.test(text ?? ''),
+    );
+    ok(`${name} has no hardcoded fixture fallback`, !/BOOKING_OVERVIEW_FIXTURE/.test(text ?? ''));
+    ok(
+      `${name} exposes no overview prop to override it`,
+      !/overview\??:\s*BookingOverview/.test(text ?? ''),
+    );
+    ok(`${name} resolves nothing itself`, !/resolveBookingOverview/.test(text ?? ''));
+  }
+
+  /** The pages are thin: they pass the id and nothing else. */
+  ok(
+    'the overview page no longer resolves or guards',
+    !/resolveBookingOverview|notFound\(\)/.test(overviewPage ?? ''),
+  );
+
+  /**
+   * Unknown ids must fail, never fall back. A fallback is the defect being
+   * fixed — rendering *some* deposit for a product nobody chose is worse than
+   * saying it does not exist, because the user would go on to book it.
+   */
+  ok(
+    'the resolver returns null rather than a fallback',
+    /return null;/.test(catalogue ?? '') &&
+      !/\?\?\s*BOOKING_OVERVIEW_FIXTURE/.test(catalogue ?? ''),
+  );
+  ok('and guards against prototype keys', /Object\.hasOwn\(/.test(catalogue ?? ''));
+
+  /**
+   * The mapping is Booking-owned. A Marketplace import here would be the
+   * module-boundary violation this seam exists to avoid — and would also drag
+   * catalogue figures onto the approved Booking screens.
+   */
+  ok(
+    'the catalogue imports nothing from Marketplace',
+    !/@\/modules\/marketplace/.test(catalogue ?? ''),
+  );
+  check(
+    'deposit resolution is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export function resolveBookingOverview/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/utils/deposit-catalogue.ts'],
+  );
+
+  /* ---- Nominee (T3.3) ---- */
+
+  const nomineeScreen = sources.get('src/modules/booking/components/nominee-screen.tsx');
+  const nomineeSchema = sources.get('src/modules/booking/utils/nominee-schema.ts');
+  const nomineeConstants = sources.get('src/modules/booking/constants/nominee.ts');
+  const draftTypes = sources.get('src/modules/booking/types/draft.ts');
+  const storage = sources.get('src/modules/booking/utils/draft-storage.ts');
+
+  ok('the nominee screen exists', Boolean(nomineeScreen));
+  ok('the nominee schema exists', Boolean(nomineeSchema));
+
+  /**
+   * **PII is excluded at the type level**, not by the code that happens to
+   * assemble the payload. `Omit<BookingDraft, 'nominee'>` makes an attempt to
+   * persist the section a compile error rather than a review comment.
+   */
+  ok(
+    'the persisted draft type omits the nominee section',
+    /Omit<BookingDraft, 'nominee'>/.test(draftTypes ?? ''),
+  );
+  ok(
+    'and the storage layer restores it empty rather than reading it',
+    /emptyNomineeConfiguration\(\)/.test(storage ?? ''),
+  );
+
+  /**
+   * No business data invented. Each of these is a rule the specification states
+   * without supplying the values it depends on, and the absence is deliberate.
+   */
+  /**
+   * The relationship list is a **marked POC assumption** and, more importantly,
+   * a **single source of truth**. No component may declare its own — replacing
+   * the constant must change the dropdown, the validation and the error message
+   * together, which is the whole reason the client can swap it in one edit.
+   */
+  const nomineeFields = sources.get('src/modules/booking/components/nominee-fields.tsx');
+  ok(
+    'the relationship list lives in the constants file',
+    /export const SUPPORTED_RELATIONSHIPS/.test(nomineeConstants ?? ''),
+  );
+  check(
+    'and is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export const SUPPORTED_RELATIONSHIPS/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/constants/nominee.ts'],
+  );
+  ok(
+    'no component hardcodes a relationship value',
+    !/'(Spouse|Son|Daughter|Father|Mother|Brother|Sister|Wife)'/.test(nomineeFields ?? '') &&
+      !/'(Spouse|Son|Daughter|Father|Mother|Brother|Sister|Wife)'/.test(nomineeScreen ?? ''),
+  );
+  ok(
+    'the form renders its options from the constant',
+    /SUPPORTED_RELATIONSHIPS\.map/.test(nomineeFields ?? ''),
+  );
+  ok(
+    'no minor-age threshold is invented',
+    !/\b18\b|minorAge|MINOR_AGE|isMinor/.test(nomineeSchema ?? ''),
+  );
+  ok(
+    'no maximum nominee count is invented',
+    !/MAX_NOMINEES|maxNominees/.test(nomineeSchema ?? '') &&
+      !/MAX_NOMINEES/.test(nomineeConstants ?? ''),
+  );
+  ok(
+    'the relationship rule is inert until a list exists',
+    /SUPPORTED_RELATIONSHIPS\.length > 0/.test(nomineeSchema ?? ''),
+  );
+
+  /* The screen reuses the existing rail rather than rebuilding one. */
+  ok(
+    'the nominee screen reuses the configured summary rail',
+    /buildConfiguredSummaryRows/.test(nomineeScreen ?? '') &&
+      /<InvestmentSummary/.test(nomineeScreen ?? ''),
+  );
+  ok(
+    'and computes nothing of its own',
+    !/calculateReturns|resolveRate|validateAmount/.test(nomineeScreen ?? ''),
+  );
+  /**
+   * Continue is gated on the **domain verdict**, not on a condition the screen
+   * assembled for itself. `!validation.isValid` is the whole rule.
+   */
+  ok(
+    'Continue is gated on the validator',
+    /continueDisabled=\{!validation\.isValid\}/.test(nomineeScreen ?? ''),
+  );
+  ok(
+    'the screen consumes validation rather than restating it',
+    /validateNomineeConfiguration\(/.test(nomineeScreen ?? '') &&
+      !/TOTAL_SHARE_PERCENT|sharePercent\s*[<>]|\.reduce\(/.test(nomineeScreen ?? ''),
+  );
+
+  /* The form fields validate nothing; messages arrive as props. */
+  ok(
+    'the nominee fields validate nothing',
+    !/validateNominee|TOTAL_SHARE_PERCENT|Date\.parse/.test(nomineeFields ?? ''),
+  );
+  /**
+   * The simplest accessible date control already in the stack — no dependency,
+   * no custom picker, real keyboard and assistive-technology support.
+   */
+  ok('date of birth uses a native date input', /type="date"/.test(nomineeFields ?? ''));
+  ok('bounded so the browser discourages a future date', /max=\{today\}/.test(nomineeFields ?? ''));
+
+  /* Nomination type reuses the platform primitive rather than a second group. */
+  const nominationType = sources.get('src/modules/booking/components/nomination-type-group.tsx');
+  ok(
+    'nomination type composes RadioCardGroup',
+    /<RadioCardGroup/.test(nominationType ?? '') &&
+      !/type="radio"|role="radiogroup"/.test(nominationType ?? ''),
+  );
+  ok(
+    'and invents no third nomination type',
+    /NOMINATION_TYPES\.map/.test(nominationType ?? '') &&
+      !/'single'|'multiple'/.test(nominationType ?? ''),
+  );
+
+  /* ---- DepositTerms consistency (T3.2.10) ---- */
+
+  /**
+   * The display fields stay — deleting them would change approved UI copy. What
+   * is enforced instead is that they cannot **contradict** the rate card, which
+   * is the actual requirement.
+   *
+   * These read the shipped fixture, so they are assertions about real data
+   * rather than about types.
+   */
+  const fixture = sources.get('src/modules/booking/fixtures/booking-overview.ts');
+  ok('the booking fixture exists', Boolean(fixture));
+  ok(
+    'the display fields are still present, not deleted',
+    /interestRate:/.test(fixture ?? '') &&
+      /tenureRange:/.test(fixture ?? '') &&
+      /payoutOptions:/.test(fixture ?? ''),
+  );
+
+  const tenureRatesUtil = sources.get('src/modules/booking/utils/tenure-rates.ts');
+  ok(
+    'rate-card validation exists and returns errors rather than throwing',
+    /export function validateRateCard/.test(tenureRatesUtil ?? '') &&
+      !/throw new/.test(tenureRatesUtil ?? ''),
+  );
+
+  /**
+   * Ownership, frozen. `interestRate`, `tenureRange` and `payoutOptions` are
+   * display copy: only the two row builders and the Overview card may read
+   * them, plus one validator message. A new reader — especially on a pricing
+   * path — fails here.
+   *
+   * `booking-overview-service.ts` joins the declaration sites rather than the
+   * reader sites: it **constructs** these fields when deriving a deposit from a
+   * catalogue product, exactly as the fixture does. It prices nothing — the rate
+   * it writes is the product's own `baseRate`, unchanged.
+   */
+  const DEPOSIT_DECLARATION_SITES = ['src/modules/booking/services/booking-overview-service.ts'];
+  const readersOf = (field) =>
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/booking/'))
+      .filter(([, text]) => new RegExp(`terms\\.${field}|\\b${field}:`).test(text))
+      .map(([file]) => file)
+      .sort();
+
+  check('interestRate is read only where it is declared or displayed', readersOf('interestRate'), [
+    'src/modules/booking/components/selected-fd-summary.tsx',
+    'src/modules/booking/fixtures/booking-overview.ts',
+    ...DEPOSIT_DECLARATION_SITES,
+    'src/modules/booking/types/booking.ts',
+    'src/modules/booking/utils/investment-summary.ts',
+  ]);
+  check('tenureRange is read only where it is declared or displayed', readersOf('tenureRange'), [
+    'src/modules/booking/fixtures/booking-overview.ts',
+    ...DEPOSIT_DECLARATION_SITES,
+    'src/modules/booking/types/booking.ts',
+    'src/modules/booking/utils/investment-summary.ts',
+  ]);
+  check(
+    'payoutOptions is read only where it is declared or displayed',
+    readersOf('payoutOptions'),
+    [
+      'src/modules/booking/fixtures/booking-overview.ts',
+      ...DEPOSIT_DECLARATION_SITES,
+      'src/modules/booking/types/booking.ts',
+      'src/modules/booking/utils/investment-schema.ts',
+      'src/modules/booking/utils/investment-summary.ts',
+    ],
+  );
+
+  /* ---- Payout selection (T3.2.9) ---- */
+
+  const payoutGroup = sources.get('src/modules/booking/components/payout-option-group.tsx');
+  const payoutUtil = sources.get('src/modules/booking/utils/payout-options.ts');
+
+  ok('the payout group exists', Boolean(payoutGroup));
+  ok('and the resolution util exists', Boolean(payoutUtil));
+
+  /**
+   * Built on the platform primitive, not a second radio group. `RadioCardGroup`
+   * already gives one tab stop, arrow-key movement and real fieldset semantics;
+   * reimplementing that in a feature module is how a control loses its keyboard
+   * behaviour six months later.
+   */
+  ok(
+    'the payout group composes RadioCardGroup rather than rebuilding one',
+    /<RadioCardGroup/.test(payoutGroup ?? '') &&
+      !/type="radio"|role="radiogroup"/.test(payoutGroup ?? ''),
+  );
+  ok(
+    'and it computes nothing — no returns, no rate, no validation',
+    !/calculateReturns|resolveRate|validate/.test(payoutGroup ?? ''),
+  );
+  ok(
+    'it does not decide which options exist',
+    !/supportedPayouts|PAYOUT_OPTION_ORDER/.test(payoutGroup ?? ''),
+  );
+
+  /**
+   * Spec 21b §D — unavailable options must not be displayed. The narrowing is a
+   * pure function so "only what the product sells" is assertable without a DOM.
+   */
+  ok('option resolution is React-free', !/from 'react'|useState|useMemo/.test(payoutUtil ?? ''));
+  check(
+    'the payout vocabulary is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export const PAYOUT_OPTION_ORDER/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/constants/payout-options.ts'],
+  );
+  check(
+    'and the default in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /export const DEFAULT_PAYOUT_OPTION/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/constants/payout-options.ts'],
+  );
+
+  /**
+   * The screen seeds the default into the draft rather than falling back at
+   * render time. Showing "At Maturity" selected while the draft held `null`
+   * would mean the screen priced one thing and Review read another.
+   */
+  ok(
+    'the screen seeds the default payout into the draft',
+    /defaultPayoutOption\(/.test(detailsScreen ?? ''),
+  );
+  ok(
+    'and narrows the options through the resolver',
+    /resolvePayoutOptions\(/.test(detailsScreen ?? ''),
+  );
+
+  /**
+   * C4's visible half. The strip must render a Per Instalment figure for payout
+   * deposits, and must not present it as exact — a rupee-rounded instalment
+   * cannot divide an arbitrary total evenly.
+   */
+  ok(
+    'the returns strip shows Per Instalment',
+    /Per Instalment/.test(returnsStrip ?? '') &&
+      /data-returns-cell="instalment"/.test(returnsStrip ?? ''),
+  );
+  ok('and states it as approximate', /approximately/.test(returnsStrip ?? ''));
+  ok(
+    'the instalment block is inside a polite live region',
+    (returnsStrip ?? '').split('data-returns-cell="instalment"')[0].includes('aria-live="polite"'),
+  );
+
+  /* Route hygiene, as everywhere else in this codebase. */
+  ok('the screen builds no booking path of its own', !/["'`]\/booking\//.test(detailsScreen ?? ''));
+  /*
+    Named after the *builder*, not the URL segment.
+
+    The first version of this probe searched every source for the string
+    "investment-details" and failed — matching the route file's own path and the
+    barrel's export of `investment-details-screen`. A probe that cannot tell a
+    URL from a filename is not testing route ownership. The builder name is
+    unambiguous, and the "no inline /booking/ path" probe above already covers
+    the segment being written by hand.
+  */
+  check(
+    'the investment-details route builder is declared once, in ROUTES',
+    [...sources.entries()]
+      .filter(([, text]) => /bookingInvestmentDetails:/.test(text))
+      .map(([file]) => file),
+    ['src/constants/routes.ts'],
+  );
+
+  /**
+   * The two rails are different row models. If one builder ever served both
+   * screens, the configured rail would start advertising capability again.
+   */
+  check(
+    'the configured row model is declared once',
+    [...sources.entries()]
+      .filter(([, text]) => /export function buildConfiguredSummaryRows/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/utils/investment-summary.ts'],
+  );
+
+  /**
+   * Heading ids are generated, not literal. A duplicate id makes
+   * `aria-labelledby` resolve to whichever element came first, which is a silent
+   * failure — the label is simply wrong, and nothing reports it.
+   */
+  for (const file of [
+    'src/modules/booking/components/investment-summary.tsx',
+    'src/modules/booking/components/important-information.tsx',
+    'src/modules/booking/components/investment-details-screen.tsx',
+  ]) {
+    const text = sources.get(file);
+    ok(`${file.split('/').pop()} generates its heading ids`, /useId\(\)/.test(text ?? ''));
+    ok(
+      `${file.split('/').pop()} hardcodes no heading id`,
+      !/id="[a-z-]+-heading"/.test(text ?? ''),
+    );
+  }
+
+  /* ================================================================ */
+  section('Invariants · Booking platform primitives (T3.2.3)');
+
+  /**
+   * `Button`, not `MarketplaceButton`. A slider or a radio-card group living
+   * inside `modules/booking/` would be a primitive the next module has to
+   * either duplicate or illegally import.
+   */
+  ok('Slider is a platform primitive', sources.has('src/components/ui/slider.tsx'));
+  ok(
+    'RadioCardGroup is a platform primitive',
+    sources.has('src/components/ui/radio-card-group.tsx'),
+  );
+  check(
+    'neither primitive was defined inside a feature module',
+    bookingFiles
+      .filter(([, text]) => /export (function|const) (Slider|RadioCardGroup)\b/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * Both are built on native HTML — that is the entire argument for adding no
+   * dependency, so it is asserted rather than asserted-in-prose.
+   */
+  const slider = sources.get('src/components/ui/slider.tsx');
+  const radioCards = sources.get('src/components/ui/radio-card-group.tsx');
+  ok('Slider is a real range input', /type="range"/.test(slider ?? ''));
+  ok('RadioCardGroup uses real radios', /type="radio"/.test(radioCards ?? ''));
+  ok(
+    'and a real fieldset/legend, so the group needs no ARIA',
+    /<fieldset/.test(radioCards ?? '') &&
+      /<legend/.test(radioCards ?? '') &&
+      !/role="radiogroup"/.test(radioCards ?? ''),
+  );
+
+  /**
+   * Neither may hardcode colour. The design system is the only source, and a
+   * hex in a primitive is how a second palette begins.
+   */
+  for (const [name, text] of [
+    ['Slider', slider],
+    ['RadioCardGroup', radioCards],
+  ]) {
+    ok(`${name} hardcodes no colour`, !/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(text ?? ''));
+  }
+
+  section('Invariants · Motion layer (Motion UX Specification)');
+
+  /**
+   * **No motion library.** The determination recorded in
+   * `motion-architecture.md` §1 was that CSS covers everything except animating
+   * to an intrinsic height, and that one gap is worth a hook rather than a
+   * dependency. This is the assertion that keeps that true — a motion library
+   * arriving later is exactly the drift it exists to catch.
+   */
+  const packageJson =
+    sources.get('package.json') ?? readFileSync(path.join(ROOT, 'package.json'), 'utf8');
+  ok(
+    'no animation library is a dependency',
+    !/"(framer-motion|motion|gsap|lottie-web|@lottiefiles\/[\w-]+|animejs|popmotion|react-spring|@react-spring\/[\w-]+)"/.test(
+      packageJson,
+    ),
+  );
+
+  /**
+   * **Motion values live in the token file and nowhere else.** A duration or an
+   * easing curve typed into a component is the same number with no provenance,
+   * which is precisely what the design system exists to prevent.
+   */
+  /* Read directly: the source map walks .ts/.tsx only, and tokens are CSS. */
+  const motionTokens = readFileSync(
+    path.join(SRC, 'design-system', 'tokens', 'motion.css'),
+    'utf8',
+  );
+  ok('the stagger step is a token', /--ds-duration-stagger:/.test(motionTokens));
+  ok('the reveal distance is a token', /--ds-reveal-distance:/.test(motionTokens));
+
+  check(
+    'no component hardcodes a duration or easing curve',
+    [...sources.entries()]
+      .filter(([file]) => /^src\/(components|modules|app|hooks)\/.*\.tsx?$/.test(file))
+      .filter(([, text]) => /cubic-bezier\(|\b\d{2,4}ms\b|animationDelay/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **The motion layer is domain-free**, as the `components` boundary requires.
+   * A wrapper that knows about goals or deposits is a feature component filed
+   * in the wrong place.
+   */
+  check(
+    'nothing in components/motion reaches into a feature',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/components/motion/'))
+      .filter(([, text]) => /@\/(modules|services|store)\//.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **The client-mandated disclosure is never animated.** The source document
+   * requires the coverage note at the time of recommendation; a note that fades
+   * in after the button beside it is a note the customer can act past. It is
+   * rendered, and it carries no entrance.
+   */
+  const safetyNote = sources.get('src/modules/goal-based-fd/components/safety-note.tsx');
+  const bestFitSource = sources.get('src/modules/goal-based-fd/components/best-fit-card.tsx');
+  ok('the recommendation carries a coverage note', Boolean(safetyNote));
+  ok('the best-fit card renders it', /<SafetyNote[\s/>]/.test(bestFitSource ?? ''));
+
+  /**
+   * **The coverage note appears at booking too**, which is the second half of
+   * the client document's requirement — and it is the *same component*, so the
+   * two screens cannot drift apart.
+   */
+  const bookingOverviewScreen = sources.get(
+    'src/modules/booking/components/booking-overview-screen.tsx',
+  );
+  ok('booking renders the coverage note', /<SafetyNote[\s/>]/.test(bookingOverviewScreen ?? ''));
+  check(
+    'and there is exactly one coverage note component',
+    [...sources.entries()]
+      .filter(([, text]) => /export function SafetyNote\(/.test(text))
+      .map(([file]) => file),
+    ['src/components/business/safety-note.tsx'],
+  );
+  ok(
+    'and the note itself has no entrance animation',
+    !/animate-|ds-stagger/.test(safetyNote ?? ''),
+  );
+
+  /**
+   * **No fake processing.** The finding state is driven by a real in-flight
+   * query. A timer anywhere in the module would be a way to make the platform
+   * look like it is working when it is not.
+   */
+  check(
+    'no timer fakes work in the goal module',
+    gbfFiles.filter((file) => /setTimeout|setInterval/.test(sources.get(file) ?? '')),
+    [],
+  );
+
+  section('Invariants · Derived Booking deposits declare their demo terms');
+
+  const overviewService = sources.get('src/modules/booking/services/booking-overview-service.ts');
+  const summaryUtil = sources.get('src/modules/booking/utils/investment-summary.ts');
+  const fdSummary = sources.get('src/modules/booking/components/selected-fd-summary.tsx');
+  const amountFieldSource = sources.get(
+    'src/modules/booking/components/investment-amount-field.tsx',
+  );
+
+  ok('the derivation service exists', Boolean(overviewService));
+
+  /**
+   * **A derived deposit never presents a placeholder as a bank term.**
+   *
+   * The catalogue publishes bank, rate, tenure and minimum. Everything else the
+   * Booking screens draw is structural, and each such field must be declared in
+   * `demoTerms` so the display layer can say so.
+   */
+  ok(
+    'the service declares its demo terms',
+    /DERIVED_DEMO_TERMS/.test(overviewService ?? '') &&
+      /demoTerms: DERIVED_DEMO_TERMS/.test(overviewService ?? ''),
+  );
+
+  /*
+    Every field the catalogue does not publish must appear in the declared list.
+    A new unpublished field added without declaring it is the regression here.
+  */
+  for (const term of [
+    'max-investment',
+    'tenure-range',
+    'payout-options',
+    'premature-withdrawal',
+    'auto-renewal',
+    'tagline',
+    'highlights',
+  ]) {
+    ok(`"${term}" is declared as a demo term`, new RegExp(`'${term}'`).test(overviewService ?? ''));
+  }
+
+  /** The summary builders route every demo-marked field through one gate. */
+  ok(
+    'the summary builder gates demo terms behind a single helper',
+    /function published\(/.test(summaryUtil ?? '') &&
+      /Confirmed with the bank/.test(summaryUtil ?? ''),
+  );
+  for (const term of [
+    'max-investment',
+    'tenure-range',
+    'payout-options',
+    'premature-withdrawal',
+    'auto-renewal',
+  ]) {
+    ok(
+      `the ${term} row is gated`,
+      new RegExp(`published\\(\\s*deposit,\\s*'${term}'`, 's').test(summaryUtil ?? ''),
+    );
+  }
+
+  /** Partner marketing copy is suppressed rather than borrowed. */
+  ok(
+    'the tagline is suppressed when it is a placeholder',
+    /demoTerms\?\.includes\('tagline'\)/.test(fdSummary ?? ''),
+  );
+  ok(
+    'highlights are suppressed when they are placeholders',
+    /demoTerms\?\.includes\('highlights'\)/.test(fdSummary ?? ''),
+  );
+  ok(
+    'and the maximum states it is unpublished rather than printing a figure',
+    /maxInvestmentPublished/.test(amountFieldSource ?? ''),
+  );
+
+  /**
+   * **No financial claim is fabricated.** The rate card carries only the term
+   * the product publishes, so no tenure is offered at a rate no bank quoted.
+   */
+  ok(
+    'the rate card is built from the product’s own published term',
+    /annualRate: terms\.baseRate/.test(overviewService ?? '') &&
+      /monthEquivalent === null \? \[\]/.test(overviewService ?? ''),
+  );
+  ok(
+    'and an unknown id still fails closed',
+    /product === null \? null/.test(overviewService ?? ''),
+  );
+
+  section('Invariants · Investor profile is asked once');
+
+  const multiScreen = sources.get(
+    'src/modules/goal-based-fd/components/multi-goal-planner-screen.tsx',
+  );
+  const planHook = sources.get('src/modules/goal-based-fd/hooks/use-multi-goal-plan.ts');
+  const goalRow = sources.get('src/modules/goal-based-fd/components/plan-goal-row.tsx');
+  const planUtil = sources.get('src/modules/goal-based-fd/utils/plan.ts');
+
+  /**
+   * **Senior-citizen status is asked once per journey, not once per goal.**
+   *
+   * It is an attribute of the depositor. Asking it beside every goal would put
+   * the same question on screen three times in a three-goal plan and would allow
+   * three answers to disagree about one fact.
+   */
+  check(
+    'the multi-goal screen renders the investor question exactly once',
+    (multiScreen ?? '').match(/<InvestorStep/g) ?? [],
+    ['<InvestorStep'],
+  );
+  ok('a goal row never asks it', !/InvestorStep|isSeniorCitizen|senior/i.test(goalRow ?? ''));
+  /* Scoped to the `GoalDraft` body: a per-goal senior field is the defect. */
+  const goalDraftBody =
+    /export interface GoalDraft \{([\s\S]*?)\n\}/.exec(planHook ?? '')?.[1] ?? '';
+  ok(
+    'the answer is one piece of journey state',
+    /const \[isSeniorCitizen, setIsSeniorCitizen\]/.test(planHook ?? ''),
+  );
+  ok('and a goal draft carries no senior field of its own', !/senior/i.test(goalDraftBody));
+  ok(
+    'and every goal consumes that one answer',
+    /plan\.investor\?\.isSeniorCitizen/.test(planUtil ?? ''),
+  );
+  ok(
+    'the single-goal planner still asks it once too',
+    (
+      (sources.get('src/modules/goal-based-fd/components/goal-planner-screen.tsx') ?? '').match(
+        /<InvestorStep/g,
+      ) ?? []
+    ).length === 1,
+  );
+
+  /**
+   * **Bank strength is a consideration, never a second rate rule.** It orders
+   * deposits the documented rules rank equally; promoting it above rate would be
+   * inventing a rule the client has not defined.
+   */
+  const rankingSource = sources.get('src/modules/goal-based-fd/utils/ranking.ts');
+  ok('ranking consults bank strength', /bankStrengthRank/.test(rankingSource ?? ''));
+  /* Measured inside the comparator, so the import at the top is not the match. */
+  const comparatorBody = (rankingSource ?? '').slice(
+    (rankingSource ?? '').indexOf('export function compareCandidates'),
+  );
+  ok(
+    'but only after the rate comparison',
+    comparatorBody.indexOf('annualRate') < comparatorBody.indexOf('bankStrengthRank'),
+  );
+
+  /**
+   * **The finding state describes work; it does not pace it.** No timer may
+   * appear in it — a staged sequence driven by a clock would be fake progress.
+   */
+  const status = sources.get('src/modules/goal-based-fd/components/planner-status.tsx');
+  ok('the finding state names the stages', /Comparing banks/.test(status ?? ''));
+  ok('and no timer drives them', !/setTimeout|setInterval/.test(status ?? ''));
+
+  /**
+   * **No internal rule id reaches the customer.** Ids are keys into
+   * `RULE_LABELS`; a raw `R-` or `§` string in customer-facing JSX would be
+   * engine vocabulary on screen.
+   */
+  check(
+    'no customer-facing component renders a raw rule id',
+    [
+      'src/modules/goal-based-fd/components/allocation-leg-card.tsx',
+      'src/modules/goal-based-fd/components/plan-results.tsx',
+      'src/modules/goal-based-fd/components/planner-results.tsx',
+      'src/modules/goal-based-fd/components/reason-list.tsx',
+      'src/modules/goal-based-fd/components/best-fit-card.tsx',
+    ].filter((file) => /['"`](?:R-[A-Z]|\u00a7\d)/.test(sources.get(file) ?? '')),
+    [],
+  );
+
+  /**
+   * **And no blocked-rule *message* names one either.**
+   *
+   * This is the surface the leak actually came through: `planner-results.tsx`
+   * renders each rule's `intent` and `missingData` verbatim in the "what this
+   * plan doesn't yet consider" disclosure, and two of those strings carried an
+   * id in parentheses. The `ruleId` field is exempt \u2014 it is the identifier
+   * itself and never reaches the DOM.
+   */
+  const RULE_ID_IN_PROSE = /(?:R-[A-Z]+-\d+|\u00a7\d+\.[a-z][\w-]*)/;
+  const blockedProse = [...(blocked ?? '').matchAll(/(?:intent|missingData):\s*\n?\s*'([^']*)'/g)]
+    .map((match) => match[1] ?? '')
+    .filter((text) => RULE_ID_IN_PROSE.test(text));
+
+  check('and no blocked-rule message names a rule id', blockedProse, []);
+
+  section('Invariants · Allocation policy (UC2 philosophy)');
+
+  const allocate = sources.get('src/modules/goal-based-fd/utils/allocate.ts');
+  const policyType = sources.get('src/modules/goal-based-fd/types/allocation-policy.ts');
+  // const policyConst = sources.get('src/modules/goal-based-fd/constants/allocation-policy.ts');
+
+  ok('the allocation engine exists', Boolean(allocate));
+  ok('and its policy is a declared type', Boolean(policyType));
+
+  /**
+   * **No scenario branches.** The documented allocations must fall out of the
+   * policy and the catalogue, never out of an `if` that recognises a goal. A
+   * goal-type literal inside the allocator is that failure, and it is the single
+   * most important thing to keep out of this file.
+   */
+  check(
+    'the allocator never branches on a goal type',
+    /'(?:emergency|education|retirement)'/.test(allocate ?? '') ? ['allocate.ts'] : [],
+    [],
+  );
+
+  /**
+   * **No documented figure is hardcoded.** ₹25,00,000, ₹20,00,000, ₹10,00,000
+   * and the four-leg shape are example values; an allocator that contains one is
+   * reproducing the worked example rather than the reasoning.
+   */
+  check(
+    'the allocator hardcodes no scenario amount',
+    /\b(?:2_?500_?000|2_?000_?000|1_?000_?000|500_?000)\b/.test(allocate ?? '')
+      ? ['allocate.ts']
+      : [],
+    [],
+  );
+
+  /**
+   * **Deposit-insurance cover is named once and configurable.** It is the
+   * statutory DICGC figure the platform already advertises — not the ₹5,00,000
+   * that appears in the client's worked examples, and not a confirmed maximum
+   * per bank. One declaration keeps those from being conflated.
+   */
+  check(
+    'the insurance cover is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /DEPOSIT_INSURANCE_COVERAGE\s*=/.test(text))
+      .map(([file]) => file),
+    ['src/modules/goal-based-fd/constants/allocation-policy.ts'],
+  );
+  ok(
+    'and the policy takes it as a field rather than reading a constant',
+    /insuredCoverageAmount/.test(allocate ?? '') &&
+      !/DEPOSIT_INSURANCE_COVERAGE/.test(allocate ?? ''),
+  );
+
+  /**
+   * **Cover is a consideration, not a cap.** The allocator must place money it
+   * cannot insure rather than refusing it, and must say so — the client has
+   * confirmed no maximum per bank, so a refusal would be an invented rule.
+   */
+  ok(
+    'an uninsurable remainder is still placed',
+    /remaining > 0/.test(allocate ?? '') &&
+      !/throw|return \[\];\s*\/\/ refuse/.test(allocate ?? ''),
+  );
+  ok(
+    'and the client concentration rule stays declared blocked',
+    /'\u00a711\.diversification'/.test(blocked ?? ''),
+  );
+
+  /**
+   * **Rate is not the objective.** The allocator preserves the suitability
+   * ranking it is handed; a sort by rate inside it would silently make yield the
+   * goal again.
+   */
+  check(
+    'the allocator never re-sorts by rate',
+    /\.sort\(|annualRate\s*[-<>]/.test(allocate ?? '') ? ['allocate.ts'] : [],
+    [],
+  );
+
+  section('Invariants · Visual layer (Motion & Visual Specification)');
+
+  const goalMark = sources.get('src/components/business/goal-mark.tsx');
+  const planMark = sources.get('src/modules/goal-based-fd/components/plan-mark.tsx');
+  const maturityFlow = sources.get('src/modules/goal-based-fd/components/maturity-flow.tsx');
+  /*
+    Vector marks only. `GoalMark` became commissioned raster artwork when the
+    design direction changed, so it is held to the raster rules below rather
+    than to `currentColor` — which an <Image> cannot inherit.
+  */
+  const marks = [['PlanMark', planMark]];
+
+  ok('the goal marks exist', Boolean(goalMark));
+  ok('the journey mark exists', Boolean(planMark));
+
+  /**
+   * **The asset strategy is inline SVG and nothing else.** No GIF, no Lottie,
+   * no video, no stock illustration — the spec says "prohibited", not
+   * "avoided", so it is asserted rather than trusted.
+   *
+   * **Two exemptions, both deliberate.**
+   *
+   * `public/banks/` holds partner-bank logos — real product data the customer
+   * needs in order to recognise who they would be depositing with.
+   *
+   * `public/goal-*.png` holds the approved goal artwork. The illustrations were
+   * SVG until the design direction changed to commissioned raster artwork; that
+   * is a product decision, so the rule moved with it rather than the artwork
+   * being reverted to satisfy a stale assertion. The prohibition that matters is
+   * unchanged and still enforced below: **no animated or video asset**, and no
+   * raster anywhere else.
+   */
+  const shippedAssets = walk2(path.join(ROOT, 'public')).map(rel);
+
+  check(
+    'no animated or video asset is shipped',
+    shippedAssets.filter((file) => /\.(gif|lottie|mp4|webm|apng)$/i.test(file)),
+    [],
+  );
+  check(
+    'and no raster outside the bank logos and approved goal artwork',
+    shippedAssets.filter(
+      (file) =>
+        /\.(png|jpe?g|webp|avif)$/i.test(file) &&
+        !file.startsWith('public/banks/') &&
+        !/^public\/goal-[\w-]+\.(png|webp)$/.test(file),
+    ),
+    [],
+  );
+
+  check(
+    'no component references an animated or raster asset',
+    [...sources.entries()]
+      .filter(([, text]) => /\.(gif|lottie)\b/i.test(text) || /lottie|LottiePlayer/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **Marks inherit the theme.** `currentColor` and tokens only — a hex in a
+   * mark is a second palette starting, and it would not follow the brand.
+   */
+  for (const [name, text] of marks) {
+    ok(`${name} hardcodes no colour`, !/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(text ?? ''));
+    ok(`${name} inherits currentColor`, /currentColor/.test(text ?? ''));
+    ok(`${name} is decorative`, /aria-hidden="true"/.test(text ?? ''));
+  }
+
+  /**
+   * **The goal artwork is raster, and is held to the raster rules.**
+   *
+   * `GoalMark` drew SVG until the commissioned illustrations were approved. The
+   * colour rule it used to satisfy — inherit `currentColor` — cannot apply to an
+   * `<Image>`, so it is replaced by the stronger statement for artwork the
+   * component does not draw: **it draws nothing at all**. No geometry, no fill,
+   * no palette, therefore nothing for a theme to disagree with and nothing that
+   * can be made to claim a figure.
+   */
+  ok('GoalMark renders the approved artwork', /next\/image/.test(goalMark ?? ''));
+  ok('and draws no geometry of its own', !/<svg|<circle|<path|fill=/.test(goalMark ?? ''));
+  ok('so it hardcodes no colour', !/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(goalMark ?? ''));
+  ok(
+    'and is decorative',
+    /alt=""/.test(goalMark ?? '') && /aria-hidden="true"/.test(goalMark ?? ''),
+  );
+
+  /*
+    Every path it can render is declared in one map, and every one must exist.
+    A typo would otherwise ship as a broken illustration on every screen that
+    lists goals, with nothing failing anywhere.
+  */
+  const goalArtworkPaths = [...(goalMark ?? '').matchAll(/'(\/goal-[\w-]+\.png)'/g)].map(
+    (match) => match[1],
+  );
+  ok('it declares one artwork path per goal', goalArtworkPaths.length === 3);
+  check(
+    'and every declared file is shipped',
+    goalArtworkPaths.filter((asset) => !shippedAssets.includes(`public${asset}`)),
+    [],
+  );
+
+  /**
+   * **The open ring is never filled.** It is the estimate — in the goal marks,
+   * in the planner's destination, and on the maturity row. Filling it would be
+   * the illustration claiming a certainty the engine does not have, which is
+   * the single most important rule in the visual grammar.
+   */
+  ok(
+    'the planner destination is drawn open',
+    /cx=\{STATIONS\[3\]\.cx\}[\s\S]*?fill="none"/.test(planMark ?? ''),
+  );
+  ok(
+    'and the maturity estimate is drawn open',
+    /kind === 'estimated' \? 'none' : 'currentColor'/.test(maturityFlow ?? ''),
+  );
+
+  /**
+   * **The journey mark holds no state of its own.** It is a pure function of
+   * answers the planner already has, so it cannot drift from the questions or
+   * go stale behind them.
+   */
+  ok('the journey mark stores nothing', !/useState|useRef|useEffect/.test(planMark ?? ''));
+
+  /**
+   * **Nothing is carried by the illustration alone.** The `Stepper` remains the
+   * announced progress indicator at every width; the mark is hidden below `md`
+   * and must never be the only report of progress.
+   */
+  const screenSource = sources.get('src/modules/goal-based-fd/components/goal-planner-screen.tsx');
+  /**
+   * **The Stepper remains the announced progress indicator.** The header's
+   * journey mark was replaced by approved artwork, so progress is reported by
+   * the Stepper alone — which is what it was always for. The mark must not
+   * linger as a dead import.
+   */
+  ok('the Stepper is still rendered', /<Stepper/.test(screenSource ?? ''));
+  ok('and the retired journey mark is not left imported', !/PlanMark/.test(screenSource ?? ''));
+  ok(
+    'the header artwork is decorative',
+    /alt=""/.test(screenSource ?? '') && /goal-based-icon/.test(screenSource ?? ''),
+  );
+
+  /** The draw duration is a token, like every other duration in the system. */
+  ok('the draw duration is a token', /--ds-duration-draw:/.test(motionTokens));
+
+  /**
+   * **An estimated maturity is never drawn as a settled one.**
+   *
+   * This was asserted on the retirement ring inside `GoalMark`, which drew the
+   * destination as an open circle. That ring is now inside the commissioned
+   * artwork, so the assertion moves to where a ring is still *drawn* — and
+   * becomes exhaustive rather than a check on one hardcoded circle: **no
+   * component may fill a ring that represents an estimate.**
+   *
+   * `MaturityFlow` and `PlanMark` are the two that draw one, and both are
+   * already asserted open above. What is added here is the guard against a
+   * third appearing: `GoalMark` draws no ring at all, so it cannot close one.
+   */
+  ok('the goal artwork draws no ring it could close', !/<circle|r="\d/.test(goalMark ?? ''));
+  check(
+    'and no component fills a ring marked as an estimate',
+    [...sources.entries()]
+      .filter(([, text]) => /estimated[\s\S]{0,80}fill="currentColor"/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **No illustration implies a guarantee or an achievement.** Deposit
+   * insurance and product terms are conditional (client source document), and
+   * selecting a goal is not reaching it. The scenes may say "selected"; they
+   * may not say protected, guaranteed, secured or achieved.
+   *
+   * Comments are stripped before this runs, so the prose explaining *why* these
+   * words are forbidden cannot itself trip the probe.
+   */
+  check(
+    'no goal illustration claims protection or achievement',
+    [...sources.entries()]
+      .filter(([file]) => /goal-mark|goal-entry-list/.test(file))
+      .filter(([, text]) =>
+        /\b(guaranteed|fully protected|milestone reached|target met|capital secured)\b/i.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **Selection never blocks navigation.** The confirmation is transient and
+   * runs alongside the router. A timer or an awaited transition between the
+   * click and the navigation would turn a confirmation into a delay.
+   */
+  const entryList = sources.get('src/modules/marketplace/components/goal-entry-list.tsx');
+  ok('the goal columns navigate through a real link', /<Link/.test(entryList ?? ''));
+  ok(
+    'and nothing defers the navigation',
+    !/setTimeout|preventDefault|router\.push/.test(entryList ?? ''),
+  );
+
+  /**
+   * **The illustrations are never the semantic content.** Each column states
+   * its goal and what it means in text; the scene beside it is decorative.
+   */
+  ok('each column names its goal in text', /goal\.label/.test(entryList ?? ''));
+  ok('and explains it in text', /goal\.description/.test(entryList ?? ''));
+
+  /** The touch target floor survives the new layout. */
+  ok(
+    'the goal columns keep a comfortable touch target',
+    /min-h-16|min-h-\[\d+px\]/.test(entryList ?? ''),
+  );
+}
+
+/** Directory walk that tolerates the directory being absent. */
+function walk2(dir) {
+  try {
+    return readdirSync(dir).flatMap((entry) => {
+      const full = path.join(dir, entry);
+      return statSync(full).isDirectory() ? walk2(full) : [full];
+    });
+  } catch {
+    return [];
+  }
 }
