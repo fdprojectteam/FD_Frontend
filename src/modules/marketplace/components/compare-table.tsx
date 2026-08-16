@@ -57,6 +57,8 @@ export function CompareTable({
   rows,
   onRemove,
   belowMinimumIds = [],
+  selectedProductId = null,
+  onSelect,
 }: CompareTableProps) {
   return (
     // Four columns overflow below the container width; the scroller keeps the
@@ -183,19 +185,18 @@ export function CompareTable({
                   className="border-border-default/50 border-l px-8 pt-10 text-center"
                 >
                   {/*
-                  Booking is Phase 3 (decision D3). Inert rather than absent, so
-                  the approved layout is intact, and `aria-disabled` rather than
-                  `disabled` so the control stays reachable and can explain
-                  itself. It carries no state — there is nothing yet to carry it
-                  to.
+                  Booking's entry point from Comparison, matching the card view
+                  exactly: it chooses a product and the single action bar below
+                  navigates. Two presentations, one selection, one destination.
                 */}
                   <Button
-                    variant="secondary"
+                    variant={selectedProductId === product.id ? 'primary' : 'secondary'}
                     className="w-full"
-                    aria-disabled="true"
+                    aria-pressed={selectedProductId === product.id}
                     aria-label={selectLabel(product.bank.name)}
+                    onClick={() => onSelect?.(product.id)}
                   >
-                    Select
+                    {selectedProductId === product.id ? 'Selected' : 'Select'}
                   </Button>
                 </td>
               ))}

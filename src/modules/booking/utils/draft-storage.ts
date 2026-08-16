@@ -27,7 +27,7 @@ import type { BookingDraft, PersistedBookingDraft } from '../types/draft';
  * half-valid object hydrating into a financial form. Failing closed is the only
  * safe direction here.
  */
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 /** Namespaced and versioned; one draft per product. */
 export function draftStorageKey(productId: string): string {
@@ -76,6 +76,27 @@ const stepIdSchema = z.enum([
  * behaviour already designed for. A version bump would discard good drafts to
  * announce a change that costs nothing.
  */
+const paymentMethodSchema = z.enum([
+  'net-banking',
+  'upi',
+  'debit-card',
+  'credit-card',
+  'neft-rtgs',
+]);
+
+/**
+ * Version 2 adds the sections screens 4–8 fill in.
+ *
+ * **A genuine version bump, not a narrowing.** The rule stated above — that a
+ * schema which only narrows needs no bump — does not apply here: these are new
+ * required keys, so a v1 draft cannot satisfy v2 and would fail closed with no
+ * explanation. Bumping the key means a v1 draft is simply not found, and the
+ * customer starts a clean booking rather than resuming a half-shaped one.
+ *
+ * **Still no PII.** `bankAccountId` is a reference to a saved account, not an
+ * account number; the account's holder name, IFSC and last four digits are
+ * never written here. The nominee section remains excluded at the type level.
+ */
 const persistedSchema = z.object({
   version: z.literal(STORAGE_VERSION),
   draft: z.object({
@@ -85,6 +106,19 @@ const persistedSchema = z.object({
       tenureMonths: z.number().int().positive().nullable(),
       payoutOption: payoutOptionSchema.nullable(),
     }),
+    bankAccountId: z.string().min(1).nullable(),
+    declarations: z.object({
+      detailsConfirmed: z.boolean(),
+      termsAccepted: z.boolean(),
+    }),
+    paymentMethod: paymentMethodSchema.nullable(),
+    confirmation: z
+      .object({
+        reference: z.string().min(1),
+        paidAt: z.number().int().nonnegative(),
+        confirmedAt: z.number().int().nonnegative().nullable(),
+      })
+      .nullable(),
     furthestStep: stepIdSchema,
     updatedAt: z.number().int().nonnegative(),
   }),
@@ -169,6 +203,10 @@ export function writeDraft(draft: BookingDraft): void {
     draft: {
       productId: draft.productId,
       investment: draft.investment,
+      bankAccountId: draft.bankAccountId,
+      declarations: draft.declarations,
+      paymentMethod: draft.paymentMethod,
+      confirmation: draft.confirmation,
       furthestStep: draft.furthestStep,
       updatedAt: draft.updatedAt,
       // `nominee` cannot appear here: `PersistedBookingDraft` omits it, so

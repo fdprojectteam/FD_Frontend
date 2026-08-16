@@ -48,6 +48,8 @@ export function CompareCards({
   rows,
   onRemove,
   belowMinimumIds = [],
+  selectedProductId = null,
+  onSelect,
 }: CompareCardsProps) {
   return (
     <ul className="flex list-none flex-col gap-5">
@@ -96,14 +98,24 @@ export function CompareCards({
               })}
             </div>
 
-            {/* Booking is Phase 3 (decision D3): inert, and carrying no state. */}
+            {/*
+              Booking's entry point from Comparison. It **chooses**, it does not
+              navigate: `CompareActionBar` carries the single "Proceed to
+              Booking" affordance, as the approved screen draws it, so there is
+              one destination rather than one per column.
+
+              `aria-pressed` rather than a disabled state — the control is a
+              toggle now, and the pressed state is what tells a screen-reader
+              user which product the bottom action will book.
+            */}
             <Button
-              variant="secondary"
+              variant={selectedProductId === product.id ? 'primary' : 'secondary'}
               className="w-full"
-              aria-disabled="true"
+              aria-pressed={selectedProductId === product.id}
               aria-label={selectLabel(product.bank.name)}
+              onClick={() => onSelect?.(product.id)}
             >
-              Select
+              {selectedProductId === product.id ? 'Selected' : 'Select'}
             </Button>
           </article>
         </li>

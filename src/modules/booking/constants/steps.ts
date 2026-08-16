@@ -1,4 +1,8 @@
-import type { BookingStep } from '../types/booking';
+import type { Route } from 'next';
+
+import { ROUTES } from '@/constants/routes';
+
+import type { BookingStep, BookingStepId } from '../types/booking';
 
 /**
  * The approved booking journey (T3.1).
@@ -26,3 +30,31 @@ export const BOOKING_STEPS: readonly BookingStep[] = [
   { id: 'processing', label: 'Processing' },
   { id: 'success', label: 'Success' },
 ] as const;
+
+/**
+ * The route each step lives at — the single bridge between the state machine's
+ * vocabulary and the URL's.
+ *
+ * A total `Record`, so adding a ninth step is a compile error here rather than a
+ * guard that silently cannot navigate to it. Every entry goes through `ROUTES`;
+ * no booking path is written as a string anywhere in this module.
+ *
+ * This is also what makes the convergence checkable: there is **one** map from
+ * step to route, so a second booking flow would have to add a second map, and
+ * an invariant asserts there is only one.
+ */
+export const BOOKING_STEP_ROUTES: Record<BookingStepId, (productId: string) => Route> = {
+  overview: ROUTES.bookingOverview,
+  investment: ROUTES.bookingInvestmentDetails,
+  nominee: ROUTES.bookingNominee,
+  'bank-account': ROUTES.bookingBankAccount,
+  review: ROUTES.bookingReview,
+  payment: ROUTES.bookingPayment,
+  processing: ROUTES.bookingProcessing,
+  success: ROUTES.bookingSuccess,
+};
+
+/** The route for one step of one product's booking. */
+export function bookingStepRoute(stepId: BookingStepId, productId: string): Route {
+  return BOOKING_STEP_ROUTES[stepId](productId);
+}

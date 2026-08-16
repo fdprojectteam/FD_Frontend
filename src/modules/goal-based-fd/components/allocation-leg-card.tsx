@@ -36,7 +36,13 @@ import { bookingHandoffHref } from '../utils/booking-handoff';
  * rating should order a recommendation.
  */
 export function AllocationLegCard({ leg }: { leg: AllocationLeg }) {
-  const href = bookingHandoffHref(leg.productId);
+  /*
+      The leg's own amount travels with its own product — the rupees the
+      allocator placed in *this* deposit, not the plan's total. A leg that
+      handed over the whole plan would open Booking on a figure the customer
+      never assigned to this bank.
+    */
+  const href = bookingHandoffHref(leg.productId, leg.amount);
   const bookable = isBookableProduct(leg.productId);
   const term = formatTenureExact(publishedTenure({ tenureMonths: leg.quote.tenureMonths }));
 

@@ -27,7 +27,8 @@ import { TARGET_ADJUSTMENTS } from '../utils/target';
  *
  * The rate is labelled **Indicative**, the maturity **Estimated**, and the
  * footer says plainly where the real numbers come from. The handoff carries a
- * product id and nothing else — `toBookingHandoff` reads one field — so the
+ * product id and the amount the customer stated — `toBookingHandoff` reads those
+ * two fields and no computed figure — so the
  * figures here can never become the terms of a booking.
  *
  * The bank logo appears because it is the fastest way for a customer to

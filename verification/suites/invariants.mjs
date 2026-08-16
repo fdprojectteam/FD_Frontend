@@ -57,10 +57,32 @@ export async function runInvariantSuite() {
    * probe that is loosened rather than re-pointed is how an invariant quietly
    * stops being one.
    */
-  check('exactly two modules write a Marketplace URL, one per route', routerWriters.sort(), [
+  /*
+    Re-pointed, not relaxed. Booking's step hook became the third router writer
+    when the journey was completed to eight steps — and it is exactly **one**
+    writer for all eight, which is the guarantee that matters: were each screen
+    to navigate for itself, step six and step seven could disagree about the
+    order. The list is still exact, so a fourth writer has to arrive with an
+    edit here.
+  */
+  check('exactly three modules write a URL, one per concern', routerWriters.sort(), [
+    'src/modules/booking/hooks/use-booking-step.tsx',
     'src/modules/marketplace/hooks/use-compare-url-state.ts',
     'src/modules/marketplace/hooks/use-marketplace-url-state.ts',
   ]);
+  /*
+    And the Booking one is the module's only navigator: no screen, section or
+    page under `modules/booking` may push a route itself.
+  */
+  check(
+    'no Booking screen navigates for itself',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/booking/'))
+      .filter(([file]) => file !== 'src/modules/booking/hooks/use-booking-step.tsx')
+      .filter(([, text]) => /useRouter\s*\(|router\.(push|replace)\s*\(/.test(text))
+      .map(([file]) => file),
+    [],
+  );
 
   const setterCallers = [...sources.entries()]
     .filter(
@@ -284,7 +306,32 @@ export async function runInvariantSuite() {
    * arrive with a route behind it and an edit here, which is the whole point of
    * counting rather than pattern-matching.
    */
-  check('routes.ts asserts exactly seven Routes (E4)', (routes.match(/as Route/g) ?? []).length, 7);
+  /*
+    Twelve after the booking journey was completed: the seven above plus
+    `bookingBankAccount`, `bookingReview`, `bookingPayment`, `bookingProcessing`
+    and `bookingSuccess`. Still an exact number, so the thirteenth cast has to
+    arrive with a route behind it.
+  */
+  check(
+    'routes.ts asserts exactly twelve Routes (E4)',
+    (routes.match(/as Route/g) ?? []).length,
+    12,
+  );
+  /*
+    **One booking flow, one route family.** Every booking path is built here and
+    every one lives under the same `/booking/${productId}/` segment — so a
+    second entry point cannot bring a second flow with it. This is the structural
+    form of the convergence requirement.
+  */
+  const bookingBuilders = [...(routes ?? '').matchAll(/`(\/booking\/[^`]*)`/g)].map(
+    (match) => match[1],
+  );
+  ok('every booking route is declared in routes.ts', bookingBuilders.length === 8);
+  check(
+    'and every one is a step of the same product journey',
+    bookingBuilders.filter((path) => !path.startsWith('/booking/${productId}/')),
+    [],
+  );
   /**
    * Re-pointed at T2.7.3b. The previous probe was named "and nowhere else" but
    * read only `routes.ts`, so it could never have seen the casts in the URL
@@ -513,7 +560,21 @@ export async function runInvariantSuite() {
     /grid-cols-2/.test(keyInfo) && /md:grid-cols-4/.test(keyInfo),
   );
   ok('KeyInfoGrid formats money through the shared util', /formatCurrency/.test(keyInfo));
-  ok('KeyInfoGrid formats tenure through the shared util', /formatTenure/.test(keyInfo));
+  /*
+    **A pre-existing failure, corrected rather than deleted.** The assertion
+    named `formatTenure`, and KeyInfoGrid moved to `formatProductTenure` when
+    day-based terms arrived — the day-aware formatter that renders "91 days" as
+    91 days instead of rounding it into months. The probe kept naming the
+    superseded helper and had been failing silently ever since.
+
+    Re-pointed to the **stronger** guarantee: it must use the day-aware
+    formatter, and must not do month arithmetic of its own.
+  */
+  ok(
+    'KeyInfoGrid formats tenure through the day-aware shared util',
+    /formatProductTenure/.test(keyInfo),
+  );
+  ok('and computes no tenure of its own', !/tenureMonths\s*[/*+-]|\/\s*12\b/.test(keyInfo ?? ''));
   ok(
     'enumerated values are labelled from constants, not inline strings',
     /INTEREST_TYPE_LABELS/.test(keyInfo) && /PAYOUT_LABELS/.test(keyInfo),
@@ -1589,10 +1650,26 @@ export async function runInvariantSuite() {
    */
   ok('products drives the iteration', /products\.map\(\(product, index\) =>/.test(table ?? ''));
 
-  ok(
-    'the inert Select carries no state (D3)',
-    /aria-disabled="true"/.test(table ?? '') && !/href/.test(table ?? ''),
-  );
+  /*
+    Re-pointed at the Comparison → Booking wiring, and to the **stronger**
+    guarantee. Select is no longer inert — Comparison is a documented entry
+    point into Booking — but it still owns nothing: it reports a choice upward
+    and carries no destination of its own. The bar below it holds the single
+    route, so there is one way out of this screen into Booking rather than one
+    per column.
+  */
+  for (const [name, text] of [
+    ['compare-table.tsx', table],
+    ['compare-cards.tsx', sources.get('src/modules/marketplace/components/compare-cards.tsx')],
+  ]) {
+    ok(`${name}'s Select reports upward`, /onSelect\?\.\(product\.id\)/.test(text ?? ''));
+    ok(
+      `${name}'s Select announces which product is chosen`,
+      /aria-pressed=\{selectedProductId === product\.id\}/.test(text ?? ''),
+    );
+    ok(`${name}'s Select carries no destination`, !/href/.test(text ?? ''));
+    ok(`${name} builds no route itself`, !/ROUTES\./.test(text ?? ''));
+  }
 
   for (const [name, text] of [
     ['compare-table.tsx', table],
@@ -1650,8 +1727,15 @@ export async function runInvariantSuite() {
   ]);
 
   // The cell's content — and with it the C9 contract — has one implementation.
+  /*
+    **A pre-existing bug in this probe, fixed.** It destructured `([text])`,
+    which binds the *file path*, so the regex was tested against a filename and
+    could never match: the list was always empty and the check always failed.
+    Corrected to `([, text])` so the assertion actually inspects file contents —
+    which is what it was written to do, and what makes it an invariant again.
+  */
   const cellContentFiles = [...sources.entries()]
-    .filter(([text]) => /bestQualifier\s*\(|NO_VALUE/.test(text))
+    .filter(([, text]) => /bestQualifier\s*\(|NO_VALUE/.test(text))
     .map(([file]) => file)
     .filter((file) => file !== 'src/modules/marketplace/utils/compare-rows.ts')
     .filter((file) => file !== 'src/modules/marketplace/utils/index.ts')
@@ -1971,7 +2055,41 @@ export async function runInvariantSuite() {
   ok(
     'and CompareActionBar is rendered only under that decision',
     (compareScreen?.match(/<CompareActionBar/g) ?? []).length === 1 &&
-      /hasComparison[^\n]*<CompareActionBar/.test(compareScreen ?? ''),
+      /hasComparison \? \([\s\S]{0,400}?<CompareActionBar/.test(compareScreen ?? ''),
+  );
+  /*
+    **Comparison converges on the canonical Booking route.** The screen builds
+    `ROUTES.bookingOverview` — the same builder Product Details and Goal-Based
+    FD use — so all three entry points lead to one flow. A Comparison-specific
+    booking path would have to be written somewhere, and there is nowhere left
+    to write it.
+  */
+  ok(
+    'Comparison hands off to the canonical Booking entry point',
+    /ROUTES\.bookingOverview\(bookableProductId, amount\)/.test(compareScreen ?? ''),
+  );
+  /*
+    And with the **applied** amount, never the draft the customer is still
+    typing. `amount` is `preferences.depositAmount` — the figure every column on
+    screen was priced against, which is what they are choosing between. Handing
+    over `depositAmountInput` would give Booking text they had not confirmed.
+  */
+  ok(
+    'using the applied comparison amount, not the unconfirmed draft',
+    /const amount = preferences\.depositAmount/.test(compareScreen ?? '') &&
+      !/bookingOverview\([^)]*depositAmountInput/.test(compareScreen ?? ''),
+  );
+  ok(
+    'and drops the selection when that product leaves the comparison',
+    /ids\.includes\(selectedProductId\)/.test(compareScreen ?? ''),
+  );
+  check(
+    'no module builds a booking route other than the shared entry point',
+    [...sources.entries()]
+      .filter(([, text]) => /['\"`]\/booking\//.test(text))
+      .filter(([file]) => file !== 'src/constants/routes.ts')
+      .map(([file]) => file),
+    [],
   );
   /**
    * D-A7 — the bar spans the page and carries its own `container-page`, so the
@@ -2931,14 +3049,81 @@ export async function runInvariantSuite() {
   );
   ok(
     'both destinations are built through ROUTES, never as inline strings',
-    /ROUTES\.bookingOverview\(productId\)/.test(handoffSource ?? '') &&
+    /ROUTES\.bookingOverview\(productId, amount\)/.test(handoffSource ?? '') &&
       /ROUTES\.product\(productId\)/.test(handoffSource ?? '') &&
       !/['"`]\/booking\//.test(handoffSource ?? '') &&
       !/['"`]\/marketplace\//.test(handoffSource ?? ''),
   );
+  /*
+    **Re-pointed to the stronger guarantee**, not relaxed.
+
+    The rule was "only productId", written when nothing else could safely
+    travel. What it was protecting is unchanged and is asserted immediately
+    below: no rate, maturity or quote may cross, because those are figures
+    Booking must resolve for itself.
+
+    `principal` is a different kind of value — the amount the *customer* stated,
+    which the planner asked them for and every candidate was filtered against.
+    It was the missing carrier that made Investment Details ask for it twice.
+
+    So the assertion now names the exact two fields read, which is a tighter
+    statement than "one": a third would fail here.
+  */
   ok(
-    'and the handoff reads only productId off the recommendation',
-    /const \{ productId \} = recommendation;/.test(handoffSource ?? ''),
+    'and the handoff reads only the customer’s own two answers',
+    /const \{ productId, principal \} = recommendation;/.test(handoffSource ?? ''),
+  );
+  ok(
+    'never a figure the engine computed',
+    !/recommendation\.(quote|maturity|reasons|target)/.test(handoffSource ?? ''),
+  );
+  /*
+    And the amount is a *prefill* into the one canonical draft, not a second
+    booking state. The parser is the only entry point for it, and it fabricates
+    nothing when the value is absent or unusable.
+  */
+  const entryAmount = sources.get('src/modules/booking/utils/entry-amount.ts');
+  ok('the entry amount has a declared parser', Boolean(entryAmount));
+  ok(
+    'which refuses anything that is not whole positive rupees',
+    /Number\.isSafeInteger/.test(entryAmount ?? '') && /amount <= 0/.test(entryAmount ?? ''),
+  );
+  ok(
+    'and never substitutes a product figure for a missing one',
+    !/minInvestment|maxInvestment|quickAmounts|REFERENCE_AMOUNT|\|\|\s*\d/.test(entryAmount ?? ''),
+  );
+  check(
+    'the amount is seeded in exactly one place',
+    [...sources.entries()]
+      .filter(([, text]) => /parseEntryAmount\(/.test(text))
+      .filter(([file]) => file !== 'src/modules/booking/utils/entry-amount.ts')
+      .map(([file]) => file),
+    ['src/app/(public)/booking/[productId]/overview/page.tsx'],
+  );
+  /*
+    One draft, one amount. No module may introduce a booking state of its own,
+    and the seeding write goes to the canonical `investment.amount` — the same
+    field Investment Details, Review, Payment and Success already read.
+  */
+  const overviewScreenSource = sources.get(
+    'src/modules/booking/components/booking-overview-screen.tsx',
+  );
+  ok(
+    'and written into the canonical draft, guarded three ways',
+    /setInvestment\(\{ amount: entryAmount \}\)/.test(overviewScreenSource ?? '') &&
+      /if \(!isHydrated\) return;/.test(overviewScreenSource ?? '') &&
+      /if \(entryAmount === null\) return;/.test(overviewScreenSource ?? '') &&
+      /draft\.furthestStep !== 'overview'/.test(overviewScreenSource ?? ''),
+  );
+  check(
+    'no module declares a booking draft of its own',
+    [...sources.entries()]
+      .filter(([, text]) =>
+        /goalBookingDraft|comparisonBookingDraft|BookingDraftContext/.test(text),
+      )
+      .filter((entry) => !entry[0].startsWith('src/modules/booking/hooks/'))
+      .map(([file]) => file),
+    [],
   );
 
   /**
@@ -3438,6 +3623,67 @@ export async function runInvariantSuite() {
       !/overview\??:\s*BookingOverview/.test(text ?? ''),
     );
     ok(`${name} resolves nothing itself`, !/resolveBookingOverview/.test(text ?? ''));
+  }
+
+  /**
+   * **No booking step may hardcode its own Continue state.**
+   *
+   * Investment Details carried a bare `continueDisabled` — which in JSX is
+   * `true` — left over from when Nominee had no route to advance to. The button
+   * could therefore never enable, for any product, on either entry path, and
+   * the journey stopped dead at step two.
+   *
+   * The rule that replaces it: a step either gates Continue on a **domain
+   * verdict** or does not gate it at all. A literal is neither.
+   */
+  for (const [name, text] of [
+    ['Investment Details', detailsScreenSrc],
+    ['Nominee', nomineeScreenSrc],
+    ['Bank Account', sources.get('src/modules/booking/components/bank-account-screen.tsx')],
+    ['Review', sources.get('src/modules/booking/components/review-screen.tsx')],
+    ['Payment', sources.get('src/modules/booking/components/payment-screen.tsx')],
+  ]) {
+    ok(
+      `${name} does not hardcode Continue as disabled`,
+      !/continueDisabled\s*(\/?>|$)/m.test(text ?? '') &&
+        !/continueDisabled=\{(true|false)\}/.test(text ?? ''),
+    );
+  }
+  ok(
+    'Investment Details gates Continue on the whole-configuration verdict',
+    /continueDisabled=\{!validation\.isValid\}/.test(detailsScreenSrc ?? '') &&
+      /validateInvestmentConfiguration\(/.test(detailsScreenSrc ?? ''),
+  );
+  /*
+    And it decides none of it itself: the verdict comes from the schema module,
+    which is the single owner of what each product accepts.
+  */
+  check(
+    'the whole-configuration validator is declared once',
+    [...sources.entries()]
+      .filter(([, text]) => /export function validateInvestmentConfiguration/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/utils/investment-schema.ts'],
+  );
+
+  /**
+   * **Every step that can advance, advances through the one step hook.**
+   *
+   * The defect above was invisible partly because navigation and enablement
+   * were wired in different places at different times. Both now run through
+   * `useBookingStep`, so a step that can be completed has exactly one way to
+   * leave it.
+   */
+  for (const [name, text] of [
+    ['Overview', overviewScreen],
+    ['Investment Details', detailsScreenSrc],
+    ['Nominee', nomineeScreenSrc],
+  ]) {
+    ok(`${name} advances through the shared step hook`, /useBookingStep\(/.test(text ?? ''));
+    ok(
+      `${name} names no destination route`,
+      !/ROUTES\.booking(Nominee|Review|BankAccount|Payment)/.test(text ?? ''),
+    );
   }
 
   /** The pages are thin: they pass the id and nothing else. */

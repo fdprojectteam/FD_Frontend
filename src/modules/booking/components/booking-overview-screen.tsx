@@ -2,7 +2,7 @@
 
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { SafetyNote } from '@/components/business';
 import { Card } from '@/components/ui/card';
@@ -14,7 +14,9 @@ import { BookingStepActions } from './booking-step-actions';
 import { InvestmentSummary } from './investment-summary';
 import { SelectedFdSummary } from './selected-fd-summary';
 import { BOOKING_PHASES, resolveBookingPhase } from '../constants/phases';
+import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
+import { useBookingStep } from '../hooks/use-booking-step';
 import { buildInvestmentSummaryRows } from '../utils/investment-summary';
 
 /**
@@ -50,9 +52,20 @@ import { buildInvestmentSummaryRows } from '../utils/investment-summary';
  */
 export interface BookingOverviewScreenProps {
   productId: string;
+  /**
+   * The amount the entry flow already established, or `null`.
+   *
+   * Parsed by the route from its own `searchParams`, so this screen receives a
+   * number and never a URL. See `utils/entry-amount.ts` for why an amount may
+   * cross the boundary when a rate may not.
+   */
+  entryAmount?: number | null;
 }
 
-export function BookingOverviewScreen({ productId }: BookingOverviewScreenProps) {
+export function BookingOverviewScreen({
+  productId,
+  entryAmount = null,
+}: BookingOverviewScreenProps) {
   /*
     The deposit comes from the booking session, resolved once by the layout —
     not from a prop and not from a fixture. There is deliberately no way to hand
@@ -61,6 +74,44 @@ export function BookingOverviewScreen({ productId }: BookingOverviewScreenProps)
   const overview = useBookingProduct();
 
   const { deposit, assurances, importantInformation, nextStep } = overview;
+
+  const { draft, isHydrated, setInvestment } = useBookingDraft();
+
+  /**
+   * Seed the amount the entry flow already collected — **once, into the one
+   * canonical draft**.
+   *
+   * This is the whole of the fix for the duplicate amount request. Goal-Based
+   * FD and Comparison both establish an amount before the customer arrives
+   * here; it simply had no way to travel. It now arrives on the entry route,
+   * lands in `draft.investment.amount`, and from that point there is exactly one
+   * authority for it — the same field every later step already reads. No second
+   * draft, no parallel state, and nothing downstream knows an entry flow
+   * existed.
+   *
+   * ## Three guards, each closing a different failure
+   *
+   * **`isHydrated`** — the draft is restored from storage in an effect, so
+   * writing before that would overwrite a resumed booking with the URL's value.
+   *
+   * **`entryAmount !== null`** — a missing or unusable parameter writes nothing.
+   * Investment Details then reports the amount as missing in its own words,
+   * which is the existing intended behaviour. No minimum, quick amount or
+   * product default is ever substituted.
+   *
+   * **`furthestStep === 'overview'`** — the customer has not yet reached the
+   * screen where the amount is editable, so there is no edit of theirs to
+   * overwrite. Past that point the draft wins, and a stale link cannot silently
+   * change an amount they have since adjusted.
+   */
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (entryAmount === null) return;
+    if (draft.furthestStep !== 'overview') return;
+    if (draft.investment.amount === entryAmount) return;
+
+    setInvestment({ amount: entryAmount });
+  }, [isHydrated, entryAmount, draft.furthestStep, draft.investment.amount, setInvestment]);
 
   const phaseId = resolveBookingPhase('overview');
 
@@ -72,13 +123,14 @@ export function BookingOverviewScreen({ productId }: BookingOverviewScreenProps)
   const summaryRows = useMemo(() => buildInvestmentSummaryRows(deposit), [deposit]);
 
   /**
-   * Continue creates or resumes the booking session (spec 21a §10) and moves to
-   * Investment Details. Both are T3.2 work: the endpoint is unspecified and the
-   * route does not exist, so this is the seam rather than a redirect to a 404.
+   * Continue moves to Investment Details (spec 21a §10).
+   *
+   * The booking *session* the spec also describes is a server concept and there
+   * is still no endpoint for it; what exists is the draft, seated on the layout,
+   * which `useBookingStep` advances before navigating. No session id appears in
+   * the URL because none has been issued.
    */
-  const handleContinue = () => {
-    // Intentionally unimplemented until T3.2 — see the docstring above.
-  };
+  const { continueTo: handleContinue } = useBookingStep('overview', productId);
 
   return (
     <div className="flex flex-col gap-8 py-8 md:gap-10 md:py-12">

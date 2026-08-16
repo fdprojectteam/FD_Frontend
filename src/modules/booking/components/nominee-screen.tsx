@@ -19,6 +19,7 @@ import { NomineeFields } from './nominee-fields';
 import { BOOKING_PHASES, resolveBookingPhase } from '../constants/phases';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
+import { useBookingStep } from '../hooks/use-booking-step';
 import { buildConfiguredSummaryRows } from '../utils/investment-summary';
 import type { NomineeField } from '../utils/nominee-schema';
 import { validateNomineeConfiguration } from '../utils/nominee-schema';
@@ -132,13 +133,11 @@ export function NomineeScreen({ productId }: NomineeScreenProps) {
   );
 
   /**
-   * Continue advances to Bank Account — **T3.2.12 / T3.4**, not this task.
-   * Disabled for the same reason it is on Investment Details: an enabled primary
-   * action that silently does nothing reads as a broken screen.
+   * Continue advances to Bank Account, through the shared step hook — so the
+   * high-water mark is recorded before the navigation and this screen names no
+   * route of its own.
    */
-  const handleContinue = () => {
-    // Intentionally unimplemented until navigation is wired.
-  };
+  const { continueTo: handleContinue } = useBookingStep('nominee', productId);
 
   return (
     <div className="flex flex-col gap-8 py-8 md:gap-10 md:py-12">

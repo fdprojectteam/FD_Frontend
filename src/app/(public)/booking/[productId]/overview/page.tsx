@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { BookingOverviewScreen } from '@/modules/booking/components/booking-overview-screen';
+import { ENTRY_AMOUNT_PARAM, parseEntryAmount } from '@/modules/booking/utils/entry-amount';
 
 /**
  * Booking Overview route — step 1 of the booking journey (T3.1), served inside
@@ -29,8 +30,10 @@ import { BookingOverviewScreen } from '@/modules/booking/components/booking-over
  * handlers, so `generateMetadata` would have nothing to fetch. Per-product
  * titles arrive with a real API.
  *
- * **No Suspense boundary** — nothing on this route reads `useSearchParams`, so
- * there is no prerender bailout to contain.
+ * **No Suspense boundary** — the entry amount is read from this page's own
+ * `searchParams`, on the server, rather than through `useSearchParams` in a
+ * client component. So there is still no prerender bailout to contain, and the
+ * screen receives a plain number instead of having to parse a URL.
  */
 export const metadata: Metadata = {
   title: 'Booking overview — FD Investment Platform',
@@ -40,10 +43,20 @@ export const metadata: Metadata = {
 
 export default async function BookingOverviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ productId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { productId } = await params;
+  const [{ productId }, query] = await Promise.all([params, searchParams]);
+
+  /*
+    The amount Goal-Based FD or Comparison already established, parsed at the
+    boundary. `null` for anything missing or unusable, and `null` means the
+    draft is left exactly as it is — Investment Details then asks for the amount
+    in its own words. Nothing is defaulted here; see `entry-amount.ts`.
+  */
+  const entryAmount = parseEntryAmount(query[ENTRY_AMOUNT_PARAM]);
 
   /*
     No resolution here. The deposit is resolved **once** by the booking layout
@@ -51,5 +64,5 @@ export default async function BookingOverviewPage({
     disagree about which product is being booked. An unresolvable id has already
     taken the not-found boundary before this page renders.
   */
-  return <BookingOverviewScreen productId={productId} />;
+  return <BookingOverviewScreen productId={productId} entryAmount={entryAmount} />;
 }

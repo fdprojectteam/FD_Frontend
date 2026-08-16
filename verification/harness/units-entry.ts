@@ -218,3 +218,28 @@ export {
 type DetailsExtendSummary = ProductDetails extends ProductSummary ? true : never;
 
 export const productDetailsExtendsSummary: DetailsExtendSummary = true;
+
+/* ---- The completed booking journey (steps 4–8) ---- */
+/**
+ * The step machine, the reference minter and the shared post-payment
+ * derivation — exported so the *rules* are assertable without a router or a
+ * DOM. These decide whether a customer may be on a payment screen and what
+ * figures they are shown there, which makes them the ones worth testing
+ * directly.
+ */
+export { BOOKING_STEP_ROUTES, bookingStepRoute } from '@/modules/booking/constants/steps';
+export { nextStep, resolveStepAccess, stepIndex } from '@/modules/booking/utils/step-access';
+export { buildBookingReference } from '@/modules/booking/utils/booking-reference';
+export { formatMaturityDate, maturityDate } from '@/modules/booking/utils/maturity-date';
+export { deriveBookingFigures } from '@/modules/booking/utils/booking-figures';
+export {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHODS,
+} from '@/modules/booking/constants/payment-methods';
+export { SAVED_BANK_ACCOUNTS } from '@/modules/booking/fixtures/bank-accounts';
+/**
+ * The entry-amount contract. Exported so the parser's refusals are assertable
+ * directly — it is the one place an amount enters Booking from outside, and the
+ * one place a fabricated amount could get in.
+ */
+export { ENTRY_AMOUNT_PARAM, parseEntryAmount } from '@/modules/booking/utils/entry-amount';

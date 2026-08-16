@@ -46,10 +46,76 @@ export interface InvestmentConfiguration {
   payoutOption: PayoutOptionId | null;
 }
 
+/**
+ * How the customer pays (spec 21g §5B).
+ *
+ * Platform vocabulary, like `PayoutOptionId` — the ids a partner bank
+ * configuration would narrow, once one exists.
+ */
+export type PaymentMethodId = 'net-banking' | 'upi' | 'debit-card' | 'credit-card' | 'neft-rtgs';
+
+/**
+ * The declarations Review & Confirm requires (spec 21f §5F, §8 Rule 3).
+ *
+ * Two booleans rather than one: the artwork draws two checkboxes making two
+ * different statements — that the details are correct, and that the terms are
+ * accepted — and a single flag could not record that a user ticked one.
+ *
+ * §5F says only declarations required by regulation or a partner bank should be
+ * mandatory. Both drawn declarations are treated as mandatory because both
+ * appear ticked on the approved screen and no source distinguishes them.
+ */
+export interface DeclarationConfiguration {
+  detailsConfirmed: boolean;
+  termsAccepted: boolean;
+}
+
+/**
+ * What is known once payment has been submitted (specs 21g–21i).
+ *
+ * **Deliberately not a maturity figure, an interest total or a rate.** The rule
+ * from Document 09 §10 that keeps those out of `InvestmentConfiguration` applies
+ * with more force after payment, not less: Success displays a maturity estimate,
+ * and it must be *recalculated* from amount, tenure and the resolved rate rather
+ * than read from a snapshot that could disagree with the deposit on screen.
+ *
+ * What is here is what genuinely cannot be recomputed — an identifier, and when
+ * it happened.
+ */
+export interface BookingConfirmation {
+  /** Minted once, on payment. See `utils/booking-reference.ts`. */
+  reference: string;
+  /** Epoch ms. Drives the "Investment Date" the Success screen states. */
+  paidAt: number;
+  /**
+   * When the partner bank confirmed, or `null` while Processing is still under
+   * way.
+   *
+   * Null rather than absent so the two states are distinguishable on a refresh:
+   * a booking that has been paid for but not yet confirmed must resume on
+   * Processing, not on Success.
+   */
+  confirmedAt: number | null;
+}
+
 export interface BookingDraft {
   /** Scopes the draft. A different product is a different booking. */
   productId: string;
   investment: InvestmentConfiguration;
+  /**
+   * The saved funding account, **by id** (spec 21e).
+   *
+   * An identifier, never the account itself — the standing policy stated above,
+   * applied. The account number, holder name and IFSC live in the account list;
+   * the draft records only which one was chosen, so a persisted draft carries no
+   * banking detail at all.
+   */
+  bankAccountId: string | null;
+  /** Spec 21f §8 Rule 3 — progression is blocked until these are accepted. */
+  declarations: DeclarationConfiguration;
+  paymentMethod: PaymentMethodId | null;
+  /** `null` until payment is submitted. */
+  confirmation: BookingConfirmation | null;
   /**
    * The nominee section (T3.3.1) — **in memory only, never persisted.**
    *
@@ -88,6 +154,6 @@ export interface BookingDraft {
  * person who wrote it.
  */
 export interface PersistedBookingDraft {
-  version: 1;
+  version: 2;
   draft: Omit<BookingDraft, 'nominee'>;
 }

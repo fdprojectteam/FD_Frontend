@@ -63,6 +63,20 @@ import type { Recommendation } from '../types/recommendation';
  */
 export interface BookingHandoff {
   productId: string;
+  /**
+   * The amount this recommendation was evaluated for.
+   *
+   * The customer's own figure, not the engine's. It is what the planner asked
+   * them for and what every candidate was filtered against, so Booking prefills
+   * it rather than asking the same question a second time.
+   *
+   * This does **not** widen the rule above. A quote or a maturity would be a
+   * platform-computed price crossing the boundary, and Booking must resolve
+   * those itself. An amount is an input the customer supplied; Booking still
+   * validates it against the product's minimum, maximum and increment, and
+   * still refuses it if the product would.
+   */
+  amount: number;
   /** The destination, built through `ROUTES`. Never an inline string. */
   href: Route;
   /**
@@ -82,9 +96,14 @@ export interface BookingHandoff {
  * does the job, so no caller can hand this function a figure it might be tempted
  * to forward.
  */
-export function bookingHandoffHref(productId: string): Route {
+export function bookingHandoffHref(productId: string, amount?: number): Route {
+  /*
+    The amount rides along only into Booking. The Marketplace product page has
+    its own calculator with its own default, and seeding it from a plan would
+    make the recommendation look like a decision the customer had made there.
+  */
   return isBookableProduct(productId)
-    ? ROUTES.bookingOverview(productId)
+    ? ROUTES.bookingOverview(productId, amount)
     : ROUTES.product(productId);
 }
 
@@ -96,11 +115,18 @@ export function bookingHandoffHref(productId: string): Route {
  * screen, where it is an explanation rather than a term of business.
  */
 export function toBookingHandoff(recommendation: Recommendation): BookingHandoff {
-  const { productId } = recommendation;
+  /*
+    Two fields read, both of them the customer's own answers: which product, and
+    for how much. `quote`, `maturity`, `target` and `reasons` stay on the
+    recommendation screen, where they are an explanation rather than a term of
+    business.
+  */
+  const { productId, principal } = recommendation;
 
   return {
     productId,
-    href: bookingHandoffHref(productId),
+    amount: principal,
+    href: bookingHandoffHref(productId, principal),
     bookable: isBookableProduct(productId),
   };
 }

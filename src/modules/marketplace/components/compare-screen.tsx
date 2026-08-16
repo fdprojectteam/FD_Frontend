@@ -136,6 +136,17 @@ export function CompareScreen() {
   /* ---- "Add another FD" (T2.7.6) --------------------------------- */
 
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  /**
+   * Which compared product the user has chosen to book (Phase 3 entry point).
+   *
+   * **Screen-local, and deliberately not in the URL.** The `?ids=` parameter is
+   * the comparison's contract (C4) — what is being compared is shareable, and a
+   * link that also carried someone else's *choice* would be a different claim.
+   * The choice lives exactly as long as the screen does, and Booking's own route
+   * carries the product id from there on.
+   */
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [pickerPage, setPickerPage] = useState(1);
 
   /**
@@ -251,6 +262,14 @@ export function CompareScreen() {
 
   const comparison = ids.length > 0 && !isError && products ? products : null;
   const hasComparison = comparison !== null;
+
+  /*
+    A product removed from the comparison cannot remain the one being booked.
+    Derived rather than cleared in an effect: an effect would leave one render
+    in which the action bar pointed at a column that is no longer on screen.
+  */
+  const bookableProductId =
+    selectedProductId !== null && ids.includes(selectedProductId) ? selectedProductId : null;
 
   return (
     <div className="flex flex-col gap-12 py-10 md:gap-14 md:py-16">
@@ -397,6 +416,8 @@ export function CompareScreen() {
                 rows={rows}
                 onRemove={removeId}
                 belowMinimumIds={belowMinimumIds}
+                selectedProductId={bookableProductId}
+                onSelect={setSelectedProductId}
               />
             </div>
             <div data-compare-view="mobile" className="md:hidden">
@@ -405,6 +426,8 @@ export function CompareScreen() {
                 rows={rows}
                 onRemove={removeId}
                 belowMinimumIds={belowMinimumIds}
+                selectedProductId={bookableProductId}
+                onSelect={setSelectedProductId}
               />
             </div>
           </div>
@@ -438,7 +461,27 @@ export function CompareScreen() {
         only beside a comparison (D-A3), from the same derived value the content
         branch uses.
       */}
-      {hasComparison ? <CompareActionBar /> : null}
+      {/*
+        Comparison's handoff into Booking. It builds `ROUTES.bookingOverview` —
+        the same entry point Product Details and Goal-Based FD use — so the two
+        documented entry paths converge on one canonical route. Nothing about
+        Booking changes because the user arrived from here.
+      */}
+      {hasComparison ? (
+        <CompareActionBar
+          bookingHref={
+            bookableProductId === null
+              ? undefined
+              : /*
+                  The **applied** amount, never the draft — the figure every
+                  column on screen was priced against, which is what the
+                  customer is choosing between. Reading `depositAmountInput`
+                  here would hand Booking text the user had not confirmed.
+                */
+                ROUTES.bookingOverview(bookableProductId, amount)
+          }
+        />
+      ) : null}
     </div>
   );
 }

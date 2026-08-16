@@ -1,4 +1,5 @@
 import { ArrowRight } from 'lucide-react';
+import type { Route } from 'next';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -23,10 +24,17 @@ import { ROUTES } from '@/constants/routes';
  * **Back is a real link, never `router.back()`** (D-A4): a user arriving from a
  * shared `?ids=` link has no history, and `back()` would take them off the site.
  *
- * **Proceed to Booking is inert** (D3, D-A5) — `aria-disabled`, no `href`, no
- * state — the established treatment for an unbuilt destination ("How it works"
- * on Home, "Continue to Booking" on Details). What crosses into booking is a
- * Phase 3 decision, not something to smuggle through now.
+ * **Proceed to Booking is now real, and still owns nothing** (D-A5 as written).
+ * It receives a `bookingHref` and renders a link, or receives none and stays
+ * inert with `aria-disabled`. Which product that href names, and whether one has
+ * been chosen at all, is `CompareScreen`'s judgement — this bar never reads the
+ * selection. That is the boundary the component was built to hold, now being
+ * held for the case it was written for.
+ *
+ * The destination is `ROUTES.bookingOverview(productId)` — **the same route
+ * Goal-Based FD and Product Details lead to**. Comparison is an entry point into
+ * the one booking flow, not a booking flow of its own, so no route, component or
+ * state here is Comparison-specific.
  *
  * **Sticky below `md`, static from `md`** (D-A7). The technique is copied from
  * `DetailActionBar`, not the component — the two bars carry different buttons.
@@ -39,13 +47,23 @@ import { ROUTES } from '@/constants/routes';
  * it, and a document-wide selector would also match the *top* back link — both
  * lead to `ROUTES.home`.
  */
-export function CompareActionBar() {
+export interface CompareActionBarProps {
+  /** Booking Overview for the chosen product. Absent means nothing is chosen. */
+  bookingHref?: Route;
+}
+
+export function CompareActionBar({ bookingHref }: CompareActionBarProps) {
   return (
     <div
       data-compare-actions=""
       className="border-border-default bg-surface-page sticky bottom-0 border-t md:static md:border-t-0"
     >
-      <div className="container-page flex items-center justify-end gap-3 py-4 md:pt-8">
+      <div className="container-page flex flex-wrap items-center justify-end gap-3 py-4 md:pt-8">
+        {bookingHref ? null : (
+          <p id="compare-booking-hint" className="text-caption text-content-muted mr-auto">
+            Choose a Fixed Deposit above to continue.
+          </p>
+        )}
         <Button asChild variant="secondary" size="lg" className="flex-1 md:flex-none">
           {/*
             The label shortens inside one element (D-A6), matching the h1 and
@@ -58,10 +76,30 @@ export function CompareActionBar() {
           </Link>
         </Button>
 
-        <Button variant="primary" size="lg" aria-disabled="true" className="flex-1 md:flex-none">
-          Proceed to Booking
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </Button>
+        {bookingHref ? (
+          <Button asChild variant="primary" size="lg" className="flex-1 md:flex-none">
+            <Link href={bookingHref}>
+              Proceed to Booking
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          </Button>
+        ) : (
+          /*
+            Nothing selected yet. Inert rather than absent so the approved
+            layout is intact, and `aria-disabled` rather than `disabled` so the
+            control stays reachable and its hint is announced.
+          */
+          <Button
+            variant="primary"
+            size="lg"
+            aria-disabled="true"
+            aria-describedby="compare-booking-hint"
+            className="flex-1 md:flex-none"
+          >
+            Proceed to Booking
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Button>
+        )}
       </div>
     </div>
   );

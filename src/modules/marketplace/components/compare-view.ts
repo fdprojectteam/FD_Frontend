@@ -32,6 +32,18 @@ export interface CompareViewProps {
   products: ProductDetails[];
   rows: CompareRow[];
   onRemove: (productId: string) => void;
+  /**
+   * The product the user has chosen to book, if any (Phase 3 entry).
+   *
+   * Comparison is one of the documented entry points into Booking (Screen
+   * Inventory §Entry Points — *"user selects one of the compared products"*),
+   * and this is that selection. Held by `CompareScreen` and passed down, so the
+   * two presentations mark the same column and neither decides anything — the
+   * ownership rule D-A5 stated when the control was still inert.
+   */
+  selectedProductId?: string | null;
+  /** Reports which product the user picked. Navigation is the screen's. */
+  onSelect?: (productId: string) => void;
 }
 
 /**

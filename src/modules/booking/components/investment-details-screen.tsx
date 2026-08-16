@@ -21,7 +21,8 @@ import { TenureSelector } from './tenure-selector';
 import { BOOKING_PHASES, resolveBookingPhase } from '../constants/phases';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
-import { validateAmount } from '../utils/investment-schema';
+import { useBookingStep } from '../hooks/use-booking-step';
+import { validateAmount, validateInvestmentConfiguration } from '../utils/investment-schema';
 import { buildConfiguredSummaryRows } from '../utils/investment-summary';
 import {
   defaultPayoutOption,
@@ -179,6 +180,20 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
   );
 
   /**
+   * The whole configuration's verdict — what Continue is gated on (FR-CONF-001).
+   *
+   * The screen decides nothing: `validateInvestmentConfiguration` owns which
+   * fields are required, what each product accepts, and what to say about it.
+   * It is asked against the **product's own** supported payouts, so a payout the
+   * deposit does not offer cannot pass here even if the draft holds one.
+   */
+  const validation = useMemo(
+    () =>
+      validateInvestmentConfiguration(investment, deposit.terms, deposit.terms.supportedPayouts),
+    [investment, deposit.terms],
+  );
+
+  /**
    * Every figure in the returns strip, from the domain layer (T3.2.5).
    *
    * `null` until the configuration can be priced — which, until T3.2.9 and
@@ -204,14 +219,14 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
   }, [amountError, investment, deposit.terms]);
 
   /**
-   * Continue advances to Nominee and Back returns to Overview — **T3.2.12**.
-   * The callback is the seam, exactly as `BookingOverviewScreen` left one for
-   * this screen: navigation logic is explicitly out of scope here, and wiring a
-   * destination that does not exist would produce a 404 rather than progress.
+   * Continue advances to Nominee (T3.2.12, now wired).
+   *
+   * Through `useBookingStep`, like every other step: it records that this step
+   * was completed *before* navigating, so the destination's guard sees a draft
+   * that already knows. The screen names no route — `BOOKING_STEP_ROUTES` owns
+   * the ordering, so inserting a step is one edit there and none here.
    */
-  const handleContinue = () => {
-    // Intentionally unimplemented until T3.2.12 — see the docstring above.
-  };
+  const { continueTo: handleContinue } = useBookingStep('investment', productId);
 
   return (
     <div className="flex flex-col gap-8 py-8 md:gap-10 md:py-12">
@@ -379,24 +394,25 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
         </div>
 
         {/*
-          Continue is **disabled for this POC step**.
+          Continue is gated on the **domain verdict**, exactly as Nominee's is.
 
-          Its handler is an intentional seam until T3.2.12 wires navigation to
-          Nominee, and an enabled primary action that silently does nothing reads
-          as a broken screen rather than an unfinished one — particularly in a
-          demo, where it is the first thing anyone clicks.
+          It previously carried a bare `continueDisabled` — which in JSX is
+          `true` — from the period when Nominee had no route to advance to. The
+          destination has existed since the journey was completed, so the
+          hardcoded disable was the only thing standing between a valid
+          configuration and the next step: the button could never enable, for
+          any product, on either entry path.
 
-          `continueDisabled` is the existing mechanism on `BookingStepActions`
-          and drives `Button`'s real `disabled` attribute, so the control is
-          removed from the tab order and announced as unavailable rather than
-          merely dimmed. Enabling it is the same one line that wires the
-          destination.
+          Replaced with the validator that was written for this and had no call
+          site: amount within the product's limits, a tenure it actually prices,
+          and a payout it offers. `handleContinue` records the step and
+          navigates through `useBookingStep`, so no route is named here.
         */}
         <BookingStepActions
           backHref={ROUTES.bookingOverview(productId)}
           backLabel="Back"
           continueLabel="Continue"
-          continueDisabled
+          continueDisabled={!validation.isValid}
           onContinue={handleContinue}
         />
       </div>

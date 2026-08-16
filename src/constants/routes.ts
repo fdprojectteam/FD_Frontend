@@ -34,7 +34,30 @@ export const ROUTES = {
   marketplace: '/marketplace',
   product: (productId: string) => `/marketplace/${productId}` as Route,
   compare: '/compare' as Route,
-  bookingOverview: (productId: string) => `/booking/${productId}/overview` as Route,
+  /**
+   * Booking's entry point, with the amount the entry flow already established.
+   *
+   * `productId` stays in the **path** — it is the booking's identity, and the
+   * screen must be resumable and shareable by it. `amount` is an optional
+   * **query** because it is a prefill rather than identity: two customers
+   * booking the same deposit for different amounts are on the same screen, and
+   * dropping the parameter must still produce a valid URL.
+   *
+   * Only Goal-Based FD and Comparison supply it, and only because both have
+   * already asked the customer for it. Booking parses it through
+   * `parseEntryAmount`, writes it into the canonical draft once, and validates
+   * it against the product like any other amount. An absent or unusable value
+   * changes nothing — see that module for why no fallback exists.
+   *
+   * **No rate, maturity or tenure may ever be added here.** Those are figures
+   * Booking resolves for itself; an amount is the customer's own input. The
+   * distinction is the whole reason this parameter is safe and those would not
+   * be, and an invariant holds the query key list at exactly one.
+   */
+  bookingOverview: (productId: string, amount?: number) => {
+    const query = amount === undefined ? '' : `?amount=${String(amount)}`;
+    return `/booking/${productId}/overview${query}` as Route;
+  },
   /**
    * Investment Details — step two, a sibling of `/overview` under the same
    * product segment (T3.2.7), exactly as `bookingOverview` anticipated.
@@ -49,6 +72,24 @@ export const ROUTES = {
     `/booking/${productId}/investment-details` as Route,
   /** Nominee — step three, a sibling of the two before it (T3.3.2). */
   bookingNominee: (productId: string) => `/booking/${productId}/nominee` as Route,
+  /**
+   * Steps four to eight, completing the approved journey.
+   *
+   * All five are siblings under the same `[productId]` segment, exactly as the
+   * three before them — which is what makes this **one** booking flow rather
+   * than two. Goal-Based FD and Comparison both end at `bookingOverview`, and
+   * every step after it is reached the same way regardless of where the
+   * customer came from.
+   *
+   * Segment names are the user-facing words; the step ids they correspond to
+   * (`bank-account`, `review`, `payment`, `processing`, `success`) remain the
+   * platform's internal vocabulary. `BOOKING_STEP_ROUTES` is the one bridge.
+   */
+  bookingBankAccount: (productId: string) => `/booking/${productId}/bank-account` as Route,
+  bookingReview: (productId: string) => `/booking/${productId}/review` as Route,
+  bookingPayment: (productId: string) => `/booking/${productId}/payment` as Route,
+  bookingProcessing: (productId: string) => `/booking/${productId}/processing` as Route,
+  bookingSuccess: (productId: string) => `/booking/${productId}/success` as Route,
   /**
    * Goal-Based FD planner — the goal-led entry into the same booking journey.
    *

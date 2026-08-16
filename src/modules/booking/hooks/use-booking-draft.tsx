@@ -14,7 +14,13 @@ import {
 import { emptyNominee, emptyNomineeConfiguration } from '../constants/booking-draft';
 import { BOOKING_STEPS } from '../constants/steps';
 import type { BookingStepId } from '../types/booking';
-import type { BookingDraft, InvestmentConfiguration } from '../types/draft';
+import type {
+  BookingConfirmation,
+  BookingDraft,
+  DeclarationConfiguration,
+  InvestmentConfiguration,
+  PaymentMethodId,
+} from '../types/draft';
 import type { Nominee, NomineeConfiguration } from '../types/nominee';
 import { clearDraft, readDraft, writeDraft } from '../utils/draft-storage';
 
@@ -65,6 +71,23 @@ export interface BookingDraftContextValue {
   removeNominee: (nomineeId: string) => void;
   /** Merges a patch into one nominee, leaving the others untouched. */
   updateNominee: (nomineeId: string, patch: Partial<Omit<Nominee, 'id'>>) => void;
+  /** Records which saved account funds this booking (spec 21e). */
+  setBankAccountId: (bankAccountId: string | null) => void;
+  /** Merges a patch into the Review declarations (spec 21f §5F). */
+  setDeclarations: (patch: Partial<DeclarationConfiguration>) => void;
+  setPaymentMethod: (paymentMethod: PaymentMethodId) => void;
+  /**
+   * Records that payment was submitted, **once**.
+   *
+   * Idempotent by construction: a draft that already carries a confirmation is
+   * returned unchanged, so a double-click, a StrictMode double-invoke or a
+   * replayed effect cannot mint a second reference for one booking. That is
+   * spec 21g §8 Rule 3 held in the state layer rather than in a disabled
+   * button, because a disabled button is a UI detail and this is money.
+   */
+  confirmPayment: (confirmation: BookingConfirmation) => void;
+  /** Marks the partner bank's confirmation. Also idempotent. */
+  completeBooking: (confirmedAt: number) => void;
   /**
    * Advances the high-water mark. Never retreats — going Back does not undo
    * having reached a step, which is what makes resume land in the right place
@@ -82,6 +105,10 @@ function emptyDraft(productId: string, now: number): BookingDraft {
     productId,
     investment: { amount: null, tenureMonths: null, payoutOption: null },
     nominee: emptyNomineeConfiguration(),
+    bankAccountId: null,
+    declarations: { detailsConfirmed: false, termsAccepted: false },
+    paymentMethod: null,
+    confirmation: null,
     furthestStep: 'overview',
     updatedAt: now,
   };
@@ -190,6 +217,50 @@ export function BookingDraftProvider({ productId, children }: BookingDraftProvid
     }));
   }, []);
 
+  const setBankAccountId = useCallback((bankAccountId: string | null) => {
+    hasPendingWrite.current = true;
+    setDraft((current) => ({ ...current, bankAccountId, updatedAt: Date.now() }));
+  }, []);
+
+  const setDeclarations = useCallback((patch: Partial<DeclarationConfiguration>) => {
+    hasPendingWrite.current = true;
+    setDraft((current) => ({
+      ...current,
+      declarations: { ...current.declarations, ...patch },
+      updatedAt: Date.now(),
+    }));
+  }, []);
+
+  const setPaymentMethod = useCallback((paymentMethod: PaymentMethodId) => {
+    hasPendingWrite.current = true;
+    setDraft((current) => ({ ...current, paymentMethod, updatedAt: Date.now() }));
+  }, []);
+
+  const confirmPayment = useCallback((confirmation: BookingConfirmation) => {
+    hasPendingWrite.current = true;
+    /*
+      The guard is inside the updater on purpose, unlike `markStepReached`'s
+      ref flag: this one must read the *current* draft to decide, and doing it
+      here is what makes a second call a no-op even when two callers race.
+    */
+    setDraft((current) =>
+      current.confirmation === null ? { ...current, confirmation, updatedAt: Date.now() } : current,
+    );
+  }, []);
+
+  const completeBooking = useCallback((confirmedAt: number) => {
+    hasPendingWrite.current = true;
+    setDraft((current) =>
+      current.confirmation === null || current.confirmation.confirmedAt !== null
+        ? current
+        : {
+            ...current,
+            confirmation: { ...current.confirmation, confirmedAt },
+            updatedAt: Date.now(),
+          },
+    );
+  }, []);
+
   const markStepReached = useCallback((stepId: BookingStepId) => {
     /*
       The flag is set here, in the event handler, and not inside the updater.
@@ -221,6 +292,11 @@ export function BookingDraftProvider({ productId, children }: BookingDraftProvid
       addNominee,
       removeNominee,
       updateNominee,
+      setBankAccountId,
+      setDeclarations,
+      setPaymentMethod,
+      confirmPayment,
+      completeBooking,
       markStepReached,
       reset,
     }),
@@ -232,6 +308,11 @@ export function BookingDraftProvider({ productId, children }: BookingDraftProvid
       addNominee,
       removeNominee,
       updateNominee,
+      setBankAccountId,
+      setDeclarations,
+      setPaymentMethod,
+      confirmPayment,
+      completeBooking,
       markStepReached,
       reset,
     ],

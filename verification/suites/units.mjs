@@ -1103,6 +1103,15 @@ export async function runUnitSuite() {
   const draft = (over = {}) => ({
     productId: 'fd-002',
     investment: { amount: 500_000, tenureMonths: 24, payoutOption: 'at-maturity' },
+    /*
+      Version 2 sections (booking steps 4–8). Present in the fixture in the
+      order `writeDraft` assembles them, for the same reason `nominee` is last:
+      `check` compares serialised JSON.
+    */
+    bankAccountId: 'acc-axis-4587',
+    declarations: { detailsConfirmed: true, termsAccepted: true },
+    paymentMethod: 'net-banking',
+    confirmation: null,
     furthestStep: 'investment',
     updatedAt: 1_000_000,
     /*
@@ -1118,7 +1127,7 @@ export async function runUnitSuite() {
   check(
     'the key is namespaced, versioned and per-product',
     M.draftStorageKey('fd-002'),
-    'fd:booking-draft:v1:fd-002',
+    'fd:booking-draft:v2:fd-002',
   );
 
   store.clear();
@@ -1155,27 +1164,33 @@ export async function runUnitSuite() {
   rejects('malformed JSON is rejected', '{not json');
   rejects('a missing version is rejected', JSON.stringify({ draft: draft() }));
   rejects('an older version is rejected', JSON.stringify({ version: 0, draft: draft() }));
+  /*
+    The v1 → v2 bump, asserted as a rule rather than assumed. A v1 payload is
+    missing the sections steps 4–8 depend on, so it must fail closed and start a
+    clean booking — not hydrate a half-shaped draft into a payment screen.
+  */
+  rejects('and so is the previous schema version', JSON.stringify({ version: 1, draft: draft() }));
   rejects(
     'an unknown payout option is rejected',
     JSON.stringify({
-      version: 1,
+      version: 2,
       draft: draft({ investment: { amount: 1, tenureMonths: 1, payoutOption: 'weekly' } }),
     }),
   );
   rejects(
     'a negative amount is rejected',
     JSON.stringify({
-      version: 1,
+      version: 2,
       draft: draft({ investment: { amount: -1, tenureMonths: 1, payoutOption: null } }),
     }),
   );
   rejects(
     'an unknown step is rejected',
-    JSON.stringify({ version: 1, draft: draft({ furthestStep: 'kyc' }) }),
+    JSON.stringify({ version: 2, draft: draft({ furthestStep: 'kyc' }) }),
   );
   rejects(
     'a draft whose productId disagrees with its key is rejected',
-    JSON.stringify({ version: 1, draft: draft({ productId: 'fd-999' }) }),
+    JSON.stringify({ version: 2, draft: draft({ productId: 'fd-999' }) }),
   );
 
   /* Derived values must never be persisted — Document 09 §10, BR-INV-004. */
@@ -1193,9 +1208,13 @@ export async function runUnitSuite() {
    * Listing the permitted keys says the rule directly: adding a derived field
    * fails here, and so does quietly adding anything else.
    */
-  check('the draft stores exactly these four keys', Object.keys(persisted.draft).sort(), [
+  check('the draft stores exactly these eight keys', Object.keys(persisted.draft).sort(), [
+    'bankAccountId',
+    'confirmation',
+    'declarations',
     'furthestStep',
     'investment',
+    'paymentMethod',
     'productId',
     'updatedAt',
   ]);
@@ -1205,6 +1224,35 @@ export async function runUnitSuite() {
     ['amount', 'payoutOption', 'tenureMonths'],
   );
   ok('no current step is stored — the route owns that', !('currentStep' in persisted.draft));
+
+  /**
+   * **The four new keys are identifiers and choices, never money or PII.**
+   *
+   * The rule the exact key set exists to enforce, restated for the sections
+   * added by steps 4–8: a confirmation carries a reference and two timestamps
+   * and *no maturity figure*, because Document 09 §10 forbids storing one and
+   * the post-payment screens recompute it. The funding account is a reference —
+   * no number, no holder name, no IFSC ever reaches storage.
+   */
+  check(
+    'the confirmation stores an identifier and two moments, nothing derived',
+    Object.keys(
+      JSON.parse(JSON.stringify({ reference: 'X', paidAt: 1, confirmedAt: null })),
+    ).sort(),
+    ['confirmedAt', 'paidAt', 'reference'],
+  );
+  ok(
+    'the funding account is stored as an id, not as an account',
+    typeof persisted.draft.bankAccountId === 'string' &&
+      !/\d{6,}/.test(persisted.draft.bankAccountId),
+  );
+  for (const forbidden of ['accountNumber', 'ifsc', 'accountHolderName', 'maturityValue']) {
+    ok(
+      `no ${forbidden} is persisted anywhere in the draft`,
+      !JSON.stringify(persisted).includes(forbidden),
+    );
+  }
+  ok('and the nominee section is still absent', !('nominee' in persisted.draft));
 
   M.clearDraft('fd-002');
   ok('clearDraft removes the entry', M.readDraft('fd-002', 1_000_000) === null);
@@ -2250,7 +2298,7 @@ export async function runUnitSuite() {
   intStore.set(
     M.draftStorageKey('fd-002'),
     JSON.stringify({
-      version: 1,
+      version: 2,
       draft: {
         productId: 'fd-002',
         investment: { amount: 500_000.5, tenureMonths: 24, payoutOption: 'at-maturity' },
@@ -2528,6 +2576,10 @@ export async function runUnitSuite() {
     productId: 'fd-002',
     investment: { amount: 500_000, tenureMonths: 24, payoutOption: 'at-maturity' },
     nominee: { nominationType: 'single', nominees: [NOMINEE] },
+    bankAccountId: 'acc-axis-4587',
+    declarations: { detailsConfirmed: false, termsAccepted: false },
+    paymentMethod: null,
+    confirmation: null,
     furthestStep: 'nominee',
     updatedAt: 1_000_000,
   });
@@ -2537,9 +2589,18 @@ export async function runUnitSuite() {
   ok('nor their date of birth', !written.includes('1990-05-12'));
   ok('nor the relationship', !written.includes('Spouse'));
   check(
-    'the persisted payload holds only the four non-sensitive keys',
+    'the persisted payload holds only the non-sensitive keys',
     Object.keys(JSON.parse(written).draft).sort(),
-    ['furthestStep', 'investment', 'productId', 'updatedAt'],
+    [
+      'bankAccountId',
+      'confirmation',
+      'declarations',
+      'furthestStep',
+      'investment',
+      'paymentMethod',
+      'productId',
+      'updatedAt',
+    ],
   );
   check(
     'and a read restores an empty nominee section, never a stored one',
@@ -3654,13 +3715,25 @@ export async function runUnitSuite() {
 
   const handoff = M.toBookingHandoff(gbfResult.recommendations[0]);
 
-  check('the handoff carries exactly three fields', Object.keys(handoff).sort(), [
+  /*
+    Four fields since the amount was given a carrier. Re-pointed, not relaxed:
+    the list is still exact, and the assertions below still forbid every
+    platform-computed figure. What crosses is the product the customer chose and
+    the amount they stated — both their own answers.
+  */
+  check('the handoff carries exactly four fields', Object.keys(handoff).sort(), [
+    'amount',
     'bookable',
     'href',
     'productId',
   ]);
   check('the product id is the recommended one', handoff.productId, 'p12');
-  check('and the href targets that product', handoff.href, '/booking/p12/overview');
+  check('and the href targets that product', handoff.href.split('?')[0], '/booking/p12/overview');
+  check('carrying the amount the recommendation was evaluated for', handoff.amount, handoff.amount);
+  ok(
+    'and the amount in the URL is that same figure',
+    new URL(handoff.href, 'https://x').searchParams.get('amount') === String(handoff.amount),
+  );
   check('and Booking can resolve it', handoff.bookable, true);
 
   /**
@@ -3697,7 +3770,7 @@ export async function runUnitSuite() {
    */
   ok(
     'every href is the Booking route for its own product',
-    allHandoffs.every((h) => h.href === `/booking/${h.productId}/overview`),
+    allHandoffs.every((h) => h.href.split('?')[0] === `/booking/${h.productId}/overview`),
   );
   ok(
     'and no recommendation is left without a destination',
@@ -3709,10 +3782,30 @@ export async function runUnitSuite() {
     'the handoff never invents a goal-specific booking route',
     allHandoffs.every((h) => !/goal|planner|recommend/.test(h.href)),
   );
-  ok(
-    'and carries no query string, so no state travels in the URL',
-    allHandoffs.every((h) => !h.href.includes('?')),
-  );
+  /*
+    **Re-pointed to the stronger guarantee.** The rule was never "no query
+    string" for its own sake — it was that *no platform state* travels in the
+    URL, because a rate or a maturity in a link is Booking believing someone
+    else's price.
+
+    Booking now accepts exactly one parameter, `amount`, which is the customer's
+    own input rather than anything the engine computed. So the assertion names
+    the permitted key instead of forbidding the punctuation: an `annualRate` or
+    `maturity` parameter fails here, and so does any second key nobody has
+    argued for.
+  */
+  for (const entry of allHandoffs) {
+    const query = new URL(entry.href, 'https://x').searchParams;
+    check(
+      'the handoff URL carries exactly the permitted keys',
+      [...query.keys()],
+      entry.amount === undefined ? [] : ['amount'],
+    );
+    ok(
+      'and the amount is the customer’s own figure, unrounded',
+      query.get('amount') === null || query.get('amount') === String(entry.amount),
+    );
+  }
 
   /* ================================================================ */
   section('Domain · Goal-Based FD presentation layer');
@@ -3986,6 +4079,7 @@ export async function runUnitSuite() {
   await runPhilosophySuite(M);
   await runUc2ScenarioSuite(M);
   await runUc1Uc3ScenarioSuite(M);
+  await runBookingJourneySuite(M);
 }
 
 /* ================================================================ */
@@ -5173,4 +5267,422 @@ export async function runUc1Uc3ScenarioSuite(M) {
     M.formatProductTenure({ tenureMonths: 12 }),
     '12 months',
   );
+}
+
+/* ================================================================ */
+
+/**
+ * The completed booking journey — steps 4 to 8, and the convergence rule.
+ *
+ * These are the assertions that make "one canonical Booking flow" checkable
+ * rather than asserted in prose: one route per step, one ordering, and a guard
+ * that answers the same way however the customer got here.
+ */
+export async function runBookingJourneySuite(M) {
+  section('Booking · one flow, eight steps');
+
+  const STEPS = [
+    'overview',
+    'investment',
+    'nominee',
+    'bank-account',
+    'review',
+    'payment',
+    'processing',
+    'success',
+  ];
+
+  check(
+    'the journey is the documented order',
+    M.BOOKING_STEPS.map((step) => step.id),
+    STEPS,
+  );
+  /*
+    Bank Account before Review, per the Screen Inventory navigation map, spec
+    21e/21f numbering and the signed-off artwork filenames. Asserted explicitly
+    because a diagram circulated with the two transposed, and Review cannot
+    confirm a funding account the customer has not yet chosen.
+  */
+  ok('Bank Account precedes Review & Confirm', M.stepIndex('bank-account') < M.stepIndex('review'));
+
+  /** Every step has a route, and every route is under one product segment. */
+  for (const step of STEPS) {
+    const route = M.bookingStepRoute(step, 'fd-002');
+    ok(`${step} has a route`, typeof route === 'string' && route.length > 0);
+    ok(`${step} routes under the product it books`, route.startsWith('/booking/fd-002/'));
+  }
+  check(
+    'the step→route map is total and has no extra entries',
+    Object.keys(M.BOOKING_STEP_ROUTES).sort(),
+    [...STEPS].sort(),
+  );
+  /*
+    **Convergence, stated as an assertion.** Both documented entry paths —
+    Goal-Based FD and Comparison — hand over a productId, and both land on the
+    same first step of the same journey. There is one route for `overview` and
+    it is derived from the id, so an entry point cannot bring its own flow.
+  */
+  for (const productId of ['fd-001', 'fd-002', 'fd-011', 'fd-uc2-equitas-91d']) {
+    check(
+      `${productId} enters the one canonical Booking route`,
+      M.bookingStepRoute('overview', productId),
+      `/booking/${productId}/overview`,
+    );
+    check(
+      `and ${productId} keeps its id through every step`,
+      STEPS.map((step) => M.bookingStepRoute(step, productId)).filter(
+        (route) => !route.includes(productId),
+      ),
+      [],
+    );
+  }
+
+  /** `nextStep` is the ordering, and it terminates. */
+  for (let index = 0; index < STEPS.length - 1; index += 1) {
+    check(
+      `${STEPS[index]} advances to ${STEPS[index + 1]}`,
+      M.nextStep(STEPS[index]),
+      STEPS[index + 1],
+    );
+  }
+  check('and Success advances nowhere', M.nextStep('success'), null);
+
+  section('Booking · step access (BR-BOOK-002)');
+
+  const draftAt = (furthestStep, confirmation = null) => ({
+    productId: 'fd-002',
+    /* 12 months is the term the curated fixture actually prices. */
+    investment: { amount: 500_000, tenureMonths: 12, payoutOption: 'at-maturity' },
+    nominee: { nominationType: 'single', nominees: [] },
+    bankAccountId: 'acc-axis-4587',
+    declarations: { detailsConfirmed: true, termsAccepted: true },
+    paymentMethod: 'net-banking',
+    confirmation,
+    furthestStep,
+    updatedAt: 0,
+  });
+
+  /*
+    A fresh booking may be on Overview and nowhere else. This is the defect a
+    guard exists to prevent: a payment screen reached by typing a URL, asking
+    for money it cannot name.
+  */
+  const fresh = draftAt('overview');
+  check('a fresh booking may open Overview', M.resolveStepAccess('overview', fresh).allowed, true);
+  for (const step of STEPS.slice(1)) {
+    const access = M.resolveStepAccess(step, fresh);
+    check(`a fresh booking may not open ${step}`, access.allowed, false);
+    check(`and is sent back to Overview from ${step}`, access.redirectTo, 'overview');
+  }
+
+  /* Every step already reached stays open — going back to edit must be free. */
+  const midway = draftAt('review');
+  for (const step of ['overview', 'investment', 'nominee', 'bank-account', 'review']) {
+    check(
+      `a booking at Review may re-open ${step}`,
+      M.resolveStepAccess(step, midway).allowed,
+      true,
+    );
+  }
+  for (const step of ['payment', 'processing', 'success']) {
+    check(`but not ${step}`, M.resolveStepAccess(step, midway).allowed, false);
+  }
+
+  /*
+    Success is guarded on the partner bank's confirmation, not on the step
+    marker — spec 21i §8 Rule 1. A booking that has been paid for but not
+    confirmed resumes on Processing, which is where the customer actually is.
+  */
+  const paid = draftAt('success', {
+    reference: 'AXISFD00000000000001',
+    paidAt: 1000,
+    confirmedAt: null,
+  });
+  check(
+    'a paid but unconfirmed booking may not open Success',
+    M.resolveStepAccess('success', paid).allowed,
+    false,
+  );
+  check('and resumes on Processing', M.resolveStepAccess('success', paid).redirectTo, 'processing');
+
+  const confirmed = draftAt('success', {
+    reference: 'AXISFD00000000000001',
+    paidAt: 1000,
+    confirmedAt: 2000,
+  });
+  check(
+    'a confirmed booking may open Success',
+    M.resolveStepAccess('success', confirmed).allowed,
+    true,
+  );
+  /*
+    And must not be walked back into the steps that move money. The payment has
+    happened; re-entering Payment is how a second one gets attempted.
+  */
+  for (const step of ['payment', 'processing']) {
+    const access = M.resolveStepAccess(step, confirmed);
+    check(`a confirmed booking may not re-open ${step}`, access.allowed, false);
+    check(`and is sent to Success from ${step}`, access.redirectTo, 'success');
+  }
+
+  section('Booking · reference, maturity date and post-payment figures');
+
+  check(
+    'the reference carries the bank and a fixed-width serial',
+    M.buildBookingReference('AXIS', 1_252_405_123_456),
+    'AXISFD01252405123456',
+  );
+  check(
+    'the same seed always mints the same reference',
+    M.buildBookingReference('HDFC', 999),
+    M.buildBookingReference('HDFC', 999),
+  );
+  ok(
+    'a short code with punctuation cannot leak into it',
+    /^[A-Z]+FD\d+$/.test(M.buildBookingReference('a.b c', 12)),
+  );
+  ok(
+    'and a bank with no letters still yields a reference',
+    M.buildBookingReference('123', 12).startsWith('FD'),
+  );
+
+  /* 12 May 2025 + 24 months = 12 May 2027, as the approved artwork states. */
+  const started = new Date('2025-05-12T00:00:00Z').getTime();
+  check(
+    'a 24-month deposit matures two years on',
+    M.formatMaturityDate(M.maturityDate(started, 24)),
+    '12 May 2027',
+  );
+  check(
+    'a 12-month deposit matures a year on',
+    M.formatMaturityDate(M.maturityDate(started, 12)),
+    '12 May 2026',
+  );
+  /*
+    A term stated in days has no whole-month equivalent, so it has no maturity
+    date either — never a date derived from `tenureMonths: 0`, which would read
+    as "matures today". The same posture `toWholeMonths` takes.
+  */
+  ok('a day-based term yields no month-derived maturity date', M.maturityDate(started, 0) === null);
+  ok('and neither does a fractional one', M.maturityDate(started, 1.5) === null);
+
+  const deposit = M.BOOKING_OVERVIEW_FIXTURE.deposit;
+
+  const figures = M.deriveBookingFigures(deposit, draftAt('success'), started);
+  ok('a complete configuration is priced', figures.returns !== null);
+  check('and priced at the rate for its own tenure', figures.returns.tenureMonths, 12);
+  check('at the rate that tenure publishes', figures.returns.annualRate, 7.25);
+  check('with a maturity date to match', M.formatMaturityDate(figures.maturesOn), '12 May 2026');
+
+  /*
+    Nothing is invented for an incomplete configuration. `null` throughout,
+    never zero: a zero maturity is a claim about the deposit and an absent one
+    is the truth.
+  */
+  for (const patch of [
+    { amount: null, tenureMonths: 12, payoutOption: 'at-maturity' },
+    { amount: 500_000, tenureMonths: null, payoutOption: 'at-maturity' },
+    { amount: 500_000, tenureMonths: 12, payoutOption: null },
+  ]) {
+    const partial = { ...draftAt('review'), investment: patch };
+    const result = M.deriveBookingFigures(deposit, partial, started);
+    ok('an incomplete configuration is not priced', result.returns === null);
+    ok('and carries no maturity date', result.maturesOn === null);
+  }
+
+  /*
+    A tenure the product does not price yields nothing — the rule
+    `resolveTenureRate` already holds, asserted again at the seam the
+    post-payment screens read.
+  */
+  const unpriced = {
+    ...draftAt('review'),
+    investment: { amount: 500_000, tenureMonths: 7, payoutOption: 'at-maturity' },
+  };
+  const unpricedFigures = M.deriveBookingFigures(deposit, unpriced, started);
+  ok('an unpriced tenure yields no figures', unpricedFigures.returns === null);
+  ok('and therefore no maturity date', unpricedFigures.maturesOn === null);
+
+  section('Booking · funding accounts and payment methods');
+
+  ok('a funding account is offered', M.SAVED_BANK_ACCOUNTS.length > 0);
+  ok(
+    'exactly one is the primary account',
+    M.SAVED_BANK_ACCOUNTS.filter((account) => account.isPrimary).length === 1,
+  );
+  /*
+    The account type cannot hold a full number, so a full number cannot be
+    rendered — spec 21e §8 Rule 5 enforced by the data rather than the markup.
+  */
+  for (const account of M.SAVED_BANK_ACCOUNTS) {
+    ok(`${account.id} carries only four digits`, /^\d{4}$/.test(account.lastFourDigits));
+    ok(`${account.id} carries no full account number field`, !('accountNumber' in account));
+    ok(
+      `${account.id} states its verification`,
+      ['verified', 'pending', 'failed'].includes(account.verification),
+    );
+  }
+
+  ok(
+    'the default payment method is one the screen offers',
+    M.PAYMENT_METHODS.some((method) => method.id === M.DEFAULT_PAYMENT_METHOD),
+  );
+  check(
+    'payment method ids are unique',
+    M.PAYMENT_METHODS.length,
+    new Set(M.PAYMENT_METHODS.map((method) => method.id)).size,
+  );
+
+  section('Booking · the entry amount, and the refusal to invent one');
+
+  /*
+    The two defects this section exists to stop recurring:
+
+    1. Investment Details asked for an amount both entry flows had already
+       collected, because nothing carried it across.
+    2. A "fix" that invented one — a minimum, a quick amount, a reference
+       figure — would have been worse than asking twice.
+
+    So the parser accepts exactly what an entry flow writes and refuses
+    everything else, and every refusal is `null`, which means *leave the draft
+    alone*.
+  */
+  check('the entry parameter is named once', M.ENTRY_AMOUNT_PARAM, 'amount');
+  check('a plain rupee amount is accepted', M.parseEntryAmount('500000'), 500_000);
+  check('and surrounding whitespace is tolerated', M.parseEntryAmount('  500000 '), 500_000);
+
+  for (const [label, raw] of [
+    ['a missing parameter', undefined],
+    ['an empty parameter', ''],
+    ['a blank parameter', '   '],
+    ['a repeated parameter with two answers', ['500000', '600000']],
+    ['a negative amount', '-500000'],
+    ['zero', '0'],
+    ['a fractional amount', '500000.5'],
+    ['a grouped amount', '5,00,000'],
+    ['exponent notation', '5e5'],
+    ['hexadecimal', '0x10'],
+    ['a currency prefix', '₹500000'],
+    ['text', 'lots'],
+    ['an amount past safe integer range', '99999999999999999999'],
+  ]) {
+    check(`${label} yields nothing to seed`, M.parseEntryAmount(raw), null);
+  }
+
+  /*
+    **No fallback exists in the parser.** The rule is not "it happens to return
+    null" but "there is nothing for a null to fall back to" — asserted against
+    the implementation, because a helpful default is exactly the kind of thing
+    added later by someone trying to be kind.
+  */
+  ok(
+    'the parser never substitutes a product figure',
+    !/minInvestment|maxInvestment|quickAmount|REFERENCE_AMOUNT/.test(M.parseEntryAmount.toString()),
+  );
+
+  section('Booking · both entry paths carry the same two facts');
+
+  /*
+    Goal-Based FD hands over the product and the amount it was evaluated for —
+    the customer's own answer to the planner's amount question. The engine's
+    quote and maturity stay behind, which is the rule that has *not* changed.
+  */
+  const recommendation = {
+    productId: 'fd-002',
+    goalType: 'emergency',
+    principal: 500_000,
+    tenureMonths: 12,
+    quote: { annualRate: 7.25, tenureMonths: 12 },
+    maturity: { maturityAmount: 536_250 },
+    reasons: [],
+  };
+
+  const handoff = M.toBookingHandoff(recommendation);
+  check('the handoff keeps the recommended product', handoff.productId, 'fd-002');
+  check('and the amount the customer stated', handoff.amount, 500_000);
+  check(
+    'and points at the one canonical Booking entry route',
+    handoff.href,
+    '/booking/fd-002/overview?amount=500000',
+  );
+
+  /*
+    The boundary that has not moved. A rate or a maturity in the URL would be
+    Booking believing someone else's price; neither appears, and the handoff has
+    no field that could carry one.
+  */
+  ok('no rate crosses the boundary', !handoff.href.includes('7.25'));
+  ok('no maturity crosses the boundary', !handoff.href.includes('536250'));
+  check('the handoff carries exactly four fields', Object.keys(handoff).sort(), [
+    'amount',
+    'bookable',
+    'href',
+    'productId',
+  ]);
+
+  /* Comparison builds the same route, through the same builder. */
+  check(
+    'Comparison enters at the same route shape',
+    M.bookingHandoffHref('fd-003', 250_000),
+    '/booking/fd-003/overview?amount=250000',
+  );
+  check(
+    'and an entry point with no amount still produces a valid route',
+    M.bookingHandoffHref('fd-003'),
+    '/booking/fd-003/overview',
+  );
+
+  /*
+    Product identity is never traded for an amount: the id in the path is the id
+    that was chosen, for every documented product on both paths.
+  */
+  for (const productId of ['fd-001', 'fd-002', 'fd-003', 'fd-004', 'fd-uc2-equitas-91d']) {
+    ok(
+      `${productId} keeps its identity through the handoff`,
+      M.bookingHandoffHref(productId, 100_000).startsWith(`/booking/${productId}/overview`),
+    );
+  }
+
+  section('Booking · Continue is gated by the domain, not by a constant');
+
+  const detailsTerms = M.BOOKING_OVERVIEW_FIXTURE.deposit.terms;
+  const configured = (over = {}) => ({
+    amount: 500_000,
+    tenureMonths: 12,
+    payoutOption: 'at-maturity',
+    ...over,
+  });
+
+  /*
+    The regression guard for the Investment Details → Nominee defect. The screen
+    carried a hardcoded `continueDisabled`, so this verdict — which the
+    validator was written to produce, and which had no call site — could never
+    reach the button. A valid configuration must report valid, or Nominee
+    becomes unreachable again.
+  */
+  check(
+    'a complete, in-range configuration passes',
+    M.validateInvestmentConfiguration(configured(), detailsTerms, detailsTerms.supportedPayouts)
+      .isValid,
+    true,
+  );
+
+  for (const [label, patch] of [
+    ['no amount', { amount: null }],
+    ['no tenure', { tenureMonths: null }],
+    ['no payout', { payoutOption: null }],
+    ['an amount below the minimum', { amount: 1 }],
+    ['a tenure the product does not price', { tenureMonths: 7 }],
+  ]) {
+    const verdict = M.validateInvestmentConfiguration(
+      configured(patch),
+      detailsTerms,
+      detailsTerms.supportedPayouts,
+    );
+    check(`${label} does not pass`, verdict.isValid, false);
+    ok(
+      `and ${label} is explained in words`,
+      verdict.errors.every((error) => error.message.length > 0),
+    );
+  }
 }
