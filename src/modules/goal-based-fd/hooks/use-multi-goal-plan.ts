@@ -7,6 +7,7 @@ import type { Tenure } from '@/types/finance';
 import { GOAL_TYPES } from '../constants/goals';
 import type { GoalType } from '../types/goal';
 import type { GoalPlan, MultiGoalPlan } from '../types/plan';
+import { calculateEmergencyFundAmount } from '../utils/emergency-allocation';
 
 /**
  * The multi-goal plan a customer is building — presentation state only.
@@ -41,16 +42,13 @@ export interface GoalDraft {
   /** Digits as typed. Empty until the customer enters something. */
   amount: string;
   horizon: Tenure;
-  /**
-   * What the customer says this money is for, in their words.
-   *
-   * The client source document's Use Case 2 carries an `Intent` column —
-   * "Short-term liquidity", "Goal matching with diversification", "Long-term
-   * fixed return". It is captured because the customer stated it and it belongs
-   * on their plan, and it is **read by nothing**: no filter, ranking or
-   * allocation consults it, because the document defines no behaviour for it.
-   */
   intent: string;
+  /**
+   * Emergency Fund starts as a system recommendation based on 10% of the
+   * total investment. Once the customer edits it, it becomes manual and
+   * subsequent total changes must not overwrite the customer's choice.
+   */
+  amountSource: 'auto' | 'manual';
 }
 
 export interface MultiGoalPlanFlow {
@@ -95,6 +93,7 @@ function createDraft(goalType: GoalType): GoalDraft {
     amount: '',
     horizon: DEFAULT_HORIZON,
     intent: '',
+    amountSource: goalType === 'emergency' ? 'auto' : 'manual',
   };
 }
 
@@ -107,6 +106,27 @@ export function useMultiGoalPlan(): MultiGoalPlanFlow {
   */
   const [isSeniorCitizen, setIsSeniorCitizen] = useState<boolean | undefined>(undefined);
   const [drafts, setDrafts] = useState<GoalDraft[]>(() => [createDraft(FIRST_GOAL_TYPE)]);
+
+  const setPlannerTotalAmount = useCallback((value: string) => {
+    setTotalAmount(value);
+
+    const total = toRupees(value);
+
+    setDrafts((current) =>
+      current.map((draft) => {
+        if (draft.goalType !== 'emergency' || draft.amountSource !== 'auto') {
+          return draft;
+        }
+
+        const emergencyAmount = calculateEmergencyFundAmount(total);
+
+        return {
+          ...draft,
+          amount: emergencyAmount > 0 ? String(emergencyAmount) : '',
+        };
+      }),
+    );
+  }, []);
 
   const addGoal = useCallback(() => {
     setDrafts((current) => {
@@ -127,7 +147,29 @@ export function useMultiGoalPlan(): MultiGoalPlanFlow {
 
   const updateGoal = useCallback((id: string, patch: Partial<Omit<GoalDraft, 'id'>>) => {
     setDrafts((current) =>
-      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
+      current.map((draft) => {
+        if (draft.id !== id) {
+          return draft;
+        }
+
+        const nextDraft = {
+          ...draft,
+          ...patch,
+        };
+
+        if (
+          draft.goalType === 'emergency' &&
+          patch.amount !== undefined &&
+          patch.amount !== draft.amount
+        ) {
+          return {
+            ...nextDraft,
+            amountSource: 'manual',
+          };
+        }
+
+        return nextDraft;
+      }),
     );
   }, []);
 
@@ -166,12 +208,8 @@ export function useMultiGoalPlan(): MultiGoalPlanFlow {
     drafts,
     plan,
     goalsTotal,
-    /*
-      Reported, never corrected. A mismatch is a fact about the customer's plan;
-      silently distributing it would be this hook inventing an allocation rule.
-    */
     difference: toRupees(totalAmount) - goalsTotal,
-    setTotalAmount,
+    setTotalAmount: setPlannerTotalAmount,
     addGoal,
     removeGoal,
     updateGoal,

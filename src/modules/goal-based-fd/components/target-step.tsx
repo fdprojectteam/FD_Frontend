@@ -57,7 +57,7 @@ export function TargetStep({ hint, initialValue, onSubmit }: TargetStepProps) {
     >
       <div className="flex flex-col gap-2">
         <label htmlFor={fieldId} className="text-h2 text-content">
-          Is there an amount you&apos;re aiming for?
+          Is there an maturity amount you&apos;re aiming for?
         </label>
         <p id={hintId} className="text-body text-content-muted">
           {hint}

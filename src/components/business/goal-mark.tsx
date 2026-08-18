@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils';
  * them through `className` — so reduced-motion handling stays in one place
  * rather than being duplicated per illustration.
  */
-export type GoalMarkKind = 'emergency' | 'education' | 'retirement';
+export type GoalMarkKind = 'multiGoal' | 'emergency' | 'education' | 'retirement';
 
 export interface GoalMarkProps {
   kind: GoalMarkKind;
@@ -55,6 +55,7 @@ export interface GoalMarkProps {
  * broken image rather than a broken image on every screen that renders goals.
  */
 const GOAL_ARTWORK: Record<GoalMarkKind, string> = {
+  multiGoal: '/multi_goal_based_v2.png',
   emergency: '/goal-emergency-fund.png',
   education: '/goal-childran-education.png',
   retirement: '/goal-retirment.png',

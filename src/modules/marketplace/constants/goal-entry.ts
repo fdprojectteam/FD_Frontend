@@ -46,6 +46,13 @@ export interface GoalEntry {
 */
 export const GOAL_ENTRIES: readonly GoalEntry[] = [
   {
+    id: 'multiGoal',
+    label: 'Multi Goal',
+    description: 'For multiple goals with different timelines.',
+    focus: 'Timeline • Maturity • Goal alignment',
+    href: `${ROUTES.multiGoalPlanner}` as Route,
+  },
+  {
     id: 'emergency',
     label: 'Emergency fund',
     description: 'For unexpected expenses and short-notice needs.',

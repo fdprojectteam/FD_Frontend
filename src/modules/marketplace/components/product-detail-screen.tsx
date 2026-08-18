@@ -25,8 +25,6 @@ import { useCompareSelection } from '../hooks/use-compare-selection';
 import { useProduct } from '../hooks/use-product';
 import { estimateReturnsFor } from '../services/product-service';
 import type { MaturityResult } from '../types/calculator';
-// import { calculateMaturity } from '../utils/maturity';
-// import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * ProductDetailScreen — composition root for `/marketplace/[productId]`

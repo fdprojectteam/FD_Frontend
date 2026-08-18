@@ -98,6 +98,7 @@ export const ROUTES = {
    * (`06-architecture.md` §2). Nothing about Booking changes because the user
    * arrived here instead of from a product card.
    */
+  multiGoalPlanner: '/goal-planner/plan' as Route,
   goalPlanner: '/goal-planner' as Route,
   /** Multi-goal planning (client source document, Use Case 2). */
   goalPlannerPlan: '/goal-planner/plan' as Route,
