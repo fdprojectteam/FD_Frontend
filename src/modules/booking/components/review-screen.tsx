@@ -1,10 +1,11 @@
 'use client';
 
-import { BadgeCheck, ChartColumn, FileText, Landmark, Users } from 'lucide-react';
+import { BadgeCheck, ChartColumn, FileCheck2, FileText, Landmark, Users } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Card } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
+import { useInvestorIdentity } from '@/hooks/use-investor-identity';
 import { formatCurrency, formatRate, formatTenure } from '@/utils/format';
 
 import { BookingStepActions } from './booking-step-actions';
@@ -17,6 +18,8 @@ import { SAVED_BANK_ACCOUNTS } from '../fixtures/bank-accounts';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
+import { createApplicationLibrary } from '../services/application-library';
+import { resolveApplication } from '../utils/application-mapping';
 import { deriveBookingFigures } from '../utils/booking-figures';
 import { formatMaturityDate } from '../utils/maturity-date';
 
@@ -59,6 +62,7 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
   const { deposit } = useBookingProduct();
   const { draft, setDeclarations } = useBookingDraft();
   const { isReady, continueTo, goToStep } = useBookingStep('review', productId);
+  const { identity } = useInvestorIdentity();
 
   const { investment, declarations } = draft;
 
@@ -82,6 +86,18 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
   );
 
   const account = SAVED_BANK_ACCOUNTS.find((entry) => entry.id === draft.bankAccountId);
+
+  /*
+    The bank's application as one more reviewable domain — composed through the
+    existing `ReviewSection`, not a rebuilt screen. It is resolved from the same
+    canonical sources the application step used, so the two cannot disagree.
+  */
+  const library = useMemo(() => createApplicationLibrary(), []);
+  const applicationTemplate = library.findTemplate(deposit.bank.id, 'fixed-deposit');
+  const application =
+    applicationTemplate === null
+      ? null
+      : resolveApplication(applicationTemplate, { deposit, draft, identity });
 
   const canContinue =
     declarations.detailsConfirmed && declarations.termsAccepted && figures.returns !== null;
@@ -209,6 +225,43 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
                 ) : null}
               </ReviewSection>
 
+              {applicationTemplate === null ? null : (
+                <ReviewSection
+                  icon={<FileCheck2 aria-hidden="true" className="size-4" />}
+                  title={`${deposit.bank.name} application`}
+                  editLabel="Edit the bank application"
+                  onEdit={() => {
+                    goToStep('application');
+                  }}
+                  fields={[
+                    { label: 'Form', value: applicationTemplate.title },
+                    {
+                      label: 'Status',
+                      value:
+                        application?.isComplete === true ? 'Ready' : 'Needs a few more details',
+                    },
+                    {
+                      label: 'Prepared',
+                      value: draft.application.preparedAt === null ? 'Not yet' : 'Yes',
+                    },
+                    {
+                      label: 'Submission',
+                      value:
+                        applicationTemplate.submission.method === 'poc'
+                          ? 'Prepared on the platform'
+                          : applicationTemplate.submission.method,
+                    },
+                  ]}
+                >
+                  {applicationTemplate.isPlaceholder ? (
+                    <p className="text-caption text-content-muted">
+                      A sample form is in use while {deposit.bank.name}&apos;s own application is
+                      finalised.
+                    </p>
+                  ) : null}
+                </ReviewSection>
+              )}
+
               <ReviewSection
                 icon={<FileText aria-hidden="true" className="size-4" />}
                 title="Investment Summary"
@@ -301,7 +354,8 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
       </div>
 
       <BookingStepActions
-        backHref={ROUTES.bookingBankAccount(productId)}
+        /* The step before Review is now the bank's application. */
+        backHref={ROUTES.bookingApplication(productId)}
         backLabel="Back"
         continueLabel="Confirm & Proceed to Payment"
         continueDisabled={!canContinue}

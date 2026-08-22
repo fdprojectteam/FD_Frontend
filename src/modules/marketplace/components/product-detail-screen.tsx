@@ -254,8 +254,17 @@ export function ProductDetailScreen({ productId }: ProductDetailScreenProps) {
         <DetailActionBar
           isComparing={compare.has(product.id)}
           compareDisabled={compare.isFull && !compare.has(product.id)}
+          /*
+            The amount the customer has been calculating with travels into
+            Booking, so Investment Details opens on their figure rather than
+            asking for it again. `null` until they enter one — the calculator's
+            own reference figure is the platform's illustration, not their
+            decision, and seeding that would be inventing an amount.
+          */
           bookingHref={
-            isBookableProduct(product.id) ? ROUTES.bookingOverview(product.id) : undefined
+            isBookableProduct(product.id)
+              ? ROUTES.bookingOverview(product.id, calculatedAmount ?? undefined)
+              : undefined
           }
           onCompare={() => compare.toggle(product.id)}
         />

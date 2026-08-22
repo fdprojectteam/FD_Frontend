@@ -58,9 +58,24 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useState(() => {
     const ready = ensureMockWorker();
-    // `null` in production and during SSR — the transport is then never gated
-    // and behaves exactly as it did before this mechanism existed.
-    if (ready) setRequestGate(() => ready);
+
+    /*
+      `null` in production and during SSR — the transport is then never gated
+      and behaves exactly as it did before this mechanism existed.
+
+      When a gate is registered it calls `ensureMockWorker` **per request**
+      rather than closing over the promise captured here. That single change is
+      what makes the marketplace deterministic: the first call resolves the
+      original start, and every later one re-verifies that the Service Worker
+      is still controlling the page, restarting it if it is not. Capturing the
+      promise meant a worker lost after startup was never noticed, requests
+      bypassed the mock API, and the product list came back empty until a hard
+      refresh.
+
+      Idempotent and cached, so this adds no duplicate work and no extra
+      request — see `ensureMockWorker`.
+    */
+    if (ready) setRequestGate(() => ensureMockWorker() ?? Promise.resolve());
     return null;
   });
 

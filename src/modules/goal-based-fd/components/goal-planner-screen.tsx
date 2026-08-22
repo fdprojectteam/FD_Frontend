@@ -245,6 +245,7 @@ export function GoalPlannerScreen() {
 
           {flow.stage === 'amount' ? (
             <AmountStep
+              goalType={flow.answers.goalType}
               hint={STEP_HINTS.amount}
               lowestMinimum={lowestMinimum}
               initialValue={flow.answers.principal}

@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/utils';
 
+import { GOAL_LABELS } from '../constants/goals';
+import type { GoalType } from '../types/goal';
+import {
+  EMERGENCY_FUND_BASIS,
+  EMERGENCY_FUND_EXPLANATION,
+  calculateEmergencyFundAmount,
+} from '../utils/emergency-allocation';
+
 const QUICK_AMOUNTS = [
   {
     value: 100_000,
@@ -26,6 +34,17 @@ const QUICK_AMOUNTS = [
 ] as const;
 
 export interface AmountStepProps {
+  /**
+   * The goal being planned for.
+   *
+   * Only the emergency fund derives its allocation from the total; every other
+   * goal invests the amount the customer stated. Optional because the flow
+   * types it as possibly unanswered — an absent goal simply derives nothing,
+   * which is the honest behaviour rather than an assertion that it is present. The step reads the goal rather
+   * than being told what to suggest, so the rule stays in
+   * `emergency-allocation.ts` and this component never restates it.
+   */
+  goalType?: GoalType;
   /** One line saying why the question is being asked. */
   hint: string;
   /** The smallest minimum investment across the loaded catalogue, when known. */
@@ -39,13 +58,48 @@ function toDigits(raw: string): string {
   return raw.replace(/\D/g, '').slice(0, 12);
 }
 
-export function AmountStep({ hint, lowestMinimum, initialValue, onSubmit }: AmountStepProps) {
+export function AmountStep({
+  goalType,
+  hint,
+  lowestMinimum,
+  initialValue,
+  onSubmit,
+}: AmountStepProps) {
   const fieldId = useId();
   const hintId = useId();
+  const allocationFieldId = useId();
   const [digits, setDigits] = useState(initialValue ? String(initialValue) : '');
 
   const amount = digits === '' ? 0 : Number(digits);
-  const canContinue = amount > 0;
+
+  /**
+   * The emergency fund's own allocation.
+   *
+   * For this one goal the figure above is the customer's **total investment**,
+   * and what they put into an emergency deposit is a share of it — the policy
+   * `calculateEmergencyFundAmount` owns. Every other goal invests the stated
+   * amount directly and never sees this control.
+   *
+   * ## Suggested, not imposed
+   *
+   * The field is editable, and once the customer changes it their figure wins.
+   * `editedAllocation` is `null` until they do; while it is null the suggestion
+   * tracks the total, so correcting ₹25,00,000 to ₹30,00,000 moves the
+   * suggestion with it. After an edit the suggestion is shown as a hint and
+   * never re-applied — a value the customer typed must not be overwritten by a
+   * later render.
+   */
+  const derivesAllocation = goalType === 'emergency';
+  const [editedAllocation, setEditedAllocation] = useState<string | null>(null);
+
+  const suggestedAllocation = calculateEmergencyFundAmount(amount);
+  const allocationDigits =
+    editedAllocation ?? (suggestedAllocation > 0 ? String(suggestedAllocation) : '');
+  const allocation = allocationDigits === '' ? 0 : Number(allocationDigits);
+
+  /* What is actually invested — the allocation for an emergency fund, else the total. */
+  const investedAmount = derivesAllocation ? allocation : amount;
+  const canContinue = investedAmount > 0;
 
   return (
     <form
@@ -54,7 +108,7 @@ export function AmountStep({ hint, lowestMinimum, initialValue, onSubmit }: Amou
         event.preventDefault();
 
         if (canContinue) {
-          onSubmit(amount);
+          onSubmit(investedAmount);
         }
       }}
     >
@@ -83,7 +137,9 @@ export function AmountStep({ hint, lowestMinimum, initialValue, onSubmit }: Amou
 
         <div className="relative flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-content text-sm font-semibold">Investment amount</span>
+            <span className="text-content text-sm font-semibold">
+              {derivesAllocation ? 'Total investment' : 'Investment amount'}
+            </span>
 
             {lowestMinimum !== undefined ? (
               <span className="text-content-muted text-xs">
@@ -111,10 +167,67 @@ export function AmountStep({ hint, lowestMinimum, initialValue, onSubmit }: Amou
               <Check className="size-3" />
             </span>
 
-            <span>We&apos;ll use this amount to compare relevant FD options.</span>
+            <span>
+              {derivesAllocation
+                ? 'We’ll set aside part of this for your emergency fund.'
+                : 'We’ll use this amount to compare relevant FD options.'}
+            </span>
           </div>
         </div>
       </div>
+
+      {/*
+        The derived allocation. Rendered only for the goal whose size is a
+        function of the whole portfolio, and only once there is a total to take
+        a share of.
+      */}
+      {derivesAllocation && amount > 0 ? (
+        <div className="border-border-default bg-surface-card flex flex-col gap-3 rounded-3xl border p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <label htmlFor={allocationFieldId} className="text-content text-sm font-semibold">
+              {GOAL_LABELS.emergency}
+            </label>
+            <span className="text-content-muted text-xs">{EMERGENCY_FUND_BASIS}</span>
+          </div>
+
+          <p className="text-content-muted text-sm">
+            Based on your total investment of {formatCurrency(amount)}, we suggest{' '}
+            {formatCurrency(suggestedAllocation)}.
+          </p>
+
+          <Input
+            id={allocationFieldId}
+            inputMode="numeric"
+            autoComplete="off"
+            prefix="₹"
+            className="h-14 max-w-full rounded-2xl text-xl font-semibold"
+            value={allocation === 0 ? '' : new Intl.NumberFormat('en-IN').format(allocation)}
+            onChange={(event) => {
+              setEditedAllocation(toDigits(event.target.value));
+            }}
+          />
+
+          <p className="text-content-muted text-xs">
+            {EMERGENCY_FUND_EXPLANATION} You can change this amount.
+          </p>
+
+          {/*
+            Once edited, the suggestion becomes a way back rather than something
+            that silently reasserts itself.
+          */}
+          {editedAllocation !== null && allocation !== suggestedAllocation ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditedAllocation(null);
+              }}
+              className="focus-ring text-content-brand w-fit rounded-md text-xs font-medium"
+            >
+              Use the suggested {formatCurrency(suggestedAllocation)}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Quick amounts */}
       <div className="flex flex-col gap-3">

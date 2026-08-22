@@ -53,11 +53,39 @@ export function resolveStepAccess(stepId: BookingStepId, draft: BookingDraft): S
   }
 
   /*
-    Equally, a confirmed booking must not be walked back into payment. The money
-    has moved; re-entering the steps that move it is how a second payment gets
-    attempted, which spec 21g §8 Rule 3 exists to prevent.
+    **A confirmed booking is terminal.**
+
+    Once the partner bank has confirmed, the deposit exists: there is no draft
+    left to edit, and every step before Success describes a decision that has
+    already been acted on. This previously guarded only Payment and later, which
+    left the six earlier steps reachable — so a browser Back press, or a
+    bookmarked `/review`, opened a fully editable screen for a deposit that had
+    already been created. Edits there changed a draft nothing would read again,
+    and Review's own Continue bounced to Success without explaining why.
+
+    Narrowing it to Payment was protecting the wrong thing. A second payment was
+    never the only risk; the larger one is a customer believing they can still
+    change an investment they have made. So the rule is the whole journey, not
+    its tail.
   */
-  if (draft.confirmation?.confirmedAt != null && stepIndex(stepId) >= stepIndex('payment')) {
+  if (draft.confirmation?.confirmedAt != null) {
+    /*
+      **Overview is the exception, and it is the fix for a real defect.**
+
+      A draft is keyed by product, so a completed booking used to occupy that
+      product's slot permanently: choosing the same deposit again landed on
+      Overview, the guard saw a confirmed booking, and sent the customer
+      straight back to the Success screen of the booking they had already
+      finished. They could not book it a second time at all.
+
+      Overview *is* the act of starting a booking. So it stays reachable, and
+      `BookingOverviewScreen` begins a fresh session when it finds a finished
+      one. Every other step still resolves to Success, because a completed
+      booking remains terminal — what changes is that it no longer blocks the
+      next one.
+    */
+    if (stepId === 'overview') return { allowed: true, redirectTo: 'overview' };
+
     return stepId === 'success'
       ? { allowed: true, redirectTo: 'success' }
       : { allowed: false, redirectTo: 'success' };

@@ -59,9 +59,23 @@ export const BOOKING_PHASES: readonly BookingPhase[] = [
  */
 const STEP_TO_PHASE: Record<BookingStepId, BookingPhaseId | null> = {
   overview: 'details',
+  /*
+    Identity verification belongs to **Details**, not to a fifth phase. The
+    Founder Note fixes the visible phases at four, and verification is part of
+    establishing the details of who is investing — it is not a separate stage of
+    the journey from the customer's point of view.
+  */
+  identity: 'details',
   investment: 'details',
   nominee: 'nominee',
   'bank-account': 'pay-confirm',
+  /*
+    The application belongs to **Review**, not to a fifth phase. It is the
+    document the customer is about to review — preparing it is part of that
+    phase from their point of view, and the Founder Note fixes the visible
+    markers at four.
+  */
+  application: 'review',
   review: 'review',
   payment: 'pay-confirm',
   processing: 'pay-confirm',

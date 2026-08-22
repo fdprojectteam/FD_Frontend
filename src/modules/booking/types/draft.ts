@@ -1,3 +1,6 @@
+import type { KycMethodId } from '@/types/investor';
+
+import type { ApplicationConfiguration } from './application';
 import type { BookingStepId } from './booking';
 import type { NomineeConfiguration } from './nominee';
 
@@ -98,9 +101,52 @@ export interface BookingConfirmation {
   confirmedAt: number | null;
 }
 
+/**
+ * What this booking records about identity verification.
+ *
+ * **Deliberately not a copy of the investor's identity.** The name, date of
+ * birth and PAN belong to the Investor domain and are read from it; storing them
+ * on a booking draft would be the duplicated identity state doc 10 warns
+ * against, and would persist PII into `sessionStorage`.
+ *
+ * What a booking legitimately owns is the *fact that this investor confirmed
+ * their identity for this booking*, and by which route. Two fields, no PII.
+ */
+export interface IdentityConfirmation {
+  /** Epoch ms of the investor's confirmation, or `null` while outstanding. */
+  confirmedAt: number | null;
+  /** The route that satisfied it — `null` until one has. */
+  method: KycMethodId | null;
+}
+
 export interface BookingDraft {
+  /**
+   * This booking session's own identity.
+   *
+   * The product alone was not enough. A draft is stored per product, so a
+   * finished booking used to *be* that product's booking forever — the customer
+   * could not start a second one, and a completed booking's confirmation,
+   * reference and application answers were the ones any later attempt found.
+   *
+   * A session id makes "a new booking" a thing the code can state and a test
+   * can assert: two bookings of the same deposit are two sessions, and nothing
+   * from the first can appear in the second without the id matching.
+   */
+  bookingId: string;
   /** Scopes the draft. A different product is a different booking. */
   productId: string;
+  /** Identity verification for this booking (doc 07, Stage 3). */
+  identity: IdentityConfirmation;
+  /**
+   * The partner bank's application.
+   *
+   * **Only what nothing else owns** — answers to fields no canonical source can
+   * supply, and which declarations were accepted. Name, date of birth, PAN,
+   * nominee and funding account are read from the Investor domain and from this
+   * draft's own sections every time the application is resolved, so this is not
+   * a third customer-data store.
+   */
+  application: ApplicationConfiguration;
   investment: InvestmentConfiguration;
   /**
    * The saved funding account, **by id** (spec 21e).
@@ -153,7 +199,19 @@ export interface BookingDraft {
  * section fails to typecheck, which is the only kind of rule that survives the
  * person who wrote it.
  */
+/**
+ * The application as it may be written to storage.
+ *
+ * `answers` is excluded **at the type level**, for the reason given on
+ * `ApplicationConfiguration`: a manual answer may be a third party's address or
+ * mobile number, and the platform does not hold those at rest. A future edit
+ * that tries to persist them fails to typecheck.
+ */
+export type PersistedApplicationConfiguration = Omit<ApplicationConfiguration, 'answers'>;
+
 export interface PersistedBookingDraft {
-  version: 2;
-  draft: Omit<BookingDraft, 'nominee'>;
+  version: 4;
+  draft: Omit<BookingDraft, 'nominee' | 'application'> & {
+    application: PersistedApplicationConfiguration;
+  };
 }

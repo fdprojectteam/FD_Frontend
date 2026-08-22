@@ -161,8 +161,33 @@ export function ProcessingScreen({ productId }: ProcessingScreenProps) {
         <div className="md:col-span-2">
           <Card variant="outlined" className="flex flex-col gap-6 p-5 md:p-6">
             <div className="flex flex-col items-center gap-3">
-              <span className="border-border-primary text-content-brand flex size-16 items-center justify-center rounded-full border-2">
-                <Landmark aria-hidden="true" className="size-7" />
+              {/*
+                A turning ring around a still icon. The ring carries the "in
+                progress" reading; the icon stays put so the centre of the
+                screen is not moving while someone reads it. Rotation only —
+                no pulse, no gradient sweep, no scale — and the global
+                reduced-motion rule stops it, which is safe because the stage
+                list below states the same thing in words.
+              */}
+              <span className="relative flex size-16 items-center justify-center">
+                {isConfirmed ? null : (
+                  <span
+                    aria-hidden="true"
+                    className="animate-processing-sweep border-border-default border-t-content-brand absolute inset-0 rounded-full border-2"
+                  />
+                )}
+                <span
+                  aria-hidden="true"
+                  className={
+                    isConfirmed
+                      ? 'border-success text-success absolute inset-0 rounded-full border-2'
+                      : 'absolute inset-0'
+                  }
+                />
+                <Landmark
+                  aria-hidden="true"
+                  className={isConfirmed ? 'text-success size-7' : 'text-content-brand size-7'}
+                />
               </span>
 
               {/*

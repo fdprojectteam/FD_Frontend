@@ -243,3 +243,59 @@ export { SAVED_BANK_ACCOUNTS } from '@/modules/booking/fixtures/bank-accounts';
  * one place a fabricated amount could get in.
  */
 export { ENTRY_AMOUNT_PARAM, parseEntryAmount } from '@/modules/booking/utils/entry-amount';
+
+/* ---- Investor identity & KYC readiness (doc 07 Stage 3, doc 11 Domain 1) ---- */
+/**
+ * The readiness rules decide what an investor is asked for. Exported so every
+ * outcome — already verified, confirm-only, needs refreshing, something genuinely
+ * missing — is assertable without a service, a network or a React tree.
+ */
+export {
+  IDENTITY_FIELD_LABELS,
+  OPTIONAL_IDENTITY_FIELDS,
+  REQUIRED_IDENTITY_FIELDS,
+  deriveKycReadiness,
+  isFieldKnown,
+  isIdentityCleared,
+} from '@/utils/kyc/readiness';
+export { KYC_METHODS, findKycMethod, identityWithStatus } from '@/services/investor';
+
+/* ---- FD Application Orchestrator ---- */
+/**
+ * The library, the mapping engine and the schema validator. Exported so the
+ * contract that makes the client's real forms pluggable — resolve by
+ * institution, prefill from canonical sources, ask only for what is missing —
+ * is assertable without a React tree.
+ */
+export { createApplicationLibrary } from '@/modules/booking/services/application-library';
+export {
+  APPLICATION_TEMPLATES,
+  AU_FD_TEMPLATE,
+  SBI_FD_TEMPLATE,
+} from '@/modules/booking/fixtures/application-templates';
+export {
+  resolveApplication,
+  resolveFieldValue,
+  validateFieldValue,
+} from '@/modules/booking/utils/application-mapping';
+
+/* ---- Emergency-fund allocation policy (single source of the 10% rule) ---- */
+export {
+  EMERGENCY_FUND_BASIS,
+  EMERGENCY_FUND_EXPLANATION,
+  EMERGENCY_FUND_PERCENT,
+  calculateEmergencyFundAmount,
+} from '@/modules/goal-based-fd/utils/emergency-allocation';
+
+/* ---- Portfolio: ownership, not intent ---- */
+export {
+  portfolioAttention,
+  summarisePortfolio,
+  toHoldingView,
+} from '@/modules/portfolio/utils/portfolio-summary';
+export { clearHoldings, readHoldings, recordHolding } from '@/services/portfolio';
+export {
+  calculateDepositReturns,
+  maturityDate as platformMaturityDate,
+  monthsUntil,
+} from '@/utils/finance';

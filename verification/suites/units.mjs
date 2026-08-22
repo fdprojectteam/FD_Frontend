@@ -1041,12 +1041,45 @@ export async function runUnitSuite() {
     M.BOOKING_PHASES.map((p) => p.label),
     ['Details', 'Nominee', 'Review', 'Pay & Confirm'],
   );
-  check('all eight routes remain', M.BOOKING_STEPS.length, 8);
+  /*
+    Nine routes since Investor Verification was added at doc 07's Stage 3. The
+    **four visible phases are unchanged** — which is the guarantee that
+    mattered, and the reason this assertion counts routes and phases separately.
+    Identity maps to Details, so the customer still sees four markers.
+  */
+  check('all ten routes remain', M.BOOKING_STEPS.length, 10);
+  check(
+    'and identity sits at Stage 3, before configuration',
+    M.BOOKING_STEPS.map((step) => step.id),
+    [
+      'overview',
+      'identity',
+      'investment',
+      'nominee',
+      'bank-account',
+      'application',
+      'review',
+      'payment',
+      'processing',
+      'success',
+    ],
+  );
 
   check(
     'every route resolves to a phase, or explicitly to none',
     M.BOOKING_STEPS.map((step) => M.resolveBookingPhase(step.id)),
-    ['details', 'details', 'nominee', 'pay-confirm', 'review', 'pay-confirm', 'pay-confirm', null],
+    [
+      'details',
+      'details',
+      'details',
+      'nominee',
+      'pay-confirm',
+      'review',
+      'review',
+      'pay-confirm',
+      'pay-confirm',
+      null,
+    ],
   );
 
   /**
@@ -1101,8 +1134,27 @@ export async function runUnitSuite() {
     reaches storage at all.
   */
   const draft = (over = {}) => ({
+    /* The booking session this draft belongs to (isolation between bookings). */
+    bookingId: 'booking-1000000-1',
     productId: 'fd-002',
     investment: { amount: 500_000, tenureMonths: 24, payoutOption: 'at-maturity' },
+    /*
+      Version 3 — identity confirmation, recorded without any PII. Placed here
+      to match the parse order, since `check` compares serialised JSON.
+    */
+    /*
+      Version 4 — the bank application. `answers` is absent by design: a manual
+      answer may be a third party's address or mobile, so it follows the
+      nominee's rule and is never written at rest.
+    */
+    application: {
+      acceptedDeclarations: ['details-accurate'],
+      preparedAt: 1_000_000,
+      identityMethod: 'existing-kyc',
+      /* Restored empty on read, never from storage — like the nominee section. */
+      answers: {},
+    },
+    identity: { confirmedAt: 1_000_000, method: 'existing-kyc' },
     /*
       Version 2 sections (booking steps 4–8). Present in the fixture in the
       order `writeDraft` assembles them, for the same reason `nominee` is last:
@@ -1127,7 +1179,7 @@ export async function runUnitSuite() {
   check(
     'the key is namespaced, versioned and per-product',
     M.draftStorageKey('fd-002'),
-    'fd:booking-draft:v2:fd-002',
+    'fd:booking-draft:v4:fd-002',
   );
 
   store.clear();
@@ -1169,28 +1221,28 @@ export async function runUnitSuite() {
     missing the sections steps 4–8 depend on, so it must fail closed and start a
     clean booking — not hydrate a half-shaped draft into a payment screen.
   */
-  rejects('and so is the previous schema version', JSON.stringify({ version: 1, draft: draft() }));
+  rejects('and so is the previous schema version', JSON.stringify({ version: 3, draft: draft() }));
   rejects(
     'an unknown payout option is rejected',
     JSON.stringify({
-      version: 2,
+      version: 3,
       draft: draft({ investment: { amount: 1, tenureMonths: 1, payoutOption: 'weekly' } }),
     }),
   );
   rejects(
     'a negative amount is rejected',
     JSON.stringify({
-      version: 2,
+      version: 3,
       draft: draft({ investment: { amount: -1, tenureMonths: 1, payoutOption: null } }),
     }),
   );
   rejects(
     'an unknown step is rejected',
-    JSON.stringify({ version: 2, draft: draft({ furthestStep: 'kyc' }) }),
+    JSON.stringify({ version: 3, draft: draft({ furthestStep: 'unknown-step' }) }),
   );
   rejects(
     'a draft whose productId disagrees with its key is rejected',
-    JSON.stringify({ version: 2, draft: draft({ productId: 'fd-999' }) }),
+    JSON.stringify({ version: 3, draft: draft({ productId: 'fd-999' }) }),
   );
 
   /* Derived values must never be persisted — Document 09 §10, BR-INV-004. */
@@ -1208,16 +1260,36 @@ export async function runUnitSuite() {
    * Listing the permitted keys says the rule directly: adding a derived field
    * fails here, and so does quietly adding anything else.
    */
-  check('the draft stores exactly these eight keys', Object.keys(persisted.draft).sort(), [
+  check('the draft stores exactly these eleven keys', Object.keys(persisted.draft).sort(), [
+    'application',
     'bankAccountId',
+    'bookingId',
     'confirmation',
     'declarations',
     'furthestStep',
+    'identity',
     'investment',
     'paymentMethod',
     'productId',
     'updatedAt',
   ]);
+  /*
+    **Identity is a receipt, not a copy.** The booking records that the investor
+    confirmed and by which route; the name, date of birth and PAN stay in the
+    Investor domain and are never written to storage. This is the rule that
+    keeps identity from being duplicated into every module that needs it.
+  */
+  check(
+    'and identity stores only a timestamp and a method',
+    Object.keys(persisted.draft.identity).sort(),
+    ['confirmedAt', 'method'],
+  );
+  for (const forbidden of ['fullName', 'dateOfBirth', 'pan', 'aadhaar', 'mobile', 'email']) {
+    ok(
+      `no ${forbidden} from the investor record is persisted`,
+      !JSON.stringify(persisted).includes(forbidden),
+    );
+  }
   check(
     'and the configuration stores exactly the three inputs — no derived figures',
     Object.keys(persisted.draft.investment).sort(),
@@ -2298,7 +2370,7 @@ export async function runUnitSuite() {
   intStore.set(
     M.draftStorageKey('fd-002'),
     JSON.stringify({
-      version: 2,
+      version: 3,
       draft: {
         productId: 'fd-002',
         investment: { amount: 500_000.5, tenureMonths: 24, payoutOption: 'at-maturity' },
@@ -2573,9 +2645,12 @@ export async function runUnitSuite() {
   };
 
   M.writeDraft({
+    bookingId: 'booking-1000000-9',
     productId: 'fd-002',
     investment: { amount: 500_000, tenureMonths: 24, payoutOption: 'at-maturity' },
     nominee: { nominationType: 'single', nominees: [NOMINEE] },
+    identity: { confirmedAt: 1_000_000, method: 'existing-kyc' },
+    application: { acceptedDeclarations: [], preparedAt: null, identityMethod: null },
     bankAccountId: 'acc-axis-4587',
     declarations: { detailsConfirmed: false, termsAccepted: false },
     paymentMethod: null,
@@ -2592,10 +2667,13 @@ export async function runUnitSuite() {
     'the persisted payload holds only the non-sensitive keys',
     Object.keys(JSON.parse(written).draft).sort(),
     [
+      'application',
       'bankAccountId',
+      'bookingId',
       'confirmation',
       'declarations',
       'furthestStep',
+      'identity',
       'investment',
       'paymentMethod',
       'productId',
@@ -3913,10 +3991,23 @@ export async function runUnitSuite() {
    * module boundary forbids importing it. This is the drift check that keeps the
    * duplication honest.
    */
+  /*
+    Re-pointed for the multi-goal entry, not relaxed. The drift check that
+    matters is unchanged: every *single-goal* entry on Home must name a goal the
+    planner knows. The multi-goal entry names no goal — it opens the plan route
+    — so it is excluded by that property rather than by name.
+  */
+  const singleGoalEntries = M.GOAL_ENTRIES.filter((entry) => M.GOAL_TYPES.includes(entry.id));
   check(
     'the Home callout names the same three goals as the planner',
-    M.GOAL_ENTRIES.map((entry) => entry.id),
+    singleGoalEntries.map((entry) => entry.id),
     [...M.GOAL_TYPES],
+  );
+  ok(
+    'and every entry is either a known goal or the multi-goal planner',
+    M.GOAL_ENTRIES.every(
+      (entry) => M.GOAL_TYPES.includes(entry.id) || entry.href.startsWith('/goal-planner/plan'),
+    ),
   );
 
   /* ================================================================ */
@@ -3927,12 +4018,12 @@ export async function runUnitSuite() {
    * answering the planner's first question; a link to the bare route would throw
    * that answer away and ask again, which is the duplicate this work removes.
    */
-  for (const entry of M.GOAL_ENTRIES) {
+  for (const entry of singleGoalEntries) {
     check(`the "${entry.id}" entry carries its goal`, entry.href, `/goal-planner?goal=${entry.id}`);
   }
   check(
     'and the entries cover exactly the planner’s goals',
-    M.GOAL_ENTRIES.map((entry) => entry.id),
+    singleGoalEntries.map((entry) => entry.id),
     [...M.GOAL_TYPES],
   );
 
@@ -5072,10 +5163,14 @@ export async function runUc1Uc3ScenarioSuite(M) {
    * rather than as a bank term.
    */
   const derived = M.toBookingOverview(products.find((p) => p.productId !== 'fd-002'));
+  /*
+    `payout-options` left this list when the service began deriving the real
+    payout from `ProductMaster.terms.payout`. One published option is a term the
+    catalogue carries, not a gap to render as a placeholder.
+  */
   const REQUIRED_DEMO_TERMS = [
     'max-investment',
     'tenure-range',
-    'payout-options',
     'premature-withdrawal',
     'auto-renewal',
     'tagline',
@@ -5111,9 +5206,47 @@ export async function runUc1Uc3ScenarioSuite(M) {
   const rows = M.buildInvestmentSummaryRows(derived.deposit);
   const rowValue = (id) => rows.find((row) => row.id === id)?.value ?? '';
 
-  for (const [rowId] of [['max-investment'], ['tenure'], ['payout'], ['withdrawal'], ['renewal']]) {
-    check(`the ${rowId} row states it is unpublished`, rowValue(rowId), 'Confirmed with the bank');
+  /*
+    **Nothing is presented as bank-confirmed.** There is no bank integration in
+    this build, so a row claiming a value had been confirmed with the partner
+    bank asserted something that had not happened — on the screen where a
+    customer commits money. Genuinely absent terms now say so.
+  */
+  /*
+    Re-pointed: an unpublished term is now **omitted** rather than printed as
+    "Not specified". Three absences in a seven-row panel read as a broken screen
+    rather than as candour, and a summary should say what the deposit is. The
+    honesty rule is unchanged and in fact tightened — nothing is claimed at all.
+  */
+  for (const rowId of ['max-investment', 'withdrawal', 'renewal']) {
+    ok(
+      `the ${rowId} row is omitted rather than shown empty`,
+      rows.every((row) => row.id !== rowId),
+    );
   }
+  ok(
+    'and no row is left stating an absence',
+    rows.every((row) => row.value !== 'Not specified' && row.value.trim() !== ''),
+  );
+  ok('while every remaining row carries a real value', rows.length >= 4);
+  for (const rowId of ['max-investment', 'tenure', 'payout', 'withdrawal', 'renewal']) {
+    ok(
+      `the ${rowId} row claims no bank confirmation`,
+      !/confirmed with the bank/i.test(rowValue(rowId)),
+    );
+  }
+
+  /*
+    And two rows that used to be placeholders now carry real catalogue data:
+    the term the deposit actually runs for, and the payout the product
+    publishes.
+  */
+  check('the tenure row states the deposit’s own term', rowValue('tenure'), '12 months');
+  check('the payout row states the product’s own payout', rowValue('payout'), 'At Maturity');
+  ok(
+    'and the deposit supports exactly the payout the catalogue publishes',
+    derived.deposit.terms.supportedPayouts.length === 1,
+  );
 
   /** The real figures still render, because they are real. */
   ok('the rate row still shows the product rate', /%/.test(rowValue('rate')));
@@ -5281,11 +5414,18 @@ export async function runUc1Uc3ScenarioSuite(M) {
 export async function runBookingJourneySuite(M) {
   section('Booking · one flow, eight steps');
 
+  /*
+    Nine steps since Investor Verification joined at doc 07's Stage 3 — before
+    configuration, so the platform establishes who is investing before asking
+    them for an amount, a tenure and a nominee's details.
+  */
   const STEPS = [
     'overview',
+    'identity',
     'investment',
     'nominee',
     'bank-account',
+    'application',
     'review',
     'payment',
     'processing',
@@ -5350,10 +5490,12 @@ export async function runBookingJourneySuite(M) {
   section('Booking · step access (BR-BOOK-002)');
 
   const draftAt = (furthestStep, confirmation = null) => ({
+    bookingId: 'booking-journey-1',
     productId: 'fd-002',
     /* 12 months is the term the curated fixture actually prices. */
     investment: { amount: 500_000, tenureMonths: 12, payoutOption: 'at-maturity' },
     nominee: { nominationType: 'single', nominees: [] },
+    application: { answers: {}, acceptedDeclarations: [], preparedAt: null, identityMethod: null },
     bankAccountId: 'acc-axis-4587',
     declarations: { detailsConfirmed: true, termsAccepted: true },
     paymentMethod: 'net-banking',
@@ -5410,19 +5552,128 @@ export async function runBookingJourneySuite(M) {
     paidAt: 1000,
     confirmedAt: 2000,
   });
+
+  /*
+    **A confirmed booking is terminal — every step, not just the paid ones.**
+
+    This guarded only Payment and later, which left Overview, Identity,
+    Investment, Nominee, Bank Account and Review reachable after the deposit had
+    been created. A browser Back press or a bookmarked `/review` opened a fully
+    editable screen for an investment that already existed; edits went into a
+    draft nothing would read again, and Continue bounced to Success without
+    saying why.
+  */
+  /*
+    **Overview is deliberately excluded, and that is the fix for a showstopper.**
+
+    A draft is stored per product, so a completed booking used to seal that
+    deposit forever: choosing it again landed on Overview, the guard saw
+    `confirmedAt`, and returned the customer to the Success screen of the
+    booking they had already finished — they could not book it twice.
+
+    Overview *is* the act of starting a booking, so it stays reachable and the
+    screen begins a fresh session there. Every other step still resolves to
+    Success: a completed booking remains terminal, it just no longer blocks the
+    next one.
+  */
+  check(
+    'a confirmed booking may still open Overview',
+    M.resolveStepAccess('overview', confirmed).allowed,
+    true,
+  );
+
+  for (const step of [
+    'identity',
+    'investment',
+    'nominee',
+    'bank-account',
+    'application',
+    'review',
+    'payment',
+    'processing',
+  ]) {
+    const access = M.resolveStepAccess(step, confirmed);
+    check(`a confirmed booking may not re-open ${step}`, access.allowed, false);
+    check(`and is sent to Success from ${step}`, access.redirectTo, 'success');
+  }
+
   check(
     'a confirmed booking may open Success',
     M.resolveStepAccess('success', confirmed).allowed,
     true,
   );
+
+  section('Booking · one completed booking cannot contaminate the next');
+
   /*
-    And must not be walked back into the steps that move money. The payment has
-    happened; re-entering Payment is how a second one gets attempted.
+    The showstopper: after finishing a booking the customer could not start
+    another. These assertions describe the isolation the fix establishes.
   */
-  for (const step of ['payment', 'processing']) {
-    const access = M.resolveStepAccess(step, confirmed);
-    check(`a confirmed booking may not re-open ${step}`, access.allowed, false);
-    check(`and is sent to Success from ${step}`, access.redirectTo, 'success');
+  const finished = draftAt('success', {
+    reference: 'AXISFD00000000000001',
+    paidAt: 1000,
+    confirmedAt: 2000,
+  });
+
+  /* 1 — a finished booking does not make the next one finished. */
+  /*
+    A genuinely new booking, shaped as `emptyDraft` produces it — not the
+    populated fixture above with a couple of fields swapped, which would prove
+    nothing about what a fresh session contains.
+  */
+  const nextBooking = {
+    bookingId: 'booking-2',
+    productId: 'fd-008',
+    identity: { confirmedAt: null, method: null },
+    application: { answers: {}, acceptedDeclarations: [], preparedAt: null, identityMethod: null },
+    investment: { amount: null, tenureMonths: null, payoutOption: null },
+    nominee: { nominationType: 'single', nominees: [] },
+    bankAccountId: null,
+    declarations: { detailsConfirmed: false, termsAccepted: false },
+    paymentMethod: null,
+    confirmation: null,
+    furthestStep: 'overview',
+    updatedAt: 0,
+  };
+  ok('a new booking carries no confirmation', nextBooking.confirmation === null);
+  ok('and is not treated as terminal', M.resolveStepAccess('overview', nextBooking).allowed);
+  check(
+    'so it starts at the beginning, not at Success',
+    M.resolveStepAccess('success', nextBooking).redirectTo,
+    'overview',
+  );
+
+  /* 2 — a different product is a different booking, in storage as well. */
+  ok(
+    'each product has its own storage key',
+    M.draftStorageKey('fd-010') !== M.draftStorageKey('fd-008'),
+  );
+  ok('and the key names the product', M.draftStorageKey('fd-008').includes('fd-008'));
+
+  /* 3 — two bookings of the *same* product are still two bookings. */
+  ok('a booking carries its own session id', finished.bookingId !== nextBooking.bookingId);
+
+  /* 4–7 — nothing from the finished booking leaks into the new one. */
+  ok('no confirmed timestamp is inherited', nextBooking.confirmation?.confirmedAt == null);
+  ok('no booking reference is inherited', nextBooking.confirmation?.reference === undefined);
+  check('no application answers are inherited', nextBooking.application.answers, {});
+  check(
+    'no accepted declarations are inherited',
+    [...nextBooking.application.acceptedDeclarations],
+    [],
+  );
+  ok('no payment method is inherited', nextBooking.paymentMethod === null);
+  ok('no funding account is inherited', nextBooking.bankAccountId === null);
+  ok('no identity confirmation is inherited', nextBooking.identity.confirmedAt === null);
+  check('and no amount is inherited', nextBooking.investment.amount, null);
+
+  /* 8 — a booking still in progress is untouched by any of this. */
+  const inProgress = draftAt('review');
+  for (const step of ['overview', 'identity', 'investment', 'nominee', 'bank-account', 'review']) {
+    ok(
+      `an unfinished booking may still open ${step}`,
+      M.resolveStepAccess(step, inProgress).allowed,
+    );
   }
 
   section('Booking · reference, maturity date and post-payment figures');
@@ -5468,7 +5719,14 @@ export async function runBookingJourneySuite(M) {
 
   const deposit = M.BOOKING_OVERVIEW_FIXTURE.deposit;
 
-  const figures = M.deriveBookingFigures(deposit, draftAt('success'), started);
+  const successDraft = draftAt('success');
+  const figures = M.deriveBookingFigures(
+    deposit,
+    successDraft.investment.amount,
+    successDraft.investment.tenureMonths,
+    successDraft.investment.payoutOption,
+    started,
+  );
   ok('a complete configuration is priced', figures.returns !== null);
   check('and priced at the rate for its own tenure', figures.returns.tenureMonths, 12);
   check('at the rate that tenure publishes', figures.returns.annualRate, 7.25);
@@ -5484,8 +5742,13 @@ export async function runBookingJourneySuite(M) {
     { amount: 500_000, tenureMonths: null, payoutOption: 'at-maturity' },
     { amount: 500_000, tenureMonths: 12, payoutOption: null },
   ]) {
-    const partial = { ...draftAt('review'), investment: patch };
-    const result = M.deriveBookingFigures(deposit, partial, started);
+    const result = M.deriveBookingFigures(
+      deposit,
+      patch.amount,
+      patch.tenureMonths,
+      patch.payoutOption,
+      started,
+    );
     ok('an incomplete configuration is not priced', result.returns === null);
     ok('and carries no maturity date', result.maturesOn === null);
   }
@@ -5495,11 +5758,7 @@ export async function runBookingJourneySuite(M) {
     `resolveTenureRate` already holds, asserted again at the seam the
     post-payment screens read.
   */
-  const unpriced = {
-    ...draftAt('review'),
-    investment: { amount: 500_000, tenureMonths: 7, payoutOption: 'at-maturity' },
-  };
-  const unpricedFigures = M.deriveBookingFigures(deposit, unpriced, started);
+  const unpricedFigures = M.deriveBookingFigures(deposit, 500_000, 7, 'at-maturity', started);
   ok('an unpriced tenure yields no figures', unpricedFigures.returns === null);
   ok('and therefore no maturity date', unpricedFigures.maturesOn === null);
 
@@ -5532,6 +5791,897 @@ export async function runBookingJourneySuite(M) {
     M.PAYMENT_METHODS.length,
     new Set(M.PAYMENT_METHODS.map((method) => method.id)).size,
   );
+
+  section('Application · library resolves institution → template');
+
+  const library = M.createApplicationLibrary();
+
+  check('SBI resolves its own template', library.findTemplate('sbi')?.id, 'sbi-fd-v1');
+  check(
+    'AU Small Finance resolves its own template',
+    library.findTemplate('au-small-finance')?.id,
+    'au-small-finance-fd-v1',
+  );
+  ok('an unknown institution resolves to nothing', library.findTemplate('hdfc') === null);
+  ok('and so does an unknown product type', library.findTemplate('sbi', 'mutual-fund') === null);
+  check(
+    'a template can be fetched by its own id',
+    library.findTemplateById('sbi-fd-v1')?.institutionId,
+    'sbi',
+  );
+  ok('and an unknown id resolves to nothing', library.findTemplateById('nope') === null);
+  check(
+    'the library reports which institutions it serves',
+    [...library.supportedInstitutionIds()].sort(),
+    ['au-small-finance', 'sbi'],
+  );
+
+  const versioned = M.createApplicationLibrary([
+    { ...M.SBI_FD_TEMPLATE, id: 'sbi-v1', version: 1 },
+    { ...M.SBI_FD_TEMPLATE, id: 'sbi-v3', version: 3 },
+    { ...M.SBI_FD_TEMPLATE, id: 'sbi-v2', version: 2 },
+  ]);
+  check('the highest version resolves', versioned.findTemplate('sbi')?.id, 'sbi-v3');
+
+  section('Application · templates are transcribed from the banks’ own forms');
+
+  /*
+    A template is a statement of what a bank requires, and a requirement with no
+    provenance is an assertion. Each names the document it came from and where
+    the original can be read.
+  */
+  for (const template of M.APPLICATION_TEMPLATES) {
+    ok(`${template.id} names its source document`, template.sourceDocument.name.length > 0);
+    ok(
+      `${template.id} points at a PDF under /bank-forms/`,
+      /^\/bank-forms\/[\w-]+\/[\w.-]+\.pdf$/.test(template.sourceDocument.path),
+    );
+    ok(`${template.id} records the page count`, template.sourceDocument.pageCount > 0);
+    ok(`${template.id} declares its product type`, template.productType === 'fixed-deposit');
+    ok(`${template.id} claims no real submission route yet`, template.submission.method === 'poc');
+    ok(
+      `${template.id} states the signature requirement rather than simulating it`,
+      template.authorization.requiresApplicantSignature === true &&
+        template.authorization.note.length > 0,
+    );
+
+    const ids = template.sections.flatMap((section) => section.fields.map((f) => f.id));
+    ok(`${template.id} has unique field ids`, new Set(ids).size === ids.length);
+    ok(
+      `${template.id} gives every select its options`,
+      template.sections.every((section) =>
+        section.fields.every((f) => f.type !== 'select' || (f.options?.length ?? 0) > 0),
+      ),
+    );
+    ok(
+      `${template.id} marks the bank's own boxes bank-only`,
+      template.sections.flatMap((s) => s.fields).some((f) => f.source === 'bank-only'),
+    );
+    /* A bank-only field is never required of a customer. */
+    ok(
+      `${template.id} never requires a bank-only field of the customer`,
+      template.sections
+        .flatMap((s) => s.fields)
+        .every((f) => f.source !== 'bank-only' || f.required === false),
+    );
+  }
+
+  check(
+    'AU records the version printed on its form',
+    M.AU_FD_TEMPLATE.sourceDocument.version,
+    '5.1 (Oct 2025)',
+  );
+  ok('SBI records that its form prints none', M.SBI_FD_TEMPLATE.sourceDocument.version === null);
+
+  /*
+    The two forms genuinely differ, and the schema carries that difference.
+    AU's Form DA-1 marks the nominee's postal address and mobile mandatory;
+    SBI's does not — so AU asks for more from the same platform data.
+  */
+  const nomineeRequired = (template) =>
+    template.sections
+      .flatMap((s) => s.fields)
+      .filter((f) => f.id.startsWith('nominee') && f.required).length;
+  ok(
+    'AU requires more nominee detail than SBI',
+    nomineeRequired(M.AU_FD_TEMPLATE) > nomineeRequired(M.SBI_FD_TEMPLATE),
+  );
+
+  section('Application · mapping reuses what the platform already knows');
+
+  const appIdentity = M.identityWithStatus('verified');
+  const appDeposit = M.BOOKING_OVERVIEW_FIXTURE.deposit;
+  const appDraft = (over = {}) => ({
+    bookingId: 'booking-app-1',
+    productId: 'fd-002',
+    application: { answers: {}, acceptedDeclarations: [], preparedAt: null, identityMethod: null },
+    identity: { confirmedAt: 1000, method: 'existing-kyc' },
+    investment: { amount: 500_000, tenureMonths: 12, payoutOption: 'at-maturity' },
+    nominee: {
+      nominationType: 'single',
+      nominees: [
+        {
+          id: 'n1',
+          fullName: 'Priya Sharma',
+          relationship: 'Spouse',
+          dateOfBirth: '1990-05-12',
+          guardianName: '',
+          sharePercent: '100',
+        },
+      ],
+    },
+    bankAccountId: M.SAVED_BANK_ACCOUNTS[0].id,
+    declarations: { detailsConfirmed: false, termsAccepted: false },
+    paymentMethod: null,
+    confirmation: null,
+    furthestStep: 'application',
+    updatedAt: 0,
+    ...over,
+  });
+
+  const sources = (over = {}) => ({
+    deposit: appDeposit,
+    draft: appDraft(over),
+    identity: appIdentity,
+  });
+
+  const fieldOf = (template, id) =>
+    template.sections.flatMap((s) => s.fields).find((f) => f.id === id);
+
+  check(
+    'the applicant name comes from the verified identity',
+    M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'applicantName'), sources()),
+    appIdentity.profile.fullName,
+  );
+  check(
+    'the date of birth comes from the same record',
+    M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'dateOfBirth'), sources()),
+    appIdentity.profile.dateOfBirth,
+  );
+  ok(
+    'the deposit amount is the configured one, formatted',
+    (M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'depositAmount'), sources()) ?? '').includes(
+      '5,00,000',
+    ),
+  );
+  check(
+    'the tenure is the configured one',
+    M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'tenure'), sources()),
+    '12 months',
+  );
+  check(
+    'the nominee name comes from the nominee step',
+    M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'nomineeName'), sources()),
+    'Priya Sharma',
+  );
+  check(
+    'and the relationship with it',
+    M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'nomineeRelationship'), sources()),
+    'Spouse',
+  );
+  check(
+    'the nominee date of birth maps through',
+    M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'nomineeDateOfBirth'), sources()),
+    '1990-05-12',
+  );
+  const fundingAccount = M.resolveFieldValue(
+    fieldOf(M.SBI_FD_TEMPLATE, 'fundingAccount'),
+    sources(),
+  );
+  ok('the funding account is masked', (fundingAccount ?? '').startsWith('XXXX'));
+  ok(
+    'and only the last four digits appear',
+    (fundingAccount ?? '').includes(M.SAVED_BANK_ACCOUNTS[0].lastFourDigits),
+  );
+  check(
+    'AU’s IFSC comes from the chosen account',
+    M.resolveFieldValue(fieldOf(M.AU_FD_TEMPLATE, 'fundingIfsc'), sources()),
+    M.SAVED_BANK_ACCOUNTS[0].ifsc,
+  );
+  /* A branch code is the bank's to fill in, and resolves to nothing. */
+  ok(
+    'a bank-only field resolves to nothing',
+    M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'branchCode'), sources()) === null,
+  );
+
+  section('Application · only genuinely missing fields are asked for');
+
+  const sbiResolved = M.resolveApplication(M.SBI_FD_TEMPLATE, sources());
+  check(
+    'SBI asks only for what its form needs and the platform lacks',
+    sbiResolved.outstanding.map((entry) => entry.field.id).sort(),
+    ['depositScheme', 'maturityInstruction', 'modeOfOperation', 'paymentInstruction'],
+  );
+  ok(
+    'and every one of them is a manual field',
+    sbiResolved.outstanding.every((entry) => entry.source === 'manual'),
+  );
+  ok(
+    'no bank-only field is ever outstanding',
+    !sbiResolved.outstanding.some((entry) => entry.source === 'bank-only'),
+  );
+  check('the bank’s own boxes are counted separately', sbiResolved.bankCompleted.length, 4);
+  ok(
+    'everything the platform knows is marked prefilled',
+    sbiResolved.sections
+      .flatMap((s) => s.fields)
+      .filter((entry) => entry.source !== 'manual' && entry.source !== 'bank-only')
+      .every((entry) => entry.status === 'prefilled' || entry.status === 'optional'),
+  );
+  ok('so the application is not yet complete', !sbiResolved.isComplete);
+
+  /*
+    AU asks for more — its Form DA-1 marks the nominee's address and mobile
+    mandatory. That is the schema carrying a real difference between two real
+    forms, not the renderer behaving differently.
+  */
+  const auResolved = M.resolveApplication(M.AU_FD_TEMPLATE, sources());
+  check('AU asks for its own set', auResolved.outstanding.map((entry) => entry.field.id).sort(), [
+    'maturityInstruction',
+    'maturityRepaymentMode',
+    'nomineeAddressLine1',
+    'nomineeCity',
+    'nomineeMobile',
+    'nomineePin',
+    'nomineeState',
+    'operatingInstructions',
+  ]);
+  ok('which is more than SBI asks', auResolved.outstanding.length > sbiResolved.outstanding.length);
+  ok(
+    'an optional field is never outstanding',
+    !auResolved.outstanding.some((entry) => entry.field.id === 'sweepIn'),
+  );
+
+  /* Answering everything outstanding, and accepting the declarations, completes it. */
+  const answerAll = (template, resolved) => ({
+    answers: Object.fromEntries(
+      resolved.outstanding.map((entry) => [
+        entry.field.id,
+        entry.field.type === 'select'
+          ? (entry.field.options?.[0].value ?? '')
+          : entry.field.id === 'nomineePin'
+            ? '560038'
+            : 'Provided',
+      ]),
+    ),
+    acceptedDeclarations: template.declarations.map((d) => d.id),
+    preparedAt: 1,
+    identityMethod: 'existing-kyc',
+  });
+
+  for (const template of [M.SBI_FD_TEMPLATE, M.AU_FD_TEMPLATE]) {
+    const first = M.resolveApplication(template, sources());
+    const done = M.resolveApplication(
+      template,
+      sources({ application: answerAll(template, first) }),
+    );
+    check(`${template.id} clears once answered`, [...done.outstanding], []);
+    ok(`${template.id} is then complete`, done.isComplete);
+  }
+
+  /* A required declaration alone blocks completion. */
+  const first = M.resolveApplication(M.SBI_FD_TEMPLATE, sources());
+  const undeclared = M.resolveApplication(
+    M.SBI_FD_TEMPLATE,
+    sources({
+      application: { ...answerAll(M.SBI_FD_TEMPLATE, first), acceptedDeclarations: [] },
+    }),
+  );
+  ok('an unaccepted declaration blocks completion', !undeclared.isComplete);
+  check('though nothing is outstanding to type', [...undeclared.outstanding], []);
+
+  /* Missing prerequisites surface as missing, not as invented values. */
+  const noNominee = M.resolveApplication(
+    M.SBI_FD_TEMPLATE,
+    sources({ nominee: { nominationType: 'single', nominees: [] } }),
+  );
+  ok(
+    'an absent nominee is reported missing, never guessed',
+    noNominee.outstanding.some((entry) => entry.field.id === 'nomineeName'),
+  );
+
+  section('Application · a prefilled field is still the customer’s to edit');
+
+  /*
+    The bug this guards: a control that rendered an input only while a field was
+    *outstanding*, and static text once it had a value. Typing one character
+    gave the field a value, so the input was replaced by a span — the customer
+    could type exactly one character into the AU nominee address and then had no
+    field left. Editing one value appeared to lock the next.
+
+    The rule now: a customer's typed answer overrides the prefilled value, and
+    clearing it falls back to what the platform already knew.
+  */
+  const auTpl = M.AU_FD_TEMPLATE;
+  const withAnswers = (answers) =>
+    M.resolveApplication(
+      auTpl,
+      sources({
+        application: { answers, acceptedDeclarations: [], preparedAt: null, identityMethod: null },
+      }),
+    );
+  const valueOf = (resolved, id) =>
+    resolved.sections.flatMap((s) => s.fields).find((f) => f.field.id === id)?.value ?? null;
+
+  /* Every nominee field is independently writable, and none disturbs another. */
+  const typed = {
+    nomineeAddressLine1: '#12, 4th Cross, MG Road',
+    nomineeCity: 'Bengaluru',
+    nomineeState: 'Karnataka',
+    nomineePin: '560001',
+    nomineeMobile: '9876501234',
+  };
+  const filled = withAnswers(typed);
+  for (const [id, value] of Object.entries(typed)) {
+    check(`${id} holds its own value`, valueOf(filled, id), value);
+  }
+
+  /* Re-editing one leaves the rest exactly as they were. */
+  const reEdited = withAnswers({ ...typed, nomineeAddressLine1: '#99, New Street' });
+  check(
+    're-editing the address takes effect',
+    valueOf(reEdited, 'nomineeAddressLine1'),
+    '#99, New Street',
+  );
+  check('and the city is untouched', valueOf(reEdited, 'nomineeCity'), 'Bengaluru');
+  check('and the PIN is untouched', valueOf(reEdited, 'nomineePin'), '560001');
+
+  /* A prefilled, platform-sourced field is editable too. */
+  const prefilledName = valueOf(withAnswers({}), 'nomineeName');
+  ok('the nominee name arrives prefilled', prefilledName !== null);
+  check(
+    'and a typed correction becomes the application’s value',
+    valueOf(withAnswers({ nomineeName: 'Corrected Name' }), 'nomineeName'),
+    'Corrected Name',
+  );
+  check(
+    'while clearing it falls back to what we already knew',
+    valueOf(withAnswers({ nomineeName: '' }), 'nomineeName'),
+    prefilledName,
+  );
+
+  /*
+    Two sources are deliberately not overridable here. A bank-only box is not
+    the customer's to answer, and amount/tenure/rate belong to Investment
+    Details — a second amount field inside the bank form would be a second
+    investment configuration.
+  */
+  check(
+    'a bank-only field cannot be overridden from the form',
+    valueOf(withAnswers({ branchCode: 'ATTEMPT' }), 'branchCode'),
+    null,
+  );
+  ok(
+    'and a booking-managed value is never overridden here',
+    valueOf(withAnswers({ depositAmount: '9' }), 'depositAmount') !== '9',
+  );
+  ok(
+    'nor is it ever outstanding, whatever the rate card prices',
+    !withAnswers({}).outstanding.some((entry) =>
+      ['depositAmount', 'tenure', 'rateOfInterest', 'depositType', 'payoutOption'].includes(
+        entry.field.id,
+      ),
+    ),
+  );
+
+  section('Application · validation is schema-driven');
+
+  const selectField = fieldOf(M.SBI_FD_TEMPLATE, 'maturityInstruction');
+  ok(
+    'a permitted option passes',
+    M.validateFieldValue(selectField, 'pay-principal-and-interest') === null,
+  );
+  ok('an option outside the schema fails', M.validateFieldValue(selectField, 'burn-it') !== null);
+  ok('a required field with no value fails', M.validateFieldValue(selectField, null) !== null);
+  ok(
+    'an optional field with no value passes',
+    M.validateFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'email'), null) === null,
+  );
+  /* AU's form prints a six-digit PIN box; the schema carries the pattern. */
+  const pinField = fieldOf(M.AU_FD_TEMPLATE, 'nomineePin');
+  ok('a valid PIN passes', M.validateFieldValue(pinField, '560038') === null);
+  ok('a short PIN fails', M.validateFieldValue(pinField, '5600') !== null);
+  ok(
+    'a bank-only field is never the customer’s problem',
+    M.validateFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'branchCode'), null) === null,
+  );
+
+  section('Application · privacy — no identity is copied into the booking');
+
+  const storedApplication = appDraft().application;
+  check('the in-memory application holds four keys', Object.keys(storedApplication).sort(), [
+    'acceptedDeclarations',
+    'answers',
+    'identityMethod',
+    'preparedAt',
+  ]);
+  for (const forbidden of ['fullName', 'dateOfBirth', 'pan', 'aadhaar', 'nominee', 'ifsc']) {
+    ok(
+      `no ${forbidden} is stored on the application`,
+      !JSON.stringify(storedApplication).toLowerCase().includes(forbidden.toLowerCase()),
+    );
+  }
+  const resolvedPan = M.resolveFieldValue(fieldOf(M.SBI_FD_TEMPLATE, 'pan'), sources());
+  ok('the PAN reaches the application masked', (resolvedPan ?? '').includes('•'));
+
+  /*
+    **Typed answers are never written at rest.** A real form asks manual
+    questions about third parties — AU's Form DA-1 requires the nominee's
+    address, city, PIN and mobile — and persisting those would route around the
+    rule that already keeps `nominee` out of storage. Same data, same person who
+    consented to nothing, different door.
+  */
+  const withNomineePii = {
+    ...appDraft(),
+    application: {
+      answers: {
+        nomineeAddressLine1: '12 Brigade Road',
+        nomineeCity: 'Bengaluru',
+        nomineePin: '560038',
+        nomineeMobile: '9876500000',
+      },
+      acceptedDeclarations: ['details-accurate'],
+      preparedAt: 1_000_000,
+      identityMethod: 'existing-kyc',
+    },
+  };
+  const piiStore2 = new Map();
+  globalThis.window = {
+    sessionStorage: {
+      getItem: (k) => (piiStore2.has(k) ? piiStore2.get(k) : null),
+      setItem: (k, v) => piiStore2.set(k, v),
+      removeItem: (k) => piiStore2.delete(k),
+    },
+  };
+  M.writeDraft(withNomineePii);
+  const writtenApplication = piiStore2.get(M.draftStorageKey('fd-002'));
+  for (const leak of ['Brigade', 'Bengaluru', '560038', '9876500000']) {
+    ok(`no "${leak}" from a typed answer reaches storage`, !writtenApplication.includes(leak));
+  }
+  ok('and the non-sensitive parts still persist', writtenApplication.includes('details-accurate'));
+  check(
+    'a read restores answers empty, never from storage',
+    M.readDraft('fd-002', 1_000_000)?.application.answers,
+    {},
+  );
+  delete globalThis.window;
+
+  /*
+    The source PDFs are reference documents. Nothing about a customer is ever
+    written into them or anywhere else under `public/` — asserted here on the
+    template's own path, and by an invariant over the source tree.
+  */
+  for (const template of M.APPLICATION_TEMPLATES) {
+    ok(
+      `${template.id}'s source path carries no customer data`,
+      !/\?|=|&/.test(template.sourceDocument.path),
+    );
+  }
+
+  section('Emergency fund · the 10% policy has one home');
+
+  /*
+    The rule is stated once, in `emergency-allocation.ts`, and every surface
+    that needs it reads that function — the multi-goal planner's derived row and
+    the single-goal amount step alike. The regression this guards is a second
+    `* 0.1` appearing somewhere convenient.
+  */
+  check('the policy is a whole percentage', M.EMERGENCY_FUND_PERCENT, 10);
+
+  for (const [total, expected] of [
+    [100_000, 10_000],
+    [500_000, 50_000],
+    [1_000_000, 100_000],
+    [2_500_000, 250_000],
+  ]) {
+    check(
+      `${String(total)} reserves ${String(expected)}`,
+      M.calculateEmergencyFundAmount(total),
+      expected,
+    );
+  }
+
+  /* Nothing is reserved from nothing, and never a negative or fractional rupee. */
+  for (const total of [0, -1, -2_500_000, Number.NaN, Number.POSITIVE_INFINITY]) {
+    check(`${String(total)} reserves nothing`, M.calculateEmergencyFundAmount(total), 0);
+  }
+  check('a fractional total rounds to whole rupees', M.calculateEmergencyFundAmount(881), 88);
+  check('and rounds half away from zero, not down', M.calculateEmergencyFundAmount(8_815), 882);
+  ok(
+    'every result is a whole rupee',
+    [1, 7, 881, 8_815, 25_00_000, 999_999_999].every((total) =>
+      Number.isInteger(M.calculateEmergencyFundAmount(total)),
+    ),
+  );
+  /* The reserve can never exceed, or equal, the total it is a share of. */
+  ok(
+    'the reserve is always a fraction of the total',
+    [1_000, 500_000, 2_500_000].every((total) => M.calculateEmergencyFundAmount(total) < total),
+  );
+
+  /* The customer-facing copy is derived from the same constant, never retyped. */
+  ok('the basis names the percentage', M.EMERGENCY_FUND_BASIS.includes('10%'));
+  ok('so does the explanation', M.EMERGENCY_FUND_EXPLANATION.includes('10%'));
+  ok(
+    'and the explanation says the money stays reachable',
+    /short-term|within reach/i.test(M.EMERGENCY_FUND_EXPLANATION),
+  );
+
+  section('Portfolio · a holding is ownership, not intent');
+
+  const bank = (id, name) => ({
+    id,
+    name,
+    shortCode: id.toUpperCase().slice(0, 4),
+    initials: name.slice(0, 2).toUpperCase(),
+    logoUrl: null,
+    rating: 'AAA',
+  });
+
+  const START = new Date('2025-08-20T00:00:00Z').getTime();
+  const holding = (over = {}) => ({
+    reference: 'REF-1',
+    productType: 'fixed-deposit',
+    productId: 'fd-008',
+    productName: 'AU Small Finance Bank Fixed Deposit',
+    bank: bank('au-small-finance', 'AU Small Finance Bank'),
+    principal: 500_000,
+    annualRate: 7.5,
+    tenureMonths: 18,
+    isCumulative: true,
+    payoutLabel: 'At maturity',
+    startedAt: START,
+    status: 'active',
+    ...over,
+  });
+
+  /* An empty portfolio is empty — never a dashboard of zeroes with fake totals. */
+  const empty = M.summarisePortfolio([], START);
+  check('an empty portfolio holds nothing', empty.activeCount, 0);
+  check('and totals nothing', empty.totalPrincipal, 0);
+  check('with no maturities to show', [...empty.upcomingMaturities], []);
+  check('and no bank allocation', [...empty.byBank], []);
+  check('and nothing needing attention', M.portfolioAttention(empty), []);
+
+  /* One holding: every figure derived, none stored. */
+  const one = M.summarisePortfolio([holding()], START);
+  check('one active deposit', one.activeCount, 1);
+  check('principal is what was deposited', one.totalPrincipal, 500_000);
+  const view = one.holdings[0];
+  check('the maturity date is 18 months on', M.formatMaturityDate(view.maturesOn), '20 Feb 2027');
+  check('with the whole term remaining at the start', view.monthsRemaining, 18);
+  ok('interest is earned', view.totalInterest > 0);
+  check(
+    'and maturity is principal plus interest for a cumulative deposit',
+    view.maturityValue,
+    500_000 + view.totalInterest,
+  );
+  check('nothing has accrued on day one', view.accruedValue, 500_000);
+
+  /*
+    A payout deposit returns the **principal** at maturity — the platform rule,
+    reached through the same shared calculator Booking uses.
+  */
+  const payout = M.summarisePortfolio(
+    [holding({ reference: 'REF-P', isCumulative: false })],
+    START,
+  );
+  check('a payout deposit returns its principal', payout.holdings[0].maturityValue, 500_000);
+  ok('while still earning interest', payout.holdings[0].totalInterest > 0);
+
+  /* A term published in days has no month-based maturity date, and never a guessed one. */
+  const dayBased = M.summarisePortfolio([holding({ reference: 'REF-D', tenureMonths: 0 })], START);
+  ok('a day-based term has no maturity date', dayBased.holdings[0].maturesOn === null);
+  ok('and no months remaining', dayBased.holdings[0].monthsRemaining === null);
+
+  /* Three holdings across two banks: independent, and correctly allocated. */
+  const many = M.summarisePortfolio(
+    [
+      holding({ reference: 'A', principal: 500_000 }),
+      holding({
+        reference: 'B',
+        productId: 'fd-010',
+        bank: bank('sbi', 'State Bank of India'),
+        principal: 300_000,
+        annualRate: 7.85,
+        tenureMonths: 36,
+      }),
+      holding({ reference: 'C', principal: 200_000, tenureMonths: 6 }),
+    ],
+    START,
+  );
+  check('three deposits are held independently', many.activeCount, 3);
+  check('and their principals sum', many.totalPrincipal, 1_000_000);
+  check(
+    'each keeps its own reference',
+    many.holdings.map((entry) => entry.holding.reference),
+    ['A', 'B', 'C'],
+  );
+  check(
+    'each keeps its own product',
+    many.holdings.map((entry) => entry.holding.productId),
+    ['fd-008', 'fd-010', 'fd-008'],
+  );
+  ok(
+    'and its own rate',
+    many.holdings[1].holding.annualRate === 7.85 && many.holdings[0].holding.annualRate === 7.5,
+  );
+
+  /* Maturities are ordered soonest first. */
+  check(
+    'upcoming maturities are ordered by date',
+    many.upcomingMaturities.map((entry) => entry.holding.reference),
+    ['C', 'A', 'B'],
+  );
+
+  /* Allocation by bank, largest first, as whole percentages. */
+  check('allocation names each bank once', many.byBank.length, 2);
+  check('largest first', many.byBank[0].bankId, 'au-small-finance');
+  check('with its combined principal', many.byBank[0].principal, 700_000);
+  check('and its share', many.byBank[0].sharePercent, 70);
+  check('the smaller bank follows', many.byBank[1].sharePercent, 30);
+
+  /* Only confirmed, active deposits count. */
+  const withClosed = M.summarisePortfolio(
+    [
+      holding({ reference: 'A' }),
+      holding({ reference: 'X', status: 'closed', principal: 900_000 }),
+    ],
+    START,
+  );
+  check('a closed deposit is not counted', withClosed.activeCount, 1);
+  check('nor does it inflate the total', withClosed.totalPrincipal, 500_000);
+
+  section('Portfolio · insights are data-driven, never decorative');
+
+  /*
+    Term bands describe **what was bought**, not time remaining, so the mix does
+    not shift as the clock runs. Ordered shortest to longest, and empty bands
+    are omitted — a band with nothing in it is not information.
+  */
+  const mixed = M.summarisePortfolio(
+    [
+      holding({ reference: 'S', tenureMonths: 6, principal: 100_000 }),
+      holding({ reference: 'M', tenureMonths: 36, principal: 300_000 }),
+      holding({ reference: 'L', tenureMonths: 120, principal: 600_000 }),
+    ],
+    START,
+  );
+  check(
+    'terms are banded shortest first',
+    mixed.byMaturity.map((entry) => entry.id),
+    ['under-1y', '1-3y', '5-10y'],
+  );
+  check(
+    'with honest labels',
+    mixed.byMaturity.map((entry) => entry.label),
+    ['Under 1 year', '1–3 years', '5–10 years'],
+  );
+  check(
+    'and real shares',
+    mixed.byMaturity.map((entry) => entry.sharePercent),
+    [10, 30, 60],
+  );
+  ok(
+    'empty bands are omitted, not drawn at zero',
+    !mixed.byMaturity.some((entry) => entry.principal === 0),
+  );
+  check(
+    'a term beyond ten years lands in the open band',
+    M.summarisePortfolio([holding({ tenureMonths: 240 })], START).byMaturity[0].id,
+    '10y-plus',
+  );
+  check(
+    'and a term the bank publishes in days still lands somewhere',
+    M.summarisePortfolio([holding({ tenureMonths: 0 })], START).byMaturity.length,
+    1,
+  );
+
+  /* Progress through the term is a real proportion, derived once. */
+  const halfway = M.summarisePortfolio(
+    [holding({ tenureMonths: 12 })],
+    new Date('2026-02-20T00:00:00Z').getTime(),
+  );
+  check('progress is elapsed over total term', halfway.holdings[0].progressPercent, 50);
+  check('nothing has elapsed on day one', one.holdings[0].progressPercent, 0);
+  ok(
+    'and progress never exceeds the term',
+    M.summarisePortfolio([holding({ tenureMonths: 6 })], START + 1_000 * 60 * 60 * 24 * 900)
+      .holdings[0].progressPercent === 100,
+  );
+
+  /* The screen states when its figures were made, from the same instant. */
+  check('the summary records when it was derived', mixed.generatedAt, START);
+
+  section('Portfolio · attention is raised only when there is a decision');
+
+  /*
+    An alert area that always has something in it teaches the investor to ignore
+    it. The only thing this build can honestly raise is a deposit approaching
+    maturity — the one fact the data knows that carries a deadline.
+  */
+  check('a deposit far from maturity raises nothing', M.portfolioAttention(one), []);
+
+  const nearMaturity = new Date('2026-12-20T00:00:00Z').getTime();
+  const soon = M.summarisePortfolio([holding()], nearMaturity);
+  const items = M.portfolioAttention(soon);
+  check('a deposit maturing within three months is raised', items.length, 1);
+  ok('naming the bank', items[0].title.includes('AU Small Finance Bank'));
+  ok('and saying what the decision is', /renew or withdraw/i.test(items[0].detail));
+
+  section('Portfolio · the store records ownership once');
+
+  const holdingsStore = new Map();
+  globalThis.window = {
+    sessionStorage: {
+      getItem: (k) => (holdingsStore.has(k) ? holdingsStore.get(k) : null),
+      setItem: (k, v) => holdingsStore.set(k, v),
+      removeItem: (k) => holdingsStore.delete(k),
+    },
+  };
+
+  M.clearHoldings();
+  check('a new investor holds nothing', M.readHoldings(), []);
+
+  M.recordHolding(holding({ reference: 'REF-A' }));
+  check('a confirmed deposit is recorded', M.readHoldings().length, 1);
+
+  /* Idempotent on the bank's reference — a refresh cannot duplicate a deposit. */
+  M.recordHolding(holding({ reference: 'REF-A' }));
+  check('recording the same reference twice changes nothing', M.readHoldings().length, 1);
+
+  M.recordHolding(holding({ reference: 'REF-B', productId: 'fd-010' }));
+  check('a second deposit is its own holding', M.readHoldings().length, 2);
+  check(
+    'and keeps its own product',
+    M.readHoldings().map((entry) => entry.productId),
+    ['fd-008', 'fd-010'],
+  );
+
+  /* Refresh: the store is the source, so a re-read returns the same portfolio. */
+  check('a refresh preserves the portfolio', M.readHoldings().length, 2);
+
+  /* A malformed entry is dropped rather than rendered as a deposit that exists. */
+  holdingsStore.set(
+    'fd:portfolio-holdings:v1',
+    JSON.stringify({ version: 1, holdings: [{ reference: 'X' }] }),
+  );
+  check('a malformed holding is refused', M.readHoldings(), []);
+  holdingsStore.set('fd:portfolio-holdings:v1', '{not json');
+  check('and so is unreadable storage', M.readHoldings(), []);
+
+  delete globalThis.window;
+
+  section('Identity · readiness decides what the investor is asked for');
+
+  /*
+    The rule the whole KYC experience turns on (doc 07 Stage 3): determine what
+    already exists, and only request what is missing. These assertions are the
+    guard against the screen quietly becoming a form again.
+  */
+  const methods = M.KYC_METHODS;
+  const readinessFor = (identity) => M.deriveKycReadiness(identity, methods);
+
+  /* A verified, current record asks for nothing at all. */
+  const verified = M.identityWithStatus('verified');
+  const verifiedReadiness = readinessFor(verified);
+  check('a verified investor is already cleared', verifiedReadiness.outcome, 'already-verified');
+  check('with nothing outstanding', [...verifiedReadiness.missingFields], []);
+  ok('and continues without confirming anything', M.isIdentityCleared(verifiedReadiness, false));
+
+  /* An unverified record with everything on file is a confirmation, not a form. */
+  const notStarted = readinessFor(M.identityWithStatus('not-started'));
+  check('an unverified investor confirms rather than types', notStarted.outcome, 'confirm-details');
+  check('because nothing is missing', [...notStarted.missingFields], []);
+  ok('so the journey waits on their confirmation', !M.isIdentityCleared(notStarted, false));
+  ok('and proceeds once they give it', M.isIdentityCleared(notStarted, true));
+
+  /*
+    A record needing refresh is its own outcome. Collapsing it into "verified"
+    would tell an investor they were done when they were not.
+  */
+  check(
+    'a record due for refresh says so',
+    readinessFor(M.identityWithStatus('update-required')).outcome,
+    'refresh-required',
+  );
+  check(
+    'and an in-progress record still needs confirming',
+    readinessFor(M.identityWithStatus('in-progress')).outcome,
+    'confirm-details',
+  );
+
+  /*
+    A genuinely absent required field outranks the stored status — the platform
+    cannot verify an investor whose name it does not have, whatever the record
+    claims.
+  */
+  const noName = M.identityWithStatus('verified', {
+    profile: { ...verified.profile, fullName: null },
+  });
+  const noNameReadiness = readinessFor(noName);
+  check(
+    'a missing required field outranks a verified status',
+    noNameReadiness.outcome,
+    'collect-missing',
+  );
+  check('and is named exactly', [...noNameReadiness.missingFields], ['fullName']);
+  ok(
+    'a blank string counts as missing, not as a value',
+    readinessFor(
+      M.identityWithStatus('verified', { profile: { ...verified.profile, fullName: '   ' } }),
+    ).missingFields.includes('fullName'),
+  );
+
+  /* Optional fields never block a booking. */
+  const noEmail = M.identityWithStatus('verified', {
+    profile: { ...verified.profile, email: null, address: null },
+  });
+  check(
+    'optional details do not block the journey',
+    readinessFor(noEmail).outcome,
+    'already-verified',
+  );
+  ok(
+    'and are simply absent from what is known',
+    !readinessFor(noEmail).knownFields.includes('email'),
+  );
+
+  /* PAN reads from its own identifier, not from the profile. */
+  const noPan = M.identityWithStatus('verified', { pan: { status: 'missing', masked: null } });
+  check('a missing PAN is required', [...readinessFor(noPan).missingFields], ['pan']);
+  ok('and a PAN on file is known', M.isFieldKnown(verified, 'pan'));
+
+  /*
+    Aadhaar is deliberately **not** required: no approved document in this
+    repository states that a deposit booking needs it, and requiring it would be
+    inventing a regulatory rule.
+  */
+  ok('Aadhaar is not a booking requirement', !M.REQUIRED_IDENTITY_FIELDS.includes('aadhaar'));
+  check(
+    'the required set is exactly what the documents support',
+    [...M.REQUIRED_IDENTITY_FIELDS],
+    ['fullName', 'dateOfBirth', 'mobile', 'pan'],
+  );
+  check('and the optional set never blocks', [...M.OPTIONAL_IDENTITY_FIELDS], ['email', 'address']);
+
+  section('Identity · only connected verification methods are offered');
+
+  /*
+    The registry models six routes and this build connects one. Marking an
+    unconnected route usable would put a control on an identity screen that
+    cannot work — and would imply a regulatory permission the platform does not
+    hold.
+  */
+  check(
+    'exactly one method is usable in this build',
+    [...verifiedReadiness.usableMethods],
+    ['existing-kyc'],
+  );
+  ok(
+    'every other route is declared but not connected',
+    methods
+      .filter((method) => method.id !== 'existing-kyc')
+      .every((method) => method.availability === 'not-connected'),
+  );
+  ok('method ids are unique', new Set(methods.map((m) => m.id)).size === methods.length);
+  ok(
+    'every method explains itself in plain words',
+    methods.every((m) => m.description.length > 0),
+  );
+  ok(
+    'and no label is a bare abbreviation',
+    methods.every((m) => !/^[A-Z]{3,}$/.test(m.label)),
+  );
+  check('a method can be looked up by id', M.findKycMethod('digilocker')?.id, 'digilocker');
+  ok('and an unknown id resolves to nothing', M.findKycMethod('face-scan') === undefined);
+
+  /*
+    The identity the platform holds carries no whole identifier — a type that
+    cannot hold a PAN number cannot leak one.
+  */
+  ok('the record masks the PAN', (verified.pan.masked ?? '').includes('•'));
+  ok('and holds no unmasked identifier field', !('number' in verified.pan));
 
   section('Booking · the entry amount, and the refusal to invent one');
 

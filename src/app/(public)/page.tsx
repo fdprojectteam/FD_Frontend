@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 
 import { HomeScreen } from '@/modules/marketplace/components/home-screen';
+import { ProductGridSkeleton } from '@/modules/marketplace/components/product-grid-skeleton';
 
 /**
  * Marketplace Home (M2.3) — served at "/" through the (public) route
@@ -27,7 +28,26 @@ export const metadata = {
 
 export default function MarketplaceHomePage() {
   return (
-    <Suspense fallback={null}>
+    /*
+      **The fallback is a skeleton, not `null`.**
+
+      `null` meant that any suspension of this subtree — and reading the URL
+      suspends it — rendered Home as a blank page with nothing to say it was
+      working. That is the shape of the reported defect: the listing appeared
+      empty until a full reload, because a reload re-runs the whole tree while a
+      client navigation leaves the boundary showing nothing.
+
+      A real skeleton makes the state legible and, more importantly, makes the
+      three states distinguishable: loading, empty, and error are now three
+      different screens rather than two of them looking identical.
+    */
+    <Suspense
+      fallback={
+        <div className="container-page py-12">
+          <ProductGridSkeleton />
+        </div>
+      }
+    >
       <HomeScreen />
     </Suspense>
   );

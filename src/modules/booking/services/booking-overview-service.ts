@@ -65,12 +65,25 @@ import { resolveBookingOverview } from '../utils/deposit-catalogue';
 const DERIVED_DEMO_TERMS: readonly DemoTermId[] = [
   'max-investment',
   'tenure-range',
-  'payout-options',
   'premature-withdrawal',
   'auto-renewal',
   'tagline',
   'highlights',
 ] as const;
+
+/**
+ * The payout this product actually publishes, in the customer's words.
+ *
+ * `payout-options` used to be a demo placeholder, so the summary rendered it as
+ * unpublished — while `ProductMaster.terms.payout` carried the real answer all
+ * along. One published option is not a limitation to hide behind a placeholder;
+ * it is the product's term, and the screen now states it.
+ */
+const PAYOUT_DISPLAY: Record<ProductMaster['terms']['payout'], string> = {
+  'at-maturity': 'At Maturity',
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+};
 
 /** Structural stand-ins only — every one is declared in `DERIVED_DEMO_TERMS`. */
 const DEMO_TERMS = BOOKING_OVERVIEW_FIXTURE.deposit.terms;
@@ -113,8 +126,9 @@ export function toBookingOverview(product: ProductMaster): BookingOverview {
       maxInvestment: DEMO_TERMS.maxInvestment,
       tenureRange: DEMO_TERMS.tenureRange,
       tenureRates,
-      payoutOptions: DEMO_TERMS.payoutOptions,
-      supportedPayouts: DEMO_TERMS.supportedPayouts,
+      /* Real: the one payout this product publishes, from the catalogue. */
+      payoutOptions: [PAYOUT_DISPLAY[terms.payout]],
+      supportedPayouts: [terms.payout],
       prematureWithdrawal: DEMO_TERMS.prematureWithdrawal,
       autoRenewal: DEMO_TERMS.autoRenewal,
     },

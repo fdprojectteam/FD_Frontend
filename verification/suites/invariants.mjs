@@ -312,10 +312,15 @@ export async function runInvariantSuite() {
     and `bookingSuccess`. Still an exact number, so the thirteenth cast has to
     arrive with a route behind it.
   */
+  /*
+    Fourteen: the twelve above, plus the multi-goal planner entry and
+    `bookingIdentity` (doc 07 Stage 3). Still an exact number, so the fifteenth
+    cast has to arrive with a route behind it and an edit here.
+  */
   check(
-    'routes.ts asserts exactly twelve Routes (E4)',
+    'routes.ts asserts exactly fifteen Routes (E4)',
     (routes.match(/as Route/g) ?? []).length,
-    12,
+    15,
   );
   /*
     **One booking flow, one route family.** Every booking path is built here and
@@ -326,7 +331,7 @@ export async function runInvariantSuite() {
   const bookingBuilders = [...(routes ?? '').matchAll(/`(\/booking\/[^`]*)`/g)].map(
     (match) => match[1],
   );
-  ok('every booking route is declared in routes.ts', bookingBuilders.length === 8);
+  ok('every booking route is declared in routes.ts', bookingBuilders.length === 10);
   check(
     'and every one is a step of the same product journey',
     bookingBuilders.filter((path) => !path.startsWith('/booking/${productId}/')),
@@ -840,9 +845,27 @@ export async function runInvariantSuite() {
     /hasRequestGate\(\) \? awaitRequestGate\(\)\.then\(\(\) => config\) : config/.test(client),
   );
 
+  /*
+    Re-pointed to the **stronger** contract. Idempotency alone was not enough:
+    the cached promise was reused forever, so a Service Worker lost after
+    startup was never noticed and every request bypassed the mock API. The
+    guarantee now is idempotent *while the worker is in flight or still
+    controlling*, and a restart exactly when control has gone — which is what
+    makes the marketplace deterministic without a reload or a timer.
+  */
   ok(
-    'the worker start is idempotent — later calls return the same promise',
-    /if \(scope\[START_KEY\]\) return scope\[START_KEY\];/.test(mswProvider),
+    'the worker start is idempotent while the worker is in flight or controlling',
+    /if \(existing && \(!existing\.settled \|\| isWorkerControlling\(\)\)\) return existing\.promise;/.test(
+      mswProvider,
+    ),
+  );
+  ok(
+    'and control is verified, not assumed',
+    /navigator\.serviceWorker\?\.controller != null/.test(mswProvider),
+  );
+  ok(
+    'the restart is not a reload, a timer, or a duplicate request',
+    !/location\.reload|setTimeout|setInterval/.test(mswProvider),
   );
   ok(
     'idempotency survives Fast Refresh via a global symbol',
@@ -856,7 +879,15 @@ export async function runInvariantSuite() {
   const providers = sources.get('src/app/providers.tsx');
   ok(
     'the gate is registered during render, before any child can query',
-    /useState\(\(\) => \{[\s\S]{0,200}?setRequestGate\(\(\) => ready\)/.test(providers),
+    /useState\(\(\) => \{[\s\S]{0,1400}?setRequestGate\(/.test(providers),
+  );
+  /*
+    And it re-verifies per request rather than closing over the promise captured
+    at startup. Capturing it is precisely how a worker lost later went unnoticed.
+  */
+  ok(
+    'the gate re-verifies readiness on every request',
+    /setRequestGate\(\(\) => ensureMockWorker\(\) \?\? Promise\.resolve\(\)\)/.test(providers),
   );
   ok(
     'the mock layer never imports the transport (boundary policy)',
@@ -1128,19 +1159,24 @@ export async function runInvariantSuite() {
     .map(([file]) => file)
     .sort();
   /*
-    Three, not four: the Product Details screen no longer calls the formula —
-    `estimateReturnsFor` in the service does, for both the reference figure and
-    the calculator amount.
+    Still three, and one of them moved *down* a tier rather than multiplying.
+
+    Booking's `calculateReturns` used to call the formula directly. Portfolio
+    needs the same answer for a deposit an investor already holds, and the two
+    modules cannot import each other — so the payout rule ("interest paid out
+    cannot compound, so maturity returns the principal") now lives in
+    `utils/finance/deposit-returns.ts`, which both call. The alternative was a
+    second implementation of what an FD pays, in the one place nobody would
+    notice it drifting.
   */
   check('the maturity formula still has exactly three call sites', maturityCallers, [
-    // Booking's returns model — the only Booking caller, and it composes the
-    // formula with payout rules rather than calling it from a component.
-    'src/modules/booking/utils/returns.ts',
     // Goal-Based FD's rule engine — one call per recommendation, from the quote
     // resolved for that principal. Re-pointed rather than loosened when the
     // fourth consumer arrived.
     'src/modules/goal-based-fd/utils/engine.ts',
     'src/modules/marketplace/services/product-service.ts',
+    // The platform's deposit-returns rule, shared by Booking and Portfolio.
+    'src/utils/finance/deposit-returns.ts',
   ]);
 
   section('Invariants · T2.7.2 — the second URL writer');
@@ -3595,9 +3631,24 @@ export async function runInvariantSuite() {
       .map(([file]) => file),
     [],
   );
+  /*
+    Re-pointed after a real data-loss fix. `BookingProductProvider` renders a
+    skeleton *instead of* its children while the deposit resolves, so a draft
+    nested inside it unmounted on every cache miss — discarding the nominee's
+    details and the application's typed answers. The draft depends on
+    `productId` alone, so it is now seated **above** the deposit's provider,
+    where a loading deposit cannot disturb it.
+
+    The guarantee that mattered is unchanged and still asserted: the session is
+    keyed by product, so a different product starts a clean booking.
+  */
   ok(
-    'the layout still owns the session and keys it by product',
-    /<BookingProductProvider key=\{productId\} productId=\{productId\}>/.test(bookingLayout ?? ''),
+    'the draft is seated above the deposit, and keyed by product',
+    /<BookingDraftProvider key=\{productId\} productId=\{productId\}>/.test(bookingLayout ?? ''),
+  );
+  ok(
+    'and the deposit provider sits inside it',
+    /<BookingDraftProvider[\s\S]{0,200}?<BookingProductProvider/.test(bookingLayout ?? ''),
   );
   ok(
     'the not-found boundary sits above the layout that throws',
@@ -3686,6 +3737,688 @@ export async function runInvariantSuite() {
     );
   }
 
+  /* ---- Portfolio: the first surface for ownership ---- */
+
+  const portfolioScreen = sources.get('src/modules/portfolio/components/portfolio-screen.tsx');
+  const portfolioSummary = sources.get('src/modules/portfolio/utils/portfolio-summary.ts');
+  const holdingsStore = sources.get('src/services/portfolio/holdings-store.ts');
+  const holdingTypes = sources.get('src/types/portfolio.ts');
+
+  ok('the portfolio has a screen', Boolean(portfolioScreen));
+  ok('a pure summary', Boolean(portfolioSummary));
+  ok('a store', Boolean(holdingsStore));
+  ok('and platform-level vocabulary', Boolean(holdingTypes));
+
+  /**
+   * **A holding is written only from a confirmation.**
+   *
+   * This is the line between intent and ownership. A booking draft is editable
+   * and abandonable; a holding is a deposit that exists. If anything but the
+   * Success screen could write one, an incomplete booking would appear as an
+   * active FD.
+   */
+  check(
+    'holdings are recorded in exactly one place',
+    [...sources.entries()]
+      .filter(([, text]) => /record\(\{[\s\S]{0,80}reference:/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/components/success-screen.tsx'],
+  );
+  ok(
+    'and only once the bank has confirmed',
+    /if \(confirmation\?\.confirmedAt == null\) return;/.test(
+      sources.get('src/modules/booking/components/success-screen.tsx') ?? '',
+    ),
+  );
+  ok(
+    'the store refuses a duplicate reference',
+    /existing\.some\(\(entry\) => entry\.reference === holding\.reference\)/.test(
+      holdingsStore ?? '',
+    ),
+  );
+
+  /**
+   * **Ownership is platform vocabulary, not a module's.** Booking writes and
+   * Portfolio reads; modules cannot import each other, and a second holding
+   * shape is how the two would come to disagree about what an investor owns.
+   */
+  check(
+    'the holding shape is declared once, in the platform tier',
+    [...sources.entries()]
+      .filter(([, text]) => /export interface PortfolioHolding\b/.test(text))
+      .map(([file]) => file),
+    ['src/types/portfolio.ts'],
+  );
+
+  /**
+   * **No derived figure is stored on a holding.** The terms of the contract are
+   * facts fixed at confirmation; maturity amount, interest and maturity date are
+   * recomputed on every read — Document 09 §10 applied to the record that
+   * outlives the draft.
+   */
+  ok(
+    'the holding stores no maturity amount or interest',
+    !/maturityValue|totalInterest|maturityDate:/.test(holdingTypes ?? ''),
+  );
+  ok(
+    'and the summary derives them through the shared calculators',
+    /calculateDepositReturns/.test(portfolioSummary ?? '') &&
+      /maturityDate/.test(portfolioSummary ?? ''),
+  );
+  check(
+    'portfolio implements no financial formula of its own',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/portfolio/'))
+      .filter(([, text]) => /Math\.pow|\*\*\s*\(|\/\s*1200|annualRate\s*\//.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **No invented metric.** A fixed deposit is not traded, so there is no market
+   * value and no gain against one — on the screen an investor trusts most, a
+   * fabricated figure is the worst thing the product could show.
+   */
+  for (const [name, text] of [
+    ['the summary', portfolioSummary],
+    ['the KPI grid', sources.get('src/modules/portfolio/components/portfolio-kpi-grid.tsx')],
+    [
+      'the holding card',
+      sources.get('src/modules/portfolio/components/fixed-deposit-holding-card.tsx'),
+    ],
+  ]) {
+    ok(
+      `${name} claims no market value or gain`,
+      !/marketValue|currentMarket|gainLoss|profitLoss|todaysGain/i.test(text ?? ''),
+    );
+  }
+  ok(
+    'and the accrued figure is labelled contracted, not market',
+    /A\s+fixed deposit has no market price/.test(
+      sources.get('src/modules/portfolio/components/portfolio-kpi-grid.tsx') ?? '',
+    ),
+  );
+
+  /*
+    The dashboard offers no action the product cannot perform. A statement
+    generator does not exist, so it is shown as unavailable rather than as a
+    control that quietly does nothing.
+  */
+  const quickActions = sources.get('src/modules/portfolio/components/quick-actions.tsx');
+  ok(
+    'unbuilt actions are marked unavailable, not linked',
+    /unavailable: 'Not available yet'/.test(quickActions ?? '') &&
+      /aria-disabled="true"/.test(quickActions ?? ''),
+  );
+  ok(
+    'and every linked action goes through ROUTES',
+    !/href="\//.test(quickActions ?? '') && /ROUTES\./.test(quickActions ?? ''),
+  );
+
+  /*
+    No charting dependency was added for one screen: the allocation ring is
+    two SVG circles themed from the same tokens as everything else.
+  */
+  const ring = sources.get('src/modules/portfolio/components/allocation-ring.tsx');
+  ok('the allocation ring is hand-drawn SVG', /<svg/.test(ring ?? ''));
+  check(
+    'and portfolio pulls in no charting library',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/portfolio/'))
+      .filter(([, text]) => /from '(recharts|chart\.js|d3|victory|nivo)/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /* Trust copy has one home; a second wording is how compliance text drifts. */
+  ok(
+    'the trust notice reuses the shared safety note',
+    /<SafetyNote/.test(
+      sources.get('src/modules/portfolio/components/portfolio-trust-notice.tsx') ?? '',
+    ),
+  );
+
+  /** An empty portfolio is an empty state, never a dashboard of zeroes. */
+  ok(
+    'the screen branches to an empty state',
+    /holdings\.length === 0/.test(portfolioScreen ?? '') &&
+      /<PortfolioEmptyState \/>/.test(portfolioScreen ?? ''),
+  );
+  ok('distinguishing loading from emptiness', /if \(!isLoaded\)/.test(portfolioScreen ?? ''));
+  ok(
+    'and the empty state leads back to the marketplace',
+    /ROUTES\.home/.test(
+      sources.get('src/modules/portfolio/components/portfolio-empty-state.tsx') ?? '',
+    ),
+  );
+
+  /* ---- Cross-booking isolation (showstopper 5) ---- */
+
+  const overviewScreenSrc = sources.get(
+    'src/modules/booking/components/booking-overview-screen.tsx',
+  );
+  const stepAccessSrc = sources.get('src/modules/booking/utils/step-access.ts');
+
+  /**
+   * **A completed booking must not seal its product.**
+   *
+   * The draft is stored per product, so a finished booking used to *be* that
+   * deposit's booking forever: choosing it again landed on Overview, the guard
+   * saw `confirmedAt`, and returned the customer to a Success screen for a
+   * booking they had already completed.
+   *
+   * Overview is the act of starting a booking, so it stays reachable and the
+   * screen begins a fresh session there. Everything else still resolves to
+   * Success.
+   */
+  ok(
+    'Overview stays reachable for a confirmed booking',
+    /if \(stepId === 'overview'\) return \{ allowed: true, redirectTo: 'overview' \};/.test(
+      stepAccessSrc ?? '',
+    ),
+  );
+  ok(
+    'and Overview starts a fresh session when it finds a finished one',
+    /const isFinished = draft\.confirmation\?\.confirmedAt != null;/.test(
+      overviewScreenSrc ?? '',
+    ) &&
+      /if \(!isHydrated \|\| !isFinished\) return;\s*\n\s*reset\(\);/.test(overviewScreenSrc ?? ''),
+  );
+  ok(
+    'the entry amount is never seeded into a finished booking',
+    /if \(isFinished\) return;/.test(overviewScreenSrc ?? ''),
+  );
+
+  /**
+   * **A booking has its own identity.** The product alone could not distinguish
+   * two bookings of the same deposit, which is what let a completed one stand in
+   * for the next.
+   */
+  ok(
+    'the draft carries a booking session id',
+    /bookingId: string;/.test(sources.get('src/modules/booking/types/draft.ts') ?? ''),
+  );
+  ok(
+    'minted per session, not derived from the product',
+    /function nextBookingId\(/.test(
+      sources.get('src/modules/booking/hooks/use-booking-draft.tsx') ?? '',
+    ),
+  );
+  const draftStorageSrc = sources.get('src/modules/booking/utils/draft-storage.ts');
+  ok(
+    'and persisted so a refresh resumes the same booking',
+    /bookingId: z\.string\(\)\.min\(1\)/.test(draftStorageSrc ?? '') &&
+      /bookingId: draft\.bookingId/.test(draftStorageSrc ?? ''),
+  );
+
+  /*
+    Isolation must not be achieved by clearing storage wholesale — that would
+    take an unrelated in-progress booking with it.
+  */
+  check(
+    'nothing clears storage globally',
+    [...sources.entries()]
+      .filter(([, text]) => /sessionStorage\.clear\(\)|localStorage\.clear\(\)/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the draft key still scopes storage to one product',
+    /:\$\{productId\}`/.test(draftStorageSrc ?? ''),
+  );
+
+  /* ---- Investor verification is visible, and the 10% rule has one home ---- */
+
+  /**
+   * **The identity step must actually happen.** The demo identity was
+   * `verified`, so readiness resolved to `already-verified`, the screen said
+   * "nothing to do", and the customer passed through verification without
+   * seeing it. `in-progress` is both the demonstrable path and the honest one:
+   * no external provider is connected, so nothing has verified anything.
+   */
+  const identityService = sources.get('src/services/investor/investor-identity-service.ts');
+  /*
+    Scoped to the **KYC** status. `pan` and `aadhaar` carry their own
+    `status: 'verified'` — those say an identifier is on file and legible, which
+    is a different statement from "this investor's KYC is complete".
+  */
+  const kycBlock = (identityService ?? '').split('kyc: {')[1]?.split('},')[0] ?? '';
+  ok(
+    'the demo investor is not pre-verified',
+    /status: 'in-progress'/.test(kycBlock) && !/status: 'verified'/.test(kycBlock),
+  );
+  ok(
+    'and claims no verification date it cannot support',
+    /verifiedAt: null/.test(identityService ?? ''),
+  );
+  ok(
+    'the identity screen says no external service is connected',
+    /no external verification service is connected/i.test(
+      sources.get('src/modules/booking/components/identity-screen.tsx') ?? '',
+    ),
+  );
+
+  /**
+   * **The 10% emergency rule is stated once.** A second `* 0.1` — or a second
+   * `/ 100` against a local constant — is how the planner and the amount step
+   * come to disagree about the same policy.
+   */
+  check(
+    'the emergency share is declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /EMERGENCY_FUND_PERCENT = /.test(text))
+      .map(([file]) => file),
+    ['src/modules/goal-based-fd/utils/emergency-allocation.ts'],
+  );
+  check(
+    'and no component computes the share itself',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/'))
+      .filter(([file]) => !file.endsWith('utils/emergency-allocation.ts'))
+      .filter(([, text]) => /\*\s*0\.1\b|\*\s*10\s*\/\s*100/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  /*
+    The suggestion must not fight the customer. Once they edit it, their figure
+    stands — the component tracks an explicit "edited" state rather than
+    re-applying the suggestion on every render.
+  */
+  const amountStep = sources.get('src/modules/goal-based-fd/components/amount-step.tsx');
+  ok(
+    'the amount step reads the shared policy',
+    /calculateEmergencyFundAmount/.test(amountStep ?? ''),
+  );
+  ok(
+    'and never overwrites an edited value',
+    /editedAllocation \?\? \(suggestedAllocation/.test(amountStep ?? ''),
+  );
+  ok(
+    'the suggestion is presented as editable, not imposed',
+    /You can change this amount/.test(amountStep ?? ''),
+  );
+
+  /* ---- FD Application Orchestrator ---- */
+
+  const applicationScreen = sources.get('src/modules/booking/components/application-screen.tsx');
+  const applicationForm = sources.get('src/modules/booking/components/application-form.tsx');
+  const applicationControl = sources.get(
+    'src/modules/booking/components/application-field-control.tsx',
+  );
+  const applicationLibrary = sources.get('src/modules/booking/services/application-library.ts');
+  const applicationMapping = sources.get('src/modules/booking/utils/application-mapping.ts');
+  const applicationTemplates = sources.get('src/modules/booking/fixtures/application-templates.ts');
+
+  ok('the application step has a screen', Boolean(applicationScreen));
+  ok('a schema-driven renderer', Boolean(applicationForm));
+  ok('a library', Boolean(applicationLibrary));
+  ok('and a mapping engine', Boolean(applicationMapping));
+
+  /**
+   * **The renderer names no institution.** This is the property that makes the
+   * client's real forms a data exercise rather than a rewrite: a bank
+   * difference must live in the template, never in a branch. A single `if (bank
+   * === 'sbi')` here would be the beginning of one file per institution.
+   */
+  for (const [name, text] of [
+    ['the renderer', applicationForm],
+    ['the field control', applicationControl],
+    ['the screen', applicationScreen],
+  ]) {
+    ok(
+      `${name} branches on no institution`,
+      !/'sbi'|'au-small-finance'|'hdfc'|'icici'|'axis'|'kotak'/.test(text ?? ''),
+    );
+  }
+  ok(
+    'and resolves its template from the deposit’s own bank id',
+    /findTemplate\(deposit\.bank\.id/.test(applicationScreen ?? ''),
+  );
+
+  /**
+   * **Templates are declared as data, in one place.** A second declaration site
+   * is how two banks' forms come to disagree about what a field is called.
+   */
+  check(
+    'application templates are declared in exactly one file',
+    [...sources.entries()]
+      .filter(([, text]) => /institutionId: '[\w-]+',/.test(text))
+      .map(([file]) => file),
+    ['src/modules/booking/fixtures/application-templates.ts'],
+  );
+
+  /**
+   * ⚠ **Every POC template says it is one.** The client's real forms have not
+   * arrived; a placeholder presented as a bank's actual application would be the
+   * most damaging invention this module could make.
+   */
+  /**
+   * **Every template names the document it was transcribed from.** A statement
+   * of a bank's requirement with no provenance is an assertion; this is what
+   * lets anyone check the schema against the form it claims to represent.
+   */
+  ok(
+    'every template carries a source document',
+    (applicationTemplates ?? '').split('sourceDocument:').length - 1 ===
+      (applicationTemplates ?? '').split('institutionId:').length - 1,
+  );
+  ok(
+    'and every source path points under /bank-forms/',
+    [...(applicationTemplates ?? '').matchAll(/path: '([^']+)'/g)].every(([, value]) =>
+      /^\/bank-forms\/[\w-]+\/[\w.-]+\.pdf$/.test(value),
+    ),
+  );
+  ok(
+    'no template claims a real submission route yet',
+    !/method: '(api|sdk|form|assisted)'/.test(applicationTemplates ?? ''),
+  );
+  ok(
+    'the screen still says when a form is a sample',
+    /isPlaceholder/.test(applicationScreen ?? ''),
+  );
+  ok(
+    'and offers the bank’s original form as a reference',
+    /sourceDocument\.path/.test(applicationScreen ?? '') &&
+      /rel="noopener noreferrer"/.test(applicationScreen ?? ''),
+  );
+
+  /**
+   * ⚠ **No customer detail may ever reach a static asset.** The bank PDFs under
+   * `public/` are read-only reference documents: nothing writes to them, and no
+   * source path is ever built with a query or an interpolated value that could
+   * carry a name, an amount or an account number into a URL.
+   */
+  check(
+    'nothing writes into the public bank-forms directory',
+    [...sources.entries()]
+      .filter(([, text]) => /public\/bank-forms/.test(text))
+      .filter(([, text]) => /writeFile|createWriteStream|fs\./.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'and no source path is interpolated',
+    ![...(applicationTemplates ?? '').matchAll(/path: `[^`]*`/g)].length,
+  );
+
+  /**
+   * **A bank's own boxes are never asked of a customer.** Real forms carry
+   * branch codes, product codes and employee codes; putting those on a customer
+   * screen is the PDF-digitisation mistake this module exists to avoid.
+   */
+  ok(
+    'bank-only fields exist in the schema',
+    /source: 'bank-only'/.test(applicationTemplates ?? ''),
+  );
+  ok(
+    'the mapper never asks for one',
+    /'bank-only': \(\) => null/.test(applicationMapping ?? '') &&
+      /field\.source === 'bank-only'/.test(applicationMapping ?? ''),
+  );
+  ok(
+    'and the renderer separates them from the customer’s own questions',
+    /source !== 'bank-only'/.test(applicationForm ?? '') &&
+      /Completed by the bank/.test(applicationForm ?? ''),
+  );
+
+  /**
+   * **Prefilled is not read-only, and the field order never changes.**
+   *
+   * The control used to render an input only while a field was *outstanding*
+   * and static text once it had a value, while the form rendered "settled" and
+   * "outstanding" fields in two different containers. Typing one character
+   * therefore both replaced the input with a span and moved the field between
+   * subtrees — the customer could enter one character into the AU nominee
+   * address and then had no field left to type into.
+   */
+  ok(
+    'the control never switches a customer field out of an input',
+    !/if \(!isEditable\)/.test(applicationControl ?? ''),
+  );
+  ok(
+    'and only bank-only and booking-managed fields are stated rather than asked',
+    /source === 'bank-only'/.test(applicationControl ?? '') &&
+      /BOOKING_MANAGED\.includes\(source\)/.test(applicationControl ?? ''),
+  );
+  ok(
+    'the form renders each section once, in template order',
+    !/const outstanding = customerFields/.test(applicationForm ?? '') &&
+      /customerFields\.map\(/.test(applicationForm ?? ''),
+  );
+  ok(
+    'a typed answer overrides the prefilled value',
+    /const typed = overridable \? sources\.draft\.application\.answers\[field\.id\] : undefined;/.test(
+      applicationMapping ?? '',
+    ),
+  );
+  ok(
+    'while booking-managed values keep one owner',
+    /BOOKING_MANAGED\.includes\(field\.source\)/.test(applicationMapping ?? '') &&
+      /goToStep\('investment'\)/.test(applicationScreen ?? ''),
+  );
+
+  /** The schema statistics the customer never needed to see. */
+  ok(
+    'the screen shows no field counts',
+    !/Already provided|Needed for this bank/.test(applicationScreen ?? ''),
+  );
+  ok(
+    'and leads with the bank’s own application',
+    /Your \$\{deposit\.bank\.name\} application/.test(applicationScreen ?? ''),
+  );
+
+  /**
+   * **The signature requirement is stated, never simulated.** Both banks require
+   * a wet signature; nothing here can capture one, and a checkbox must not be
+   * presented as though it did.
+   */
+  ok(
+    'templates declare the authorization requirement',
+    /requiresApplicantSignature: true/.test(applicationTemplates ?? ''),
+  );
+  ok(
+    'and the screen says where it is satisfied',
+    /authorization\.note/.test(applicationScreen ?? ''),
+  );
+
+  /**
+   * **No external call, and no invented bank API.** The submission abstraction
+   * exists so a real route can be plugged in; nothing pretends one is connected.
+   */
+  for (const [name, text] of [
+    ['the library', applicationLibrary],
+    ['the mapper', applicationMapping],
+    ['the screen', applicationScreen],
+  ]) {
+    ok(`${name} calls no bank endpoint`, !/fetch\(|axios|https?:\/\//.test(text ?? ''));
+  }
+
+  /**
+   * **The application is derived, never a third customer-data store.** It reads
+   * the deposit, the draft and the platform's investor record; what the booking
+   * keeps is only what nothing else owns.
+   */
+  ok(
+    'the mapper reads the canonical sources rather than copying them',
+    /sources\.identity/.test(applicationMapping ?? '') &&
+      /sources\.draft/.test(applicationMapping ?? '') &&
+      /sources\.deposit/.test(applicationMapping ?? ''),
+  );
+  ok(
+    'and only manual fields are answerable',
+    /manual: \(\) => sources\.draft\.application\.answers/.test(applicationMapping ?? ''),
+  );
+  const applicationTypes = sources.get('src/modules/booking/types/application.ts');
+  ok(
+    'the stored application holds answers and declarations only',
+    /interface ApplicationConfiguration \{[\s\S]*?answers: Record<string, string>;[\s\S]*?acceptedDeclarations: readonly string\[\];/.test(
+      applicationTypes ?? '',
+    ),
+  );
+
+  /** It is a step like any other — same shell, same navigator, same guard. */
+  ok(
+    'the application uses the shared step hook',
+    /useBookingStep\('application'/.test(applicationScreen ?? ''),
+  );
+  ok('and the shared shell', /<BookingStepShell/.test(applicationScreen ?? ''));
+  ok(
+    'and returns to Bank Account',
+    /ROUTES\.bookingBankAccount\(productId\)/.test(applicationScreen ?? ''),
+  );
+  ok(
+    'while Review returns to the application',
+    /ROUTES\.bookingApplication\(productId\)/.test(
+      sources.get('src/modules/booking/components/review-screen.tsx') ?? '',
+    ),
+  );
+
+  /* ---- Investor identity (doc 07 Stage 3, doc 11 Domain 1) ---- */
+
+  const identityScreen = sources.get('src/modules/booking/components/identity-screen.tsx');
+  const readinessRules = sources.get('src/utils/kyc/readiness.ts');
+  const identityTypes = sources.get('src/types/investor.ts');
+
+  ok('the identity step has a screen', Boolean(identityScreen));
+  ok('and its rules live in the platform tier', Boolean(readinessRules));
+  ok('as does its vocabulary', Boolean(identityTypes));
+
+  /**
+   * **Identity belongs to the platform, not to Booking.**
+   *
+   * Doc 11 lists the Investor domain as used by Booking, Portfolio and Support
+   * alike, and doc 10 requires verified information to be reused rather than
+   * re-collected. A copy of the shape inside a module would be the first of
+   * several, and the last would disagree with the first.
+   */
+  check(
+    'the investor shape is declared once, in the platform tier',
+    [...sources.entries()]
+      .filter(([, text]) => /export interface InvestorIdentity\b/.test(text))
+      .map(([file]) => file),
+    ['src/types/investor.ts'],
+  );
+  check(
+    'and readiness is decided in exactly one place',
+    [...sources.entries()]
+      .filter(([, text]) => /export function deriveKycReadiness/.test(text))
+      .map(([file]) => file),
+    ['src/utils/kyc/readiness.ts'],
+  );
+  /*
+    Narrowed to what the rule actually protects: no module may declare a shape
+    that *carries identity*. Matching on the word "Investor" was too broad — the
+    goal planner's `InvestorProfile` is `{ isSeniorCitizen }`, a fact about
+    pricing eligibility rather than about who someone is, and it holds no
+    identifier at all. What must not exist in a module is a second home for a
+    name, a date of birth or a PAN.
+  */
+  check(
+    'no module declares a property holding an identity number',
+    /*
+      Narrowed again, and to the thing that matters. Matching on any mention was
+      too broad: the application mapper *reads* identity fields by name, and a
+      template declares a field whose id is `pan` — neither is a second home for
+      the data.
+
+      What must not exist in a module is a **property** holding an identity
+      number. `fullName` and `dateOfBirth` are excluded because the nominee
+      legitimately declares both — a nominee is a third party, held in memory
+      only, and that boundary has its own assertions.
+    */
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/'))
+      .filter(([, text]) => /^\s*(pan|aadhaar)\??:\s/m.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **The identity type cannot hold a whole identifier.** Doc 15 requires
+   * identity numbers to be protected at rest; a type with no field for one
+   * cannot leak it, which is a stronger guarantee than a rule saying it must
+   * not. The same reasoning `BankAccount` already follows for account numbers.
+   */
+  ok(
+    'the investor type holds no unmasked PAN or Aadhaar number',
+    !/panNumber|aadhaarNumber|\bpan:\s*string\b|\baadhaar:\s*string\b/.test(identityTypes ?? ''),
+  );
+  ok('it carries masked values only', /masked: string \| null/.test(identityTypes ?? ''));
+
+  /**
+   * **The booking records a receipt, not a copy.** What a booking owns is that
+   * this investor confirmed, and by which route — never their name, date of
+   * birth or PAN. That is what stops identity state being duplicated into every
+   * module, and what keeps PII out of `sessionStorage`.
+   */
+  const bookingDraftTypes = sources.get('src/modules/booking/types/draft.ts');
+  ok(
+    'the draft stores a confirmation, not an identity',
+    /interface IdentityConfirmation \{[\s\S]*?confirmedAt: number \| null;[\s\S]*?method: KycMethodId \| null;\s*\}/.test(
+      bookingDraftTypes ?? '',
+    ),
+  );
+  ok(
+    'and no identity field reaches the draft',
+    !/fullName|dateOfBirth|\bpan\b|aadhaar/i.test(
+      (bookingDraftTypes ?? '').split('interface IdentityConfirmation')[1]?.split('}')[0] ?? '',
+    ),
+  );
+
+  /**
+   * **Only connected verification routes may be offered.** Presenting a method
+   * this build cannot run would put a dead control on an identity screen and,
+   * worse, imply a regulatory permission the platform does not hold. The screen
+   * reads `usableMethods`, which the registry's `availability` decides.
+   */
+  const kycMethods = sources.get('src/services/investor/kyc-methods.ts');
+  ok('the method registry exists', Boolean(kycMethods));
+  ok(
+    'availability is data, so a real integration is a flag and a client',
+    /availability: 'available'/.test(kycMethods ?? '') &&
+      /availability: 'not-connected'/.test(kycMethods ?? ''),
+  );
+  ok(
+    'and the screen never hardcodes a method',
+    !/'digilocker'|'ckyc'|'aadhaar-ekyc'|'video-cip'/.test(identityScreen ?? ''),
+  );
+
+  /**
+   * **No abbreviation reaches the customer.** A large share of fixed-deposit
+   * customers are first-time or older digital investors; "KYC" on a button or
+   * in a URL is exactly the unexplained shorthand that makes a step feel like an
+   * obstacle. The word on screen is "identity".
+   */
+  /**
+   * **One constant per URL.** Two names for one path is the smallest form of
+   * the duplicate-source-of-truth problem: they agree until one is edited, and
+   * nothing fails — a link just quietly goes somewhere else. `multiGoalPlanner`
+   * and `goalPlannerPlan` were both `/goal-planner/plan`; one now remains.
+   */
+  const staticRoutes = [...(routes ?? '').matchAll(/^\s*(\w+): '([^']+)' as Route,/gm)].map(
+    (match) => match[2],
+  );
+  check(
+    'no two route constants point at the same URL',
+    staticRoutes.filter((path, index) => staticRoutes.indexOf(path) !== index),
+    [],
+  );
+
+  ok('the identity route says identity, not KYC', /bookingIdentity/.test(routes ?? ''));
+  ok('and the URL carries no abbreviation', !/\/kyc/i.test(routes ?? ''));
+  ok(
+    'nor does the screen',
+    !/\bKYC\b/.test((identityScreen ?? '').replace(/\/\*[\s\S]*?\*\//g, '')),
+  );
+
+  /** The identity step is a step like any other — same shell, same guard. */
+  ok('identity uses the shared step hook', /useBookingStep\('identity'/.test(identityScreen ?? ''));
+  ok('and the shared shell', /<BookingStepShell/.test(identityScreen ?? ''));
+  ok(
+    'and reads identity from the platform hook, not from a module copy',
+    /useInvestorIdentity\(\)/.test(identityScreen ?? ''),
+  );
+
   /** The pages are thin: they pass the id and nothing else. */
   ok(
     'the overview page no longer resolves or guards',
@@ -3737,9 +4470,23 @@ export async function runInvariantSuite() {
    * assemble the payload. `Omit<BookingDraft, 'nominee'>` makes an attempt to
    * persist the section a compile error rather than a review comment.
    */
+  /*
+    Re-pointed, and to a wider guarantee: the persisted type now omits the
+    application's typed answers as well as the nominee section. AU's Form DA-1
+    requires the nominee's address, city, PIN and mobile as *manual* answers, so
+    persisting them would have carried the same third-party data past the same
+    rule by another route.
+  */
   ok(
-    'the persisted draft type omits the nominee section',
-    /Omit<BookingDraft, 'nominee'>/.test(draftTypes ?? ''),
+    'the persisted draft type omits both PII-bearing sections',
+    /Omit<BookingDraft, 'nominee' \| 'application'>/.test(draftTypes ?? '') &&
+      /PersistedApplicationConfiguration = Omit<ApplicationConfiguration, 'answers'>/.test(
+        draftTypes ?? '',
+      ),
+  );
+  ok(
+    'and the application restores its answers empty',
+    /application: \{ \.\.\.draft\.application, answers: \{\} \}/.test(storage ?? ''),
   );
   ok(
     'and the storage layer restores it empty rather than reading it',
@@ -4116,11 +4863,30 @@ export async function runInvariantSuite() {
   ok('the stagger step is a token', /--ds-duration-stagger:/.test(motionTokens));
   ok('the reveal distance is a token', /--ds-reveal-distance:/.test(motionTokens));
 
+  /*
+    Re-pointed to the rule itself rather than to a proxy for it.
+
+    Banning the `animationDelay` property outright caught a delay expressed
+    *entirely in tokens* — `calc(var(--ds-duration-stagger) * n)` — which is the
+    thing the rule wants, not a violation of it. What must not appear is a
+    **literal**: a raw millisecond value or a hand-written easing curve. So the
+    check now reads the value, and an `animationDelay` that is not built from
+    `var()`/`calc()` still fails.
+  */
+  const hardcodesMotion = (text) => {
+    if (/cubic-bezier\(/.test(text)) return true;
+    if (/\b\d{2,4}ms\b/.test(text)) return true;
+
+    return [...text.matchAll(/animationDelay:\s*([^,\n]+)/g)].some(
+      ([, value]) => !/var\(|calc\(/.test(value),
+    );
+  };
+
   check(
     'no component hardcodes a duration or easing curve',
     [...sources.entries()]
       .filter(([file]) => /^src\/(components|modules|app|hooks)\/.*\.tsx?$/.test(file))
-      .filter(([, text]) => /cubic-bezier\(|\b\d{2,4}ms\b|animationDelay/.test(text))
+      .filter(([, text]) => hardcodesMotion(text))
       .map(([file]) => file),
     [],
   );
@@ -4213,7 +4979,11 @@ export async function runInvariantSuite() {
   for (const term of [
     'max-investment',
     'tenure-range',
-    'payout-options',
+    /*
+      `payout-options` is deliberately absent: `ProductMaster.terms.payout`
+      carries the real answer, so the summary states it instead of rendering a
+      placeholder. One published option is a term, not a gap.
+    */
     'premature-withdrawal',
     'auto-renewal',
     'tagline',
@@ -4222,22 +4992,55 @@ export async function runInvariantSuite() {
     ok(`"${term}" is declared as a demo term`, new RegExp(`'${term}'`).test(overviewService ?? ''));
   }
 
-  /** The summary builders route every demo-marked field through one gate. */
+  /**
+   * The summary builders route every demo-marked field through one gate — and
+   * that gate must never claim a bank confirmed anything.
+   *
+   * **"Confirmed with the bank" is banned from the codebase.** There is no bank
+   * integration in this build, so the phrase asserted something that had not
+   * happened, on the screen where a customer commits money. "Not specified" is
+   * what is true.
+   */
   ok(
     'the summary builder gates demo terms behind a single helper',
-    /function published\(/.test(summaryUtil ?? '') &&
-      /Confirmed with the bank/.test(summaryUtil ?? ''),
+    /function published\(/.test(summaryUtil ?? '') && /Not specified/.test(summaryUtil ?? ''),
+  );
+  /*
+    Narrowed to what the rule protects: no **value** may be presented as
+    bank-confirmed. Forward-looking prose is a different statement and is
+    allowed — "Coverage is confirmed with the bank at the time of booking"
+    describes what will happen, whereas "Maximum: confirmed with the bank"
+    asserted that an absent figure had already been agreed.
+  */
+  check(
+    'no value is presented as confirmed with the bank',
+    [...sources.entries()]
+      .filter(([, text]) => /: confirmed with the bank|'Confirmed with the bank'/i.test(text))
+      .map(([file]) => file),
+    [],
   );
   for (const term of [
     'max-investment',
     'tenure-range',
-    'payout-options',
+    /*
+      `payout-options` is deliberately absent: `ProductMaster.terms.payout`
+      carries the real answer, so the summary states it instead of rendering a
+      placeholder. One published option is a term, not a gap.
+    */
     'premature-withdrawal',
     'auto-renewal',
   ]) {
+    /*
+      `tenure-range` is gated differently and deliberately: where the product
+      publishes no advertised range, the row shows the term the deposit actually
+      runs for — real catalogue data — rather than a placeholder. The branch is
+      still driven by `isDemo`, which is the property that matters.
+    */
     ok(
       `the ${term} row is gated`,
-      new RegExp(`published\\(\\s*deposit,\\s*'${term}'`, 's').test(summaryUtil ?? ''),
+      new RegExp(`(published\\(\\s*deposit,\\s*|isDemo\\(deposit,\\s*)'${term}'`, 's').test(
+        summaryUtil ?? '',
+      ),
     );
   }
 
@@ -4493,7 +5296,9 @@ export async function runInvariantSuite() {
       (file) =>
         /\.(png|jpe?g|webp|avif)$/i.test(file) &&
         !file.startsWith('public/banks/') &&
-        !/^public\/goal-[\w-]+\.(png|webp)$/.test(file),
+        !/^public\/goal-[\w-]+\.(png|webp)$/.test(file) &&
+        /* The approved multi-goal artwork, same exemption as the goal marks. */
+        !/^public\/multi_goal[\w-]*\.(png|webp)$/.test(file),
     ),
     [],
   );

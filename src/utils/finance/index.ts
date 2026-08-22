@@ -9,3 +9,9 @@ export {
   toWholeMonths,
   years,
 } from './tenure';
+export {
+  calculateDepositReturns,
+  type DepositReturns,
+  type DepositReturnsInput,
+} from './deposit-returns';
+export { formatMaturityDate, maturityDate, monthsUntil } from './maturity-date';

@@ -2,14 +2,16 @@
 
 import { ArrowRight, CalendarClock, CircleCheck, Landmark, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
+import { usePortfolio } from '@/hooks/use-portfolio';
 import { formatCurrency } from '@/utils/format';
 
+import { BookingCelebration } from './booking-celebration';
 import { BookingReferenceCard } from './booking-reference-card';
 import { BookingStepShell } from './booking-step-shell';
 import { BookingSummaryRail } from './booking-summary-rail';
@@ -64,6 +66,7 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
   const { deposit } = useBookingProduct();
   const { draft } = useBookingDraft();
   const { isReady } = useBookingStep('success', productId);
+  const { record } = usePortfolio();
 
   const confirmation = draft.confirmation;
   const account = SAVED_BANK_ACCOUNTS.find((entry) => entry.id === draft.bankAccountId);
@@ -100,6 +103,58 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
 
   const investedOn = confirmation ? new Date(confirmation.paidAt) : null;
 
+  /**
+   * The moment a booking becomes something the investor **holds**.
+   *
+   * This is the one place the product crosses that line, so it is the one place
+   * a holding is written. Everything before it is intent — a draft, editable and
+   * abandonable — and nothing before it may appear in Portfolio. A confirmed
+   * booking, and only a confirmed booking, becomes a deposit they own.
+   *
+   * ## What is recorded, and what is not
+   *
+   * The **terms of the contract**, which are fixed the moment the bank
+   * confirms: principal, the rate resolved for this term, the tenure, whether
+   * interest compounds, and when it started. Portfolio derives every figure —
+   * maturity amount, interest, maturity date — from those, so a later catalogue
+   * change cannot rewrite a deposit somebody already owns.
+   *
+   * ## Written once
+   *
+   * Guarded on the confirmation being complete, and idempotent on the bank's
+   * reference in the store beneath. A re-render, a refresh of this screen or
+   * StrictMode's double invocation cannot produce a second holding.
+   */
+  useEffect(() => {
+    if (!isReady) return;
+    if (confirmation?.confirmedAt == null) return;
+    if (figures.returns === null) return;
+    if (investment.amount === null || investment.tenureMonths === null) return;
+
+    record({
+      reference: confirmation.reference,
+      productType: 'fixed-deposit',
+      productId: deposit.productId,
+      productName: deposit.productName,
+      bank: deposit.bank,
+      principal: investment.amount,
+      annualRate: figures.returns.annualRate,
+      tenureMonths: investment.tenureMonths,
+      isCumulative: figures.returns.isCumulative,
+      payoutLabel: figures.returns.isCumulative ? 'At maturity' : 'Paid out periodically',
+      startedAt: confirmation.paidAt,
+      status: 'active',
+    });
+  }, [
+    isReady,
+    confirmation,
+    figures.returns,
+    investment.amount,
+    investment.tenureMonths,
+    deposit,
+    record,
+  ]);
+
   return (
     <BookingStepShell
       stepId="success"
@@ -116,8 +171,14 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
       <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
         <div className="flex flex-col gap-6 md:col-span-2">
           <Card variant="outlined" className="flex flex-col gap-6 p-5 md:p-6">
-            <div className="flex flex-col items-center gap-3">
-              <span className="bg-surface-subtle text-success flex size-16 items-center justify-center rounded-full">
+            {/*
+              The celebration is scoped to this card rather than the viewport,
+              so it acknowledges the moment without covering the reference
+              number the customer came to read. `relative` is what contains it.
+            */}
+            <div className="relative flex flex-col items-center gap-3">
+              <BookingCelebration />
+              <span className="bg-surface-subtle text-success relative flex size-16 items-center justify-center rounded-full">
                 <ShieldCheck aria-hidden="true" className="size-8" />
               </span>
             </div>
@@ -231,15 +292,16 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
           treatment in this codebase for a destination that has not been
           specified — and it explains itself rather than failing silently.
         */}
-        <Button variant="primary" aria-disabled="true" title="Portfolio is not available yet">
-          View Portfolio
-          <ArrowRight aria-hidden="true" className="size-4" />
+        <Button asChild variant="primary">
+          <Link href={ROUTES.portfolio}>
+            View Portfolio
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
         </Button>
       </div>
 
       <p className="text-caption text-content-muted">
-        Portfolio has not been designed or specified yet, so this journey ends here. Your booking
-        reference above is the record of it.
+        This deposit now appears in your portfolio, alongside its maturity date and expected return.
       </p>
     </BookingStepShell>
   );

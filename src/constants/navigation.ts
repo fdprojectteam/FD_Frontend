@@ -44,14 +44,20 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     `prefix` so the item stays current for anything under the planner later.
   */
   { label: 'Plan by goal', route: ROUTES.goalPlanner, enabled: true, match: 'prefix' },
-  { label: 'Portfolio', enabled: false },
+  { label: 'Portfolio', route: ROUTES.portfolio, enabled: true, match: 'prefix' },
   { label: 'Support', enabled: false },
 ] as const;
 
 /** Mobile bottom bar — approved mobile UI: four icon-only destinations. */
 export const MOBILE_TAB_NAV: readonly NavItem[] = [
   { label: 'Home', route: ROUTES.home, enabled: true, match: 'exact', icon: 'home' },
-  { label: 'Portfolio', enabled: false, icon: 'portfolio' },
+  {
+    label: 'Portfolio',
+    route: ROUTES.portfolio,
+    enabled: true,
+    match: 'prefix',
+    icon: 'portfolio',
+  },
   { label: 'Profile', enabled: false, icon: 'profile' },
   { label: 'Help', enabled: false, icon: 'help' },
 ] as const;

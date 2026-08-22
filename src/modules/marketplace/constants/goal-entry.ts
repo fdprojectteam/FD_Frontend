@@ -50,7 +50,7 @@ export const GOAL_ENTRIES: readonly GoalEntry[] = [
     label: 'Multi Goal',
     description: 'For multiple goals with different timelines.',
     focus: 'Timeline • Maturity • Goal alignment',
-    href: `${ROUTES.multiGoalPlanner}` as Route,
+    href: ROUTES.goalPlannerPlan,
   },
   {
     id: 'emergency',

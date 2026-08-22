@@ -119,7 +119,7 @@ export function InvestmentAmountField({
         <span>
           {maxInvestmentPublished
             ? `Maximum: ${formatCurrency(maxInvestment)}`
-            : 'Maximum: confirmed with the bank'}
+            : 'Maximum: not specified'}
         </span>
       </p>
 

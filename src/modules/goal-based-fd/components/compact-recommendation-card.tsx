@@ -44,7 +44,12 @@ export function CompactRecommendationCard({ recommendation }: { recommendation: 
         </span>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3">
+      {/*
+        Mobile-first: one column at 320px, two from `xs`. Two columns of
+        currency at 320px crushed the figures onto three lines each and
+        pushed the card into horizontal overflow.
+      */}
+      <dl className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
         <div className="flex flex-col">
           <dt className="text-caption text-content-muted">Term</dt>
           <dd className="text-body text-content font-medium">

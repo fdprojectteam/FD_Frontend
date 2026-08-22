@@ -75,7 +75,28 @@ export function BookingOverviewScreen({
 
   const { deposit, assurances, importantInformation, nextStep } = overview;
 
-  const { draft, isHydrated, setInvestment } = useBookingDraft();
+  const { draft, isHydrated, setInvestment, reset } = useBookingDraft();
+
+  /**
+   * Arriving at Overview **is** starting a booking.
+   *
+   * So a draft that is already confirmed belongs to a booking that is over, and
+   * this is a new one. Without this, a completed booking sealed that product
+   * forever: the guard saw `confirmedAt`, and choosing the same deposit again
+   * bounced the customer to the Success screen of the booking they had already
+   * finished.
+   *
+   * Resetting here — at the entry step, and only for a *finished* booking —
+   * keeps every other guarantee intact. A booking in progress still survives a
+   * refresh and Back, because it has no confirmation; a finished one still
+   * reads as terminal from every later step.
+   */
+  const isFinished = draft.confirmation?.confirmedAt != null;
+
+  useEffect(() => {
+    if (!isHydrated || !isFinished) return;
+    reset();
+  }, [isHydrated, isFinished, reset]);
 
   /**
    * Seed the amount the entry flow already collected — **once, into the one
@@ -106,12 +127,21 @@ export function BookingOverviewScreen({
    */
   useEffect(() => {
     if (!isHydrated) return;
+    /* Never seed into a finished booking — the reset above is about to replace it. */
+    if (isFinished) return;
     if (entryAmount === null) return;
     if (draft.furthestStep !== 'overview') return;
     if (draft.investment.amount === entryAmount) return;
 
     setInvestment({ amount: entryAmount });
-  }, [isHydrated, entryAmount, draft.furthestStep, draft.investment.amount, setInvestment]);
+  }, [
+    isHydrated,
+    isFinished,
+    entryAmount,
+    draft.furthestStep,
+    draft.investment.amount,
+    setInvestment,
+  ]);
 
   const phaseId = resolveBookingPhase('overview');
 

@@ -21,9 +21,29 @@ import type { PayoutOptionId } from './draft';
 /** The eight steps of the approved booking journey, in order. */
 export type BookingStepId =
   | 'overview'
+  /**
+   * Investor Verification — doc 07, **Stage 3**.
+   *
+   * Placed here, immediately after the overview and *before* configuration,
+   * because that is where the approved future-state journey puts it: establish
+   * what is already known about the investor before asking them for anything.
+   * Moving it after Nominee would mean collecting an amount, a tenure and a
+   * third party's details from someone the platform has not yet identified.
+   */
+  | 'identity'
   | 'investment'
   | 'nominee'
   | 'bank-account'
+  /**
+   * The partner bank's own FD application.
+   *
+   * After Bank Account and before Review: it is assembled from everything
+   * collected up to that point, and Review then presents it alongside the rest
+   * for one final read. Placed earlier it would have nothing to prefill from;
+   * placed later the customer would confirm a booking before seeing the
+   * application it produces.
+   */
+  | 'application'
   | 'review'
   | 'payment'
   | 'processing'

@@ -27,7 +27,7 @@ import type { BookingDraft, PersistedBookingDraft } from '../types/draft';
  * half-valid object hydrating into a financial form. Failing closed is the only
  * safe direction here.
  */
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 4;
 
 /** Namespaced and versioned; one draft per product. */
 export function draftStorageKey(productId: string): string {
@@ -48,9 +48,11 @@ const payoutOptionSchema = z.enum(['at-maturity', 'monthly', 'quarterly', 'half-
 
 const stepIdSchema = z.enum([
   'overview',
+  'identity',
   'investment',
   'nominee',
   'bank-account',
+  'application',
   'review',
   'payment',
   'processing',
@@ -100,11 +102,41 @@ const paymentMethodSchema = z.enum([
 const persistedSchema = z.object({
   version: z.literal(STORAGE_VERSION),
   draft: z.object({
+    /* The session this draft belongs to — see `BookingDraft.bookingId`. */
+    bookingId: z.string().min(1),
     productId: z.string().min(1),
     investment: z.object({
       amount: z.number().int().positive().finite().nullable(),
       tenureMonths: z.number().int().positive().nullable(),
       payoutOption: payoutOptionSchema.nullable(),
+    }),
+    /*
+      Version 3 adds identity confirmation. Two non-PII fields: when the
+      investor confirmed, and by which route. The identity itself is never
+      written here — it belongs to the Investor domain and is read from it.
+    */
+    /*
+      Version 4 adds the application. Answers to fields nothing else owns, plus
+      accepted declarations — no identity, nominee or account detail, which are
+      read from their own owners each time the application is resolved.
+    */
+    application: z.object({
+      /*
+        No `answers`. A manual answer may be a third party's address or mobile
+        number — AU's Form DA-1 requires both — and those follow the nominee's
+        rule: held for the session, never written at rest.
+      */
+      acceptedDeclarations: z.array(z.string()),
+      preparedAt: z.number().int().nonnegative().nullable(),
+      identityMethod: z
+        .enum(['existing-kyc', 'ckyc', 'digilocker', 'aadhaar-ekyc', 'video-cip', 'assisted'])
+        .nullable(),
+    }),
+    identity: z.object({
+      confirmedAt: z.number().int().nonnegative().nullable(),
+      method: z
+        .enum(['existing-kyc', 'ckyc', 'digilocker', 'aadhaar-ekyc', 'video-cip', 'assisted'])
+        .nullable(),
     }),
     bankAccountId: z.string().min(1).nullable(),
     declarations: z.object({
@@ -182,7 +214,17 @@ export function readDraft(productId: string, now: number = Date.now()): BookingD
     never written there (T3.3.1). Returning it here rather than making the
     caller remember keeps one shape of "a draft" in the module.
   */
-  return { ...draft, nominee: emptyNomineeConfiguration() };
+  /*
+    The nominee section and the application's typed answers are both restored
+    **empty**, never from storage, because neither is written there. Returning
+    them here rather than making the caller remember keeps one shape of "a
+    draft" in the module.
+  */
+  return {
+    ...draft,
+    nominee: emptyNomineeConfiguration(),
+    application: { ...draft.application, answers: {} },
+  };
 }
 
 /**
@@ -201,7 +243,16 @@ export function writeDraft(draft: BookingDraft): void {
   const payload: PersistedBookingDraft = {
     version: STORAGE_VERSION,
     draft: {
+      bookingId: draft.bookingId,
       productId: draft.productId,
+      identity: draft.identity,
+      application: {
+        acceptedDeclarations: draft.application.acceptedDeclarations,
+        preparedAt: draft.application.preparedAt,
+        identityMethod: draft.application.identityMethod,
+        // `answers` cannot appear here: `PersistedApplicationConfiguration`
+        // omits it, so adding it back is a type error rather than a review note.
+      },
       investment: draft.investment,
       bankAccountId: draft.bankAccountId,
       declarations: draft.declarations,

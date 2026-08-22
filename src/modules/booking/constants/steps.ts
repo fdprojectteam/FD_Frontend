@@ -22,9 +22,11 @@ import type { BookingStep, BookingStepId } from '../types/booking';
  */
 export const BOOKING_STEPS: readonly BookingStep[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'identity', label: 'Identity' },
   { id: 'investment', label: 'Investment' },
   { id: 'nominee', label: 'Nominee' },
   { id: 'bank-account', label: 'Bank Account' },
+  { id: 'application', label: 'Application' },
   { id: 'review', label: 'Review' },
   { id: 'payment', label: 'Payment' },
   { id: 'processing', label: 'Processing' },
@@ -45,9 +47,11 @@ export const BOOKING_STEPS: readonly BookingStep[] = [
  */
 export const BOOKING_STEP_ROUTES: Record<BookingStepId, (productId: string) => Route> = {
   overview: ROUTES.bookingOverview,
+  identity: ROUTES.bookingIdentity,
   investment: ROUTES.bookingInvestmentDetails,
   nominee: ROUTES.bookingNominee,
   'bank-account': ROUTES.bookingBankAccount,
+  application: ROUTES.bookingApplication,
   review: ROUTES.bookingReview,
   payment: ROUTES.bookingPayment,
   processing: ROUTES.bookingProcessing,

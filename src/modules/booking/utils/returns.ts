@@ -1,4 +1,4 @@
-import { calculateMaturity, calculateSimpleInterest } from '@/utils/maturity';
+import { calculateDepositReturns } from '@/utils/finance';
 
 import { resolveRate } from './tenure-rates';
 import type { DepositTerms } from '../types/booking';
@@ -145,15 +145,19 @@ export function calculateReturns({
 
   const cumulative = isCumulativePayout(payoutOption);
 
-  const totalInterest = cumulative
-    ? calculateMaturity({ principal, annualRate, tenureMonths }).interestEarned
-    : calculateSimpleInterest({ principal, annualRate, tenureMonths });
-
   /*
-    The C4 rule, expressed once. A payout deposit returns the principal because
-    the interest has already been handed over in instalments.
+    The C4 rule now lives in `@/utils/finance/deposit-returns`, because Portfolio
+    needs the same answer for a deposit the investor already holds and the two
+    modules cannot import each other. What stays here is what is genuinely
+    Booking's: resolving a rate from the product's card, instalment counts, and
+    the tax seam.
   */
-  const maturityValue = cumulative ? principal + totalInterest : principal;
+  const { totalInterest, maturityValue } = calculateDepositReturns({
+    principal,
+    annualRate,
+    tenureMonths,
+    isCumulative: cumulative,
+  });
 
   const instalmentsPerYear = cumulative ? null : PAYOUTS_PER_YEAR[payoutOption];
 

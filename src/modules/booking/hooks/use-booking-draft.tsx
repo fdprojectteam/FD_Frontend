@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import type { KycMethodId } from '@/types/investor';
+
 import { emptyNominee, emptyNomineeConfiguration } from '../constants/booking-draft';
 import { BOOKING_STEPS } from '../constants/steps';
 import type { BookingStepId } from '../types/booking';
@@ -71,6 +73,19 @@ export interface BookingDraftContextValue {
   removeNominee: (nomineeId: string) => void;
   /** Merges a patch into one nominee, leaving the others untouched. */
   updateNominee: (nomineeId: string, patch: Partial<Omit<Nominee, 'id'>>) => void;
+  /**
+   * Records that the investor confirmed their identity for this booking.
+   *
+   * Idempotent: a booking that already carries a confirmation keeps the first
+   * one, so re-entering the step does not restamp it.
+   */
+  confirmIdentity: (method: KycMethodId) => void;
+  /** Answers one application field the platform could not supply. */
+  setApplicationAnswer: (fieldId: string, value: string) => void;
+  /** Accepts or withdraws one application declaration. */
+  setApplicationDeclaration: (declarationId: string, accepted: boolean) => void;
+  /** Stamps the application as prepared, carrying the identity route used. */
+  prepareApplication: (identityMethod: KycMethodId | null) => void;
   /** Records which saved account funds this booking (spec 21e). */
   setBankAccountId: (bankAccountId: string | null) => void;
   /** Merges a patch into the Review declarations (spec 21f §5F). */
@@ -100,9 +115,32 @@ export interface BookingDraftContextValue {
 
 const BookingDraftContext = createContext<BookingDraftContextValue | null>(null);
 
+/**
+ * A new booking session id.
+ *
+ * Monotonic within the tab and stamped with the moment it began, so two
+ * bookings of the same deposit are distinguishable in storage and in a test.
+ * `crypto.randomUUID` is unavailable in some of the environments this runs in,
+ * and global uniqueness is not needed — one tab's bookings are the only things
+ * that must not collide.
+ */
+let bookingSequence = 0;
+function nextBookingId(now: number): string {
+  bookingSequence += 1;
+  return `booking-${String(now)}-${String(bookingSequence)}`;
+}
+
 function emptyDraft(productId: string, now: number): BookingDraft {
   return {
+    bookingId: nextBookingId(now),
     productId,
+    identity: { confirmedAt: null, method: null },
+    application: {
+      answers: {},
+      acceptedDeclarations: [],
+      preparedAt: null,
+      identityMethod: null,
+    },
     investment: { amount: null, tenureMonths: null, payoutOption: null },
     nominee: emptyNomineeConfiguration(),
     bankAccountId: null,
@@ -217,6 +255,57 @@ export function BookingDraftProvider({ productId, children }: BookingDraftProvid
     }));
   }, []);
 
+  const confirmIdentity = useCallback((method: KycMethodId) => {
+    hasPendingWrite.current = true;
+    setDraft((current) =>
+      current.identity.confirmedAt === null
+        ? { ...current, identity: { confirmedAt: Date.now(), method }, updatedAt: Date.now() }
+        : current,
+    );
+  }, []);
+
+  const setApplicationAnswer = useCallback((fieldId: string, value: string) => {
+    hasPendingWrite.current = true;
+    setDraft((current) => ({
+      ...current,
+      application: {
+        ...current.application,
+        answers: { ...current.application.answers, [fieldId]: value },
+      },
+      updatedAt: Date.now(),
+    }));
+  }, []);
+
+  const setApplicationDeclaration = useCallback((declarationId: string, accepted: boolean) => {
+    hasPendingWrite.current = true;
+    setDraft((current) => {
+      const without = current.application.acceptedDeclarations.filter((id) => id !== declarationId);
+
+      return {
+        ...current,
+        application: {
+          ...current.application,
+          acceptedDeclarations: accepted ? [...without, declarationId] : without,
+        },
+        updatedAt: Date.now(),
+      };
+    });
+  }, []);
+
+  const prepareApplication = useCallback((identityMethod: KycMethodId | null) => {
+    hasPendingWrite.current = true;
+    /* Idempotent: the first preparation stands, so re-entering does not restamp. */
+    setDraft((current) =>
+      current.application.preparedAt === null
+        ? {
+            ...current,
+            application: { ...current.application, preparedAt: Date.now(), identityMethod },
+            updatedAt: Date.now(),
+          }
+        : current,
+    );
+  }, []);
+
   const setBankAccountId = useCallback((bankAccountId: string | null) => {
     hasPendingWrite.current = true;
     setDraft((current) => ({ ...current, bankAccountId, updatedAt: Date.now() }));
@@ -292,6 +381,10 @@ export function BookingDraftProvider({ productId, children }: BookingDraftProvid
       addNominee,
       removeNominee,
       updateNominee,
+      confirmIdentity,
+      setApplicationAnswer,
+      setApplicationDeclaration,
+      prepareApplication,
       setBankAccountId,
       setDeclarations,
       setPaymentMethod,
@@ -308,6 +401,10 @@ export function BookingDraftProvider({ productId, children }: BookingDraftProvid
       addNominee,
       removeNominee,
       updateNominee,
+      confirmIdentity,
+      setApplicationAnswer,
+      setApplicationDeclaration,
+      prepareApplication,
       setBankAccountId,
       setDeclarations,
       setPaymentMethod,

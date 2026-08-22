@@ -275,6 +275,14 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
                   user reaches for, and the chips are the shortcut.
                 */}
                 <ConfigurationRegion title="Investment Amount">
+                  {/*
+                    Named for what the customer is doing here. Both entry paths
+                    arrive with an amount already established — the goal
+                    planner's, or the one they calculated with on the product
+                    page — so this step reviews a configuration rather than
+                    collecting one. The field stays editable because the product
+                    genuinely allows a different amount.
+                  */}
                   <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[1fr_auto] md:gap-6">
                     <InvestmentAmountField
                       value={investment.amount}
@@ -409,7 +417,8 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
           navigates through `useBookingStep`, so no route is named here.
         */}
         <BookingStepActions
-          backHref={ROUTES.bookingOverview(productId)}
+          /* The step before this one is Investor Verification (doc 07 Stage 3). */
+          backHref={ROUTES.bookingIdentity(productId)}
           backLabel="Back"
           continueLabel="Continue"
           continueDisabled={!validation.isValid}

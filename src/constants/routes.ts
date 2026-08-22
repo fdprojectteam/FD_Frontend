@@ -68,6 +68,15 @@ export const ROUTES = {
    * segment is the user-facing URL, and coupling them would mean a copy change
    * to a URL forced an edit to the state machine.
    */
+  /**
+   * Investor Verification — step two, a sibling of the rest (doc 07 Stage 3).
+   *
+   * The segment is `identity` while the step id is `identity` too; the word is
+   * the customer's ("verify your identity"), not the regulator's. "KYC" appears
+   * in no URL and on no button, because an abbreviation is exactly what an
+   * older or first-time investor should not have to decode.
+   */
+  bookingIdentity: (productId: string) => `/booking/${productId}/identity` as Route,
   bookingInvestmentDetails: (productId: string) =>
     `/booking/${productId}/investment-details` as Route,
   /** Nominee — step three, a sibling of the two before it (T3.3.2). */
@@ -86,6 +95,14 @@ export const ROUTES = {
    * platform's internal vocabulary. `BOOKING_STEP_ROUTES` is the one bridge.
    */
   bookingBankAccount: (productId: string) => `/booking/${productId}/bank-account` as Route,
+  /**
+   * The partner bank's FD application — between Bank Account and Review.
+   *
+   * The segment is `application`, the customer's word. Which bank's form it is
+   * comes from the deposit, not from the URL, so there is one route however
+   * many institutions the library serves.
+   */
+  bookingApplication: (productId: string) => `/booking/${productId}/application` as Route,
   bookingReview: (productId: string) => `/booking/${productId}/review` as Route,
   bookingPayment: (productId: string) => `/booking/${productId}/payment` as Route,
   bookingProcessing: (productId: string) => `/booking/${productId}/processing` as Route,
@@ -98,8 +115,20 @@ export const ROUTES = {
    * (`06-architecture.md` §2). Nothing about Booking changes because the user
    * arrived here instead of from a product card.
    */
-  multiGoalPlanner: '/goal-planner/plan' as Route,
+  /**
+   * The investor's holdings — the first surface where the product moves from
+   * "I am booking an FD" to "I own one".
+   */
+  portfolio: '/portfolio' as Route,
   goalPlanner: '/goal-planner' as Route,
-  /** Multi-goal planning (client source document, Use Case 2). */
+  /**
+   * Multi-goal planning (client source document, Use Case 2).
+   *
+   * **One constant for one URL.** A second name — `multiGoalPlanner` — pointed
+   * at this same path, which is the duplicate-source-of-truth problem in its
+   * smallest form: two names drift the moment one of them is changed, and
+   * nothing would have failed until a link quietly went somewhere else. Home's
+   * multi-goal entry now reads this one.
+   */
   goalPlannerPlan: '/goal-planner/plan' as Route,
 } as const;

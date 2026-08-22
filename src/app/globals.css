@@ -383,6 +383,55 @@
   animation: ds-pulse var(--ds-duration-pulse) var(--ds-ease-in-out) infinite;
 }
 
+/*
+ * Processing sweep — the ring that turns while a booking is being prepared.
+ *
+ * Rotation only, on the existing duration/easing tokens. No gradient sweep, no
+ * scale, no pulse stacked on top: one honest indicator that something is in
+ * progress. The global reduced-motion rule stops it, and the Processing screen
+ * additionally states its stages in words, so nothing about the state is
+ * carried by the animation alone.
+ */
+@keyframes ds-processing-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@utility animate-processing-sweep {
+  animation: ds-processing-sweep var(--ds-duration-processing) linear infinite;
+}
+
+/*
+ * Celebration — one short fall per piece, then gone.
+ *
+ * Opacity and transform only, so it composites on the GPU and touches no
+ * layout. `forwards` leaves each piece invisible at the end rather than
+ * snapping back, and the screen unmounts them shortly after. Reduced motion is
+ * handled twice over: this collapses under the global rule, and the component
+ * does not render a single piece when the preference is set.
+ */
+@keyframes ds-celebrate {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -8%, 0) rotate(0deg);
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--ds-celebrate-drift, 0), 120%, 0)
+      rotate(var(--ds-celebrate-spin, 180deg));
+  }
+}
+
+@utility animate-celebrate {
+  animation: ds-celebrate var(--ds-duration-celebrate) var(--ds-ease-out) forwards;
+}
+
 /* Scrim behind overlays: gray-900 at --ds-opacity-scrim (inventory §16). */
 @utility overlay-scrim {
   background-color: rgb(from var(--ds-gray-900) r g b / var(--ds-opacity-scrim));

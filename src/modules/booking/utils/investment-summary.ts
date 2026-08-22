@@ -33,10 +33,40 @@ import type { InvestmentConfiguration } from '../types/draft';
  * Copy for a term the product does not publish.
  *
  * Deliberately a statement of fact rather than a dash: a blank row reads as a
- * rendering fault, and a placeholder figure reads as a bank term. This says what
- * is true — the platform does not have it, and the bank confirms it at booking.
+ * rendering fault, and a placeholder figure reads as a bank term.
+ *
+ * ## Why it no longer says "Confirmed with the bank"
+ *
+ * Because nothing has been. There is no bank integration in this build, so a
+ * row claiming a value was confirmed with the partner bank asserted something
+ * that had not happened — on the screen where a customer decides to commit
+ * money, and in front of investors being shown the product. "Not specified" is
+ * what is actually true: the catalogue does not carry this term.
+ *
+ * The rule this encodes: **never present an absent value as a bank-confirmed
+ * fact.** An invariant holds the phrase out of the codebase.
  */
-const NOT_PUBLISHED = 'Confirmed with the bank';
+const NOT_PUBLISHED = 'Not specified';
+
+/**
+ * Drops the rows this deposit has nothing to say about.
+ *
+ * ## Why omit rather than list
+ *
+ * Stating "Not specified" three times in a seven-row panel reads as a broken
+ * screen, not as candour — and on the summary a customer uses to decide, a
+ * column of absences is worse than a shorter, complete list. A summary should
+ * say what this deposit *is*.
+ *
+ * This is not the honesty rule being softened. The rule is **never present an
+ * absent value as a fact**, and omitting the row satisfies it more cleanly than
+ * printing a placeholder: nothing is claimed, and nothing invites the reader to
+ * infer a term the catalogue does not carry. The moment the catalogue publishes
+ * one, the row returns with a real figure and no other change.
+ */
+function withoutUnpublished(rows: InvestmentSummaryRow[]): InvestmentSummaryRow[] {
+  return rows.filter((row) => row.value !== NOT_PUBLISHED);
+}
 
 /** Whether this deposit carries a real value for a given term. */
 function isDemo(deposit: SelectedDeposit, id: DemoTermId): boolean {
@@ -56,7 +86,7 @@ function published(deposit: SelectedDeposit, id: DemoTermId, value: string): str
 export function buildInvestmentSummaryRows(deposit: SelectedDeposit): InvestmentSummaryRow[] {
   const { terms } = deposit;
 
-  return [
+  return withoutUnpublished([
     { id: 'bank', icon: 'bank', label: 'Partner Bank', value: deposit.bank.name },
     { id: 'product', icon: 'product', label: 'Product Name', value: deposit.productName },
     {
@@ -80,12 +110,24 @@ export function buildInvestmentSummaryRows(deposit: SelectedDeposit): Investment
       label: 'Max. Investment',
       value: published(deposit, 'max-investment', formatCurrency(terms.maxInvestment)),
     },
-    {
-      id: 'tenure',
-      icon: 'tenure',
-      label: 'Tenure Options',
-      value: published(deposit, 'tenure-range', formatTenureRange(terms.tenureRange)),
-    },
+    /*
+      The advertised range where the product publishes one; otherwise the term
+      this deposit actually runs for, which the catalogue does carry. Real data
+      in both branches — the row states a fact rather than an absence.
+    */
+    isDemo(deposit, 'tenure-range')
+      ? {
+          id: 'tenure',
+          icon: 'tenure' as const,
+          label: 'Tenure',
+          value: terms.tenureMonths > 0 ? formatTenure(terms.tenureMonths) : NOT_PUBLISHED,
+        }
+      : {
+          id: 'tenure',
+          icon: 'tenure' as const,
+          label: 'Tenure Options',
+          value: formatTenureRange(terms.tenureRange),
+        },
     {
       id: 'payout',
       icon: 'payout',
@@ -110,7 +152,7 @@ export function buildInvestmentSummaryRows(deposit: SelectedDeposit): Investment
       label: 'Auto Renewal',
       value: published(deposit, 'auto-renewal', terms.autoRenewal ? 'Available' : 'Not available'),
     },
-  ];
+  ]);
 }
 
 /**
@@ -172,7 +214,7 @@ export function buildConfiguredSummaryRows(
       ? terms.interestRate
       : (resolveRate(terms, { tenureMonths })?.annualRate ?? null);
 
-  return [
+  return withoutUnpublished([
     {
       id: 'rate',
       icon: 'rate',
@@ -220,7 +262,7 @@ export function buildConfiguredSummaryRows(
       label: 'Auto Renewal',
       value: published(deposit, 'auto-renewal', terms.autoRenewal ? 'Available' : 'Not available'),
     },
-  ];
+  ]);
 }
 
 /**

@@ -49,7 +49,32 @@ import { featureFlags } from '@/config/featureFlags';
  */
 const START_KEY = Symbol.for('fd.msw.start');
 
-type GlobalWithStart = typeof globalThis & { [START_KEY]?: Promise<void> };
+/**
+ * The start attempt, and whether it has finished.
+ *
+ * `settled` is what makes re-verification safe. Without it, a second call made
+ * while the first start is still in flight would see no controller yet and
+ * start a second worker — the exact duplication this cache exists to prevent.
+ */
+interface WorkerStart {
+  promise: Promise<void>;
+  settled: boolean;
+}
+
+type GlobalWithStart = typeof globalThis & { [START_KEY]?: WorkerStart };
+
+/**
+ * Is the Service Worker currently controlling this page?
+ *
+ * Registration is not the same as control. A page can be loaded before the
+ * worker activates, a dev-server restart can drop it, and an updated worker
+ * takes over only after a navigation — in each case `controller` is `null` and
+ * **MSW cannot intercept anything**. Requests then reach the Next dev server,
+ * which has no `/api/v1` route handlers by design.
+ */
+function isWorkerControlling(): boolean {
+  return typeof navigator !== 'undefined' && navigator.serviceWorker?.controller != null;
+}
 
 /**
  * Starts the worker if it is not already starting, and returns the promise
@@ -66,12 +91,34 @@ export function ensureMockWorker(): Promise<void> | null {
   if (!featureFlags.mocks) return null;
 
   const scope = globalThis as GlobalWithStart;
-  if (scope[START_KEY]) return scope[START_KEY];
+  const existing = scope[START_KEY];
 
-  const starting = import('./browser').then(({ startMockWorker }) => startMockWorker());
-  scope[START_KEY] = starting;
+  /*
+    Reuse the cached attempt while it is still in flight, or once it has
+    finished **and the worker is actually controlling the page**.
 
-  return starting;
+    The second half is the fix for Home's intermittently empty product list.
+    The gate used to hold a promise captured once at startup: after it resolved,
+    every later request was waved through whether or not the worker was still
+    there. When control was lost, the calls bypassed MSW, reached the dev
+    server, and the screen showed its empty or error state — and no amount of
+    client-side navigation recovered it, because the gate had nothing left to
+    wait for. Re-verifying costs one property read per request and restarts only
+    when control has genuinely gone.
+  */
+  if (existing && (!existing.settled || isWorkerControlling())) return existing.promise;
+
+  const start: WorkerStart = {
+    promise: import('./browser')
+      .then(({ startMockWorker }) => startMockWorker())
+      .finally(() => {
+        start.settled = true;
+      }),
+    settled: false,
+  };
+  scope[START_KEY] = start;
+
+  return start.promise;
 }
 
 export function MswProvider({ children }: { children: React.ReactNode }) {

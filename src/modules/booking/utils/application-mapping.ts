@@ -1,0 +1,310 @@
+import type { InvestorIdentity } from '@/types/investor';
+import { formatCurrency, formatTenure } from '@/utils/format';
+
+import { resolveRate } from './tenure-rates';
+import { PAYOUT_OPTION_LABELS } from '../constants/payout-options';
+import { SAVED_BANK_ACCOUNTS } from '../fixtures/bank-accounts';
+import type {
+  ApplicationField,
+  ApplicationFieldSource,
+  ApplicationTemplate,
+  ResolvedApplication,
+  ResolvedApplicationField,
+  ResolvedApplicationSection,
+} from '../types/application';
+import type { SelectedDeposit } from '../types/booking';
+import type { BookingDraft } from '../types/draft';
+
+/**
+ * The application, resolved from everything the platform already knows.
+ *
+ * ## The rule
+ *
+ * > ASK ONCE → REUSE → VERIFY → ASK ONLY FOR WHAT IS MISSING
+ *
+ * A field declares its `source`; this fills it from that source. The only
+ * fields that can ever reach the customer as something to type are the ones
+ * whose source is `manual` — and a template that declared everything manual
+ * would be a template that had learned nothing from the journey so far.
+ *
+ * ## Four canonical sources, no fifth store
+ *
+ * | Source | Owner |
+ * |---|---|
+ * | `identity` | `InvestorIdentity` — the platform Investor domain |
+ * | `investment` | `BookingDraft.investment` |
+ * | `nominee` | `BookingDraft.nominee` |
+ * | `bank-account` | the saved account referenced by `BookingDraft.bankAccountId` |
+ * | `deposit` | the `SelectedDeposit` being booked |
+ *
+ * Nothing is copied into a new store on the way through. The application is
+ * **derived on every render**, which is what stops it from disagreeing with the
+ * booking it describes — the same reason a maturity figure is never persisted.
+ *
+ * ## Values are display strings
+ *
+ * A resolved field carries what the customer reads: `₹5,00,000`, not `500000`.
+ * Formatting goes through the platform's own formatters so an application and a
+ * summary panel cannot render the same amount differently.
+ *
+ * Pure and React-free.
+ */
+
+/**
+ * Values the booking owns. The application states them and never asks for them:
+ * they are chosen on Investment Details, and everything downstream is derived
+ * from that one configuration.
+ */
+const BOOKING_MANAGED: readonly ApplicationFieldSource[] = ['investment', 'deposit'];
+
+/** The nominee a single-nominee application refers to. */
+function primaryNominee(draft: BookingDraft) {
+  return draft.nominee.nominees[0];
+}
+
+function fromIdentity(fieldId: string, identity: InvestorIdentity | null): string | null {
+  if (identity === null) return null;
+
+  switch (fieldId) {
+    case 'applicantName':
+      return identity.profile.fullName;
+    case 'dateOfBirth':
+      return identity.profile.dateOfBirth;
+    case 'mobile':
+      return identity.profile.mobile;
+    case 'email':
+      return identity.profile.email;
+    case 'address':
+      return identity.profile.address;
+    /*
+      The masked value, never the number. `InvestorIdentity` has no field for a
+      whole PAN, so an application physically cannot print one.
+    */
+    case 'pan':
+      return identity.pan.masked;
+    default:
+      return null;
+  }
+}
+
+function fromInvestment(
+  fieldId: string,
+  draft: BookingDraft,
+  deposit: SelectedDeposit,
+): string | null {
+  const { amount, tenureMonths, payoutOption } = draft.investment;
+
+  switch (fieldId) {
+    /*
+      The rate **actually applying to the chosen tenure**, through the single
+      rate authority — never the headline. An application quoting one rate while
+      the summary rail quoted another would be the exact defect the tenure→rate
+      model exists to prevent.
+    */
+    case 'rateOfInterest': {
+      if (tenureMonths === null) return null;
+      const quote = resolveRate(deposit.terms, { tenureMonths });
+      return quote === null ? null : `${String(quote.annualRate)}% p.a.`;
+    }
+    case 'depositAmount':
+      return amount === null ? null : formatCurrency(amount);
+    case 'tenure':
+      return tenureMonths === null ? null : formatTenure(tenureMonths);
+    case 'payoutOption':
+      return payoutOption === null ? null : PAYOUT_OPTION_LABELS[payoutOption];
+    default:
+      return null;
+  }
+}
+
+function fromNominee(fieldId: string, draft: BookingDraft): string | null {
+  const nominee = primaryNominee(draft);
+  if (!nominee) return null;
+
+  switch (fieldId) {
+    case 'nomineeName':
+      return nominee.fullName === '' ? null : nominee.fullName;
+    case 'nomineeRelationship':
+      return nominee.relationship === '' ? null : nominee.relationship;
+    case 'nomineeShare':
+      return nominee.sharePercent === '' ? null : `${nominee.sharePercent}%`;
+    case 'nomineeDateOfBirth':
+      return nominee.dateOfBirth === '' ? null : nominee.dateOfBirth;
+    case 'nomineeGuardianName':
+      return nominee.guardianName === '' ? null : nominee.guardianName;
+    default:
+      return null;
+  }
+}
+
+function fromBankAccount(fieldId: string, draft: BookingDraft): string | null {
+  const account = SAVED_BANK_ACCOUNTS.find((entry) => entry.id === draft.bankAccountId);
+  if (!account) return null;
+
+  switch (fieldId) {
+    case 'fundingBank':
+      return account.bankName;
+    /* Masked, exactly as every other screen shows it. */
+    case 'fundingAccount':
+      return `XXXX ${account.lastFourDigits}`;
+    case 'fundingIfsc':
+      return account.ifsc;
+    default:
+      return null;
+  }
+}
+
+function fromDeposit(fieldId: string, deposit: SelectedDeposit): string | null {
+  switch (fieldId) {
+    case 'institutionName':
+      return deposit.bank.name;
+    case 'productName':
+      return deposit.productName;
+    case 'depositType':
+      return 'Fixed Deposit';
+    default:
+      return null;
+  }
+}
+
+export interface ApplicationSources {
+  deposit: SelectedDeposit;
+  draft: BookingDraft;
+  identity: InvestorIdentity | null;
+}
+
+/** One field's value from its declared source, or `null`. */
+export function resolveFieldValue(
+  field: ApplicationField,
+  sources: ApplicationSources,
+): string | null {
+  const bySource: Record<ApplicationFieldSource, () => string | null> = {
+    identity: () => fromIdentity(field.id, sources.identity),
+    investment: () => fromInvestment(field.id, sources.draft, sources.deposit),
+    nominee: () => fromNominee(field.id, sources.draft),
+    'bank-account': () => fromBankAccount(field.id, sources.draft),
+    deposit: () => fromDeposit(field.id, sources.deposit),
+    /*
+      The bank fills these in. Nothing to resolve, and — crucially — never
+      anything to ask: a customer does not know their branch code.
+    */
+    'bank-only': () => null,
+    /* Only the customer can supply these, and only these are ever asked for. */
+    manual: () => sources.draft.application.answers[field.id] ?? null,
+  };
+
+  /*
+    **A customer's edit wins.**
+
+    A field the platform prefilled is still the customer's to correct — the bank
+    is asking *them*, and a nominee's address we hold may simply be out of date.
+    So an answer they have typed overrides the sourced value for this
+    application, and the sourced value is what they started from.
+
+    Two sources are excluded, for different reasons. `bank-only` is not theirs
+    to answer at all. `investment`/`deposit` are owned by Investment Details, and
+    a second amount field inside the bank form would be a second investment
+    configuration — the screen offers a way back to that step instead.
+  */
+  const overridable = field.source !== 'bank-only' && !BOOKING_MANAGED.includes(field.source);
+  const typed = overridable ? sources.draft.application.answers[field.id] : undefined;
+
+  const value = typed !== undefined && typed.trim() !== '' ? typed : bySource[field.source]();
+  return value === null || value.trim() === '' ? null : value;
+}
+
+/** Schema-driven validation. The template states the rule; this applies it. */
+export function validateFieldValue(field: ApplicationField, value: string | null): string | null {
+  /*
+    A bank-only field is never the customer's problem, whatever the template
+    says about it. Checked before `required` so a schema cannot accidentally
+    put a branch code on the customer's to-do list.
+  */
+  if (field.source === 'bank-only') return null;
+
+  if (value === null) {
+    return field.required ? `${field.label} is needed to complete this application.` : null;
+  }
+
+  if (field.type === 'select' && field.options !== undefined) {
+    const permitted = field.options.some((option) => option.value === value);
+    if (!permitted) return `Choose one of the options for ${field.label.toLowerCase()}.`;
+  }
+
+  if (field.pattern !== undefined && !new RegExp(field.pattern).test(value)) {
+    return `${field.label} does not look right. Please check it.`;
+  }
+
+  return null;
+}
+
+/**
+ * The whole application, resolved.
+ *
+ * `outstanding` is what the screen renders as work: required fields the
+ * platform could not supply. Everything else is shown as already done, and an
+ * optional field that is absent is never presented as outstanding.
+ */
+export function resolveApplication(
+  template: ApplicationTemplate,
+  sources: ApplicationSources,
+): ResolvedApplication {
+  const sections: ResolvedApplicationSection[] = template.sections.map((section) => ({
+    section,
+    fields: section.fields.map<ResolvedApplicationField>((field) => {
+      const value = resolveFieldValue(field, sources);
+      const message = validateFieldValue(field, value);
+
+      const status: ResolvedApplicationField['status'] =
+        field.source === 'bank-only'
+          ? 'optional'
+          : value !== null && message !== null
+            ? 'invalid'
+            : value === null && field.required
+              ? 'missing'
+              : value === null
+                ? 'optional'
+                : field.editable === true
+                  ? 'requires-confirmation'
+                  : 'prefilled';
+
+      return {
+        field,
+        value,
+        source: field.source,
+        status,
+        ...(message !== null && value !== null ? { message } : {}),
+      };
+    }),
+  }));
+
+  const allFields = sections.flatMap((section) => section.fields);
+
+  /*
+    Outstanding means "the customer must supply this". A booking-managed value
+    is never that: they cannot answer it here, and the step guard has already
+    required a valid configuration before this screen can be reached. Leaving
+    them in would make a product whose rate card does not price the chosen term
+    block an application the customer has no way to unblock.
+  */
+  const outstanding = allFields.filter(
+    (entry) =>
+      !BOOKING_MANAGED.includes(entry.source) &&
+      (entry.status === 'missing' || entry.status === 'invalid'),
+  );
+  const bankCompleted = allFields.filter((entry) => entry.source === 'bank-only');
+
+  const declarationsAccepted = template.declarations
+    .filter((declaration) => declaration.required)
+    .every((declaration) =>
+      sources.draft.application.acceptedDeclarations.includes(declaration.id),
+    );
+
+  return {
+    template,
+    sections,
+    outstanding,
+    bankCompleted,
+    isComplete: outstanding.length === 0 && declarationsAccepted,
+  };
+}

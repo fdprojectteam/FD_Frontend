@@ -59,9 +59,24 @@ export default async function BookingLayout({
     a different product remounts it. Fail-closed moved with the resolution, not
     away from it.
   */
+  /*
+    **The draft sits outside the deposit's provider, and that ordering matters.**
+
+    `BookingProductProvider` renders a skeleton *instead of* its children while
+    the deposit is resolving. Nested inside it, the draft provider therefore
+    unmounted on every cache miss — a refresh, or a return after the query's
+    cache had been collected — taking the whole in-memory booking with it: the
+    nominee's details, the application's typed answers, and any change not yet
+    written to storage. The customer saw their work reset for no reason they
+    could see.
+
+    The draft depends on `productId` alone; it has never needed the deposit. So
+    it is seated above, where a loading deposit cannot disturb it, and both
+    remain keyed so a different product still starts a clean booking.
+  */
   return (
-    <BookingProductProvider key={productId} productId={productId}>
-      <BookingDraftProvider productId={productId}>{children}</BookingDraftProvider>
-    </BookingProductProvider>
+    <BookingDraftProvider key={productId} productId={productId}>
+      <BookingProductProvider productId={productId}>{children}</BookingProductProvider>
+    </BookingDraftProvider>
   );
 }

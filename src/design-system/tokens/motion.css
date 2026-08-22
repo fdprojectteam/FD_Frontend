@@ -18,6 +18,20 @@
   --ds-duration-pulse: 1500ms;
 
   /*
+    One full turn of the processing ring. Slow enough to read as "working"
+    rather than "hurrying", which is the right register for a screen where the
+    customer has just parted with money. [TED]
+  */
+  --ds-duration-processing: 1400ms;
+
+  /*
+    How long one celebration piece takes to fall. Short by design: the moment
+    should register and then get out of the way of the reference number the
+    customer came to read. [TED]
+  */
+  --ds-duration-celebrate: 2200ms;
+
+  /*
    * Sequenced-reveal step [TED — approved with the Motion UX Specification].
    * The interval between members of a staggered reveal. Deliberately short:
    * five steps must still complete inside the 320ms sequence budget
