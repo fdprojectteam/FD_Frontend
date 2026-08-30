@@ -86,6 +86,27 @@ export interface ApplicationField {
   options?: readonly ApplicationFieldOption[];
   /** Optional regular expression the value must match, for `text` fields. */
   pattern?: string;
+  /**
+   * Show this field only when another field in the same template holds one of
+   * these values.
+   *
+   * ## Why the schema owns this and not the screen
+   *
+   * Real forms are full of conditional questions — DBS asks for Form 60 only
+   * when PAN is not applicable, and for an account number and IFSC only when
+   * the maturity proceeds go out by NEFT/RTGS. Rendering every branch at once
+   * turns a bank application into the scanned page it was digitised from.
+   *
+   * Expressed here, the condition is data: the resolver hides the field, so it
+   * is not drawn, **not counted as outstanding**, and not shown in Review. A
+   * renderer-level `if` would have hidden it visually while still blocking
+   * completion — the worst of both.
+   *
+   * `fieldId` refers to a field anywhere in the same template. One level of
+   * dependency only: a condition may not itself depend on a hidden field, which
+   * keeps resolution a single pass and the schema readable.
+   */
+  visibleWhen?: { fieldId: string; equals: readonly string[] };
 }
 
 export interface ApplicationSection {

@@ -77,6 +77,24 @@ export const banks: BankDto[] = [
     rating: null,
     category: 'small-finance',
   },
+  /*
+    DBS Bank India Limited — added when the client supplied the DBS
+    Fixed/Recurring Deposit form (TDA_AOF/001/July25). The bank's own name for
+    the entity on that form is "DBS Bank India Limited"; the short display name
+    matches how the rest of this catalogue names universal banks.
+
+    No logo asset was supplied, so `logoUrl` is null and the monogram fallback
+    applies — the same treatment every other bank without a licensed logo gets.
+  */
+  {
+    id: 'dbs',
+    name: 'DBS Bank India',
+    shortCode: 'DBS',
+    initials: 'DB',
+    logoUrl: null,
+    rating: null,
+    category: 'universal',
+  },
   {
     id: 'suryoday',
     name: 'Suryoday Small Finance Bank',

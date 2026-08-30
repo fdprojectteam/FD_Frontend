@@ -311,9 +311,11 @@ export { createApplicationLibrary } from '@/modules/booking/services/application
 export {
   APPLICATION_TEMPLATES,
   AU_FD_TEMPLATE,
+  DBS_FD_TEMPLATE,
   SBI_FD_TEMPLATE,
 } from '@/modules/booking/fixtures/application-templates';
 export {
+  CHECKBOX_ACCEPTED,
   resolveApplication,
   resolveFieldValue,
   validateFieldValue,

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 
 import type { ApplicationFieldSource, ResolvedApplicationField } from '../types/application';
+import { CHECKBOX_ACCEPTED } from '../utils/application-mapping';
 
 /**
  * One field of a bank's application, rendered from its schema.
@@ -98,6 +99,20 @@ export function ApplicationFieldControl({
             </button>
           ) : null}
         </span>
+
+        {/*
+          A booking-managed value still carries what the bank's form says about
+          it, and dropping the hint here was hiding the one disclosure that
+          matters most: DBS publishes no rate, so the figure shown is the
+          platform's demonstration rate — and that sentence lives on the rate
+          field. A field the customer cannot edit is not a field they should be
+          told less about.
+        */}
+        {field.hint ? (
+          <p id={hintId} className="text-caption text-content-muted">
+            {field.hint}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -111,6 +126,56 @@ export function ApplicationFieldControl({
     of whatever the customer has just typed.
   */
   const isKnownFromPlatform = source !== 'manual' && value !== null;
+
+  /*
+    An acknowledgement, not a text box.
+
+    Some forms ask the customer to confirm that a separate document will be
+    submitted — DBS asks for Form 60 where PAN does not apply, and for Form
+    15G/15H where TDS is not to be deducted. That is a yes-or-no acknowledgement
+    of an obligation, and rendering it as a free-text field would let the
+    customer answer it with anything at all.
+
+    The stored value stays a string, like every other answer, so the draft, the
+    validator and Review need no new shape: `CHECKBOX_ACCEPTED` when ticked, and
+    absent when not.
+  */
+  if (field.type === 'checkbox') {
+    return (
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <label
+          htmlFor={field.id}
+          className="text-body text-content flex cursor-pointer items-start gap-2.5"
+        >
+          <input
+            id={field.id}
+            type="checkbox"
+            checked={value === CHECKBOX_ACCEPTED}
+            aria-describedby={describedBy}
+            onChange={(event) => {
+              onChange(event.target.checked ? CHECKBOX_ACCEPTED : '');
+            }}
+            className="focus-ring border-border-default text-content-brand mt-0.5 size-4 shrink-0 rounded"
+          />
+          <span>
+            {field.label}
+            {field.required ? null : <span className="text-content-placeholder"> (optional)</span>}
+          </span>
+        </label>
+
+        {message ? (
+          <p id={errorId} role="alert" className="text-caption text-error flex items-start gap-1.5">
+            <CircleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+            {message}
+          </p>
+        ) : field.hint ? (
+          <p id={hintId} className="text-caption text-content-muted">
+            {field.hint}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">

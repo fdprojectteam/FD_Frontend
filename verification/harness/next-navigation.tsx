@@ -83,6 +83,26 @@ export function useRouter() {
 
 /* ------------------------------------------------------------------ */
 /* Harness controls (not part of the next/navigation surface)          */
+/**
+ * `notFound()`, as Next defines it: a throw the framework catches to render the
+ * segment's not-found boundary.
+ *
+ * The harness has no boundary to render, and that is the point — a booking that
+ * cannot resolve its deposit must *stop*, not fall through to a screen holding
+ * a half-resolved product. A thrown error surfaces in the suite as a failure
+ * rather than as a page that looks almost right.
+ */
+export class NotFoundError extends Error {
+  constructor() {
+    super('notFound() was called: the route resolved nothing.');
+    this.name = 'NotFoundError';
+  }
+}
+
+export function notFound(): never {
+  throw new NotFoundError();
+}
+
 /* ------------------------------------------------------------------ */
 
 export function resetHistory(url = '/') {

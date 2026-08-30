@@ -30,6 +30,9 @@ import {
   AdminProductsScreen,
   AdminSupportScreen,
 } from '@/modules/admin';
+import { ApplicationScreen } from '@/modules/booking/components/application-screen';
+import { BookingDraftProvider } from '@/modules/booking/hooks/use-booking-draft';
+import { BookingProductProvider } from '@/modules/booking/hooks/use-booking-product';
 import { FamilyScreen } from '@/modules/family';
 import { TaxCenterScreen } from '@/modules/tax';
 import { ContactSupportScreen, RequestDetailScreen, SupportHomeScreen } from '@/modules/support';
@@ -146,6 +149,26 @@ function ScreenForRoute() {
   if (pathname === ROUTES.reports) return <ReportsScreen />;
   if (pathname.startsWith(`${ROUTES.reports}/`)) {
     return <ReportDocumentScreen reportId={pathname.slice(ROUTES.reports.length + 1)} />;
+  }
+  /*
+    The bank application step, composed exactly as the booking segment composes
+    it: the draft provider outside the deposit provider, both keyed by
+    `productId`. That ordering is not decoration — it is the fix for a defect
+    where a resolving deposit unmounted the draft and discarded the customer's
+    typed answers, and a harness that nested them the other way would not
+    reproduce the tree the application actually renders.
+  */
+  const bookingApplication = /^\/booking\/([^/]+)\/application$/.exec(pathname);
+  if (bookingApplication?.[1] !== undefined) {
+    const productId = bookingApplication[1];
+
+    return (
+      <BookingDraftProvider key={productId} productId={productId}>
+        <BookingProductProvider productId={productId}>
+          <ApplicationScreen productId={productId} />
+        </BookingProductProvider>
+      </BookingDraftProvider>
+    );
   }
   /* The planner is a real route with a real screen; the harness renders it as the router would. */
   if (pathname === ROUTES.goalPlanner) return <GoalPlannerScreen />;

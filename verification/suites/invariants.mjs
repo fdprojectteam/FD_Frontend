@@ -5379,6 +5379,7 @@ export async function runInvariantSuite() {
   const applicationLibrary = sources.get('src/modules/booking/services/application-library.ts');
   const applicationMapping = sources.get('src/modules/booking/utils/application-mapping.ts');
   const applicationTemplates = sources.get('src/modules/booking/fixtures/application-templates.ts');
+  const applicationTypes = sources.get('src/modules/booking/types/application.ts');
 
   ok('the application step has a screen', Boolean(applicationScreen));
   ok('a schema-driven renderer', Boolean(applicationForm));
@@ -5539,6 +5540,31 @@ export async function runInvariantSuite() {
   );
 
   /**
+   * **A question a bank does not ask is absent, not hidden.** DBS's form
+   * branches — Form 60 only where PAN does not apply, a renewal term only where
+   * the customer renews principal alone — and the schema resolves those
+   * branches, so a hidden field never reaches `outstanding`, validation, or the
+   * count of what the bank still needs. Doing it in the renderer instead would
+   * leave the application telling the customer it wants an answer it will never
+   * show a field for.
+   */
+  ok(
+    'conditional visibility is declared on the field',
+    /visibleWhen\?: \{/.test(applicationTypes ?? ''),
+  );
+  ok(
+    'and resolved by the mapper',
+    /visibleWhen/.test(applicationMapping ?? '') && /isVisible/.test(applicationMapping ?? ''),
+  );
+  for (const [name, text] of [
+    ['the renderer', applicationForm],
+    ['the field control', applicationControl],
+    ['the screen', applicationScreen],
+  ]) {
+    ok(`${name} decides no field's visibility`, !/visibleWhen/.test(text ?? ''));
+  }
+
+  /**
    * **The signature requirement is stated, never simulated.** Both banks require
    * a wet signature; nothing here can capture one, and a checkbox must not be
    * presented as though it did.
@@ -5579,7 +5605,6 @@ export async function runInvariantSuite() {
     'and only manual fields are answerable',
     /manual: \(\) => sources\.draft\.application\.answers/.test(applicationMapping ?? ''),
   );
-  const applicationTypes = sources.get('src/modules/booking/types/application.ts');
   ok(
     'the stored application holds answers and declarations only',
     /interface ApplicationConfiguration \{[\s\S]*?answers: Record<string, string>;[\s\S]*?acceptedDeclarations: readonly string\[\];/.test(

@@ -573,7 +573,476 @@ export const AU_FD_TEMPLATE: ApplicationTemplate = {
   },
 };
 
+/**
+ * DBS Bank India — Fixed/Recurring Deposit form, TDA_AOF/001/July25
+ * (`/bank-forms/dbs/dbs-fixed-deposite-form.pdf`).
+ *
+ * ## What makes this form different, and why the schema shows it
+ *
+ * SBI's and AU's forms open an account *and* a deposit, so both ask for the
+ * applicant's name, date of birth, PAN, address and mobile. **DBS's does
+ * not.** It asks for none of them: identity is carried by the CIF ID the bank
+ * fills in, and the only applicant detail on the form is a name beside the
+ * signature. The form is written for someone who is already a DBS customer —
+ * *"Debit existing DBS A/C No."*.
+ *
+ * The template says exactly that. It does not borrow SBI's identity block to
+ * look consistent, because a field that a bank does not ask for is a field this
+ * platform must not ask for.
+ *
+ * ## What it asks that the others do not
+ *
+ * Customer type, currency, whether TDS applies, whether PAN applies, payment
+ * mode, number of receipts, and — on maturity — a choice of four settlement
+ * routes. Those are DBS's, they live here, and none of them touches the
+ * booking draft.
+ *
+ * ## Conditional, as the form is
+ *
+ * Four questions branch, and the schema branches with them: Form 60 is asked
+ * only when PAN does not apply, Form 15G/15H only when TDS does not, the
+ * renewal term only when the customer renews principal and repays interest, and
+ * the account and IFSC only when the proceeds leave by NEFT/RTGS. Rendering all
+ * of them at once would be the scanned page, not a product.
+ *
+ * ## Recurring deposits are out of scope
+ *
+ * The form covers RD in sections 14–15 and pre-closure in section 11. This
+ * platform books fixed deposits, so those sections are absent rather than
+ * shown and disabled — an FD applicant is never asked about a recurring
+ * deposit instalment.
+ *
+ * ## The rate
+ *
+ * The form publishes none — *"Please refer the latest interest rate chart at
+ * the branch or visit www.dbsbank.com"*. The rate shown here is the platform's
+ * demonstration figure, and the field says so where the customer reads it.
+ */
+export const DBS_FD_TEMPLATE: ApplicationTemplate = {
+  id: 'dbs-fd-v1',
+  institutionId: 'dbs',
+  productType: 'fixed-deposit',
+  version: 1,
+  isPlaceholder: false,
+  title: 'Fixed Deposit application',
+  sourceDocument: {
+    name: 'Fixed/Recurring Deposit form, including Nomination Form DA1',
+    version: 'TDA_AOF/001/July25',
+    path: '/bank-forms/dbs/dbs-fixed-deposite-form.pdf',
+    pageCount: 4,
+  },
+  sections: [
+    {
+      id: 'request',
+      title: 'Request',
+      description: 'What you are opening, and who you are opening it as.',
+      fields: [
+        {
+          id: 'depositType',
+          label: 'Request type',
+          type: 'text',
+          source: 'deposit',
+          required: true,
+        },
+        {
+          id: 'customerType',
+          label: 'Customer type',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          hint: 'The category DBS opens the deposit under.',
+          options: [
+            { value: 'resident', label: 'Resident' },
+            { value: 'senior-citizen', label: 'Senior Citizen (resident only)' },
+            { value: 'staff', label: 'Staff (resident only)' },
+            { value: 'nro', label: 'NRO' },
+            { value: 'nre', label: 'NRE' },
+            { value: 'fcnr', label: 'FCNR' },
+            {
+              value: 'golden-circle-senior',
+              label: 'Golden Circle Senior Citizen (resident only)',
+            },
+          ],
+        },
+        {
+          id: 'currency',
+          label: 'Currency',
+          type: 'text',
+          source: 'deposit',
+          required: true,
+        },
+      ],
+    },
+    {
+      id: 'deposit',
+      title: 'Deposit details',
+      description: 'From the deposit you configured.',
+      fields: [
+        {
+          id: 'depositAmount',
+          label: 'Amount (in figures)',
+          type: 'currency',
+          source: 'investment',
+          required: true,
+        },
+        {
+          id: 'depositAmountInWords',
+          label: 'Amount (in words)',
+          type: 'text',
+          source: 'manual',
+          required: false,
+          hint: 'The printed form asks for the amount in words. The platform does not write figures out for you.',
+        },
+        {
+          id: 'tenure',
+          label: 'Term deposit tenure',
+          type: 'text',
+          source: 'investment',
+          required: true,
+        },
+        {
+          id: 'rateOfInterest',
+          label: 'Rate',
+          type: 'text',
+          source: 'investment',
+          required: true,
+          hint: 'A demonstration rate. DBS publishes its rates at its branches and on dbsbank.com; this platform has not obtained them.',
+        },
+        {
+          id: 'payoutOption',
+          label: 'Interest',
+          type: 'text',
+          source: 'investment',
+          required: true,
+          hint: 'DBS pays simple interest on deposits under six months and compounds quarterly at six months and above.',
+        },
+        {
+          id: 'valueDate',
+          label: 'Value date',
+          type: 'date',
+          source: 'bank-only',
+          required: false,
+        },
+        {
+          id: 'numberOfReceipts',
+          label: 'Number of receipts',
+          type: 'select',
+          source: 'manual',
+          required: false,
+          options: [
+            { value: 'single', label: 'Single receipt' },
+            { value: 'multiple', label: 'Multiple receipts' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'tax',
+      title: 'Tax',
+      description: 'What DBS needs to know before it opens the deposit.',
+      fields: [
+        {
+          id: 'panApplicable',
+          label: 'PAN applicable',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          options: [
+            { value: 'yes', label: 'Yes' },
+            { value: 'no', label: 'No' },
+          ],
+        },
+        {
+          id: 'form60Undertaking',
+          label: 'Form 60 will be submitted',
+          type: 'checkbox',
+          source: 'manual',
+          required: true,
+          hint: 'The form requires a separate Form 60 where PAN does not apply.',
+          visibleWhen: { fieldId: 'panApplicable', equals: ['no'] },
+        },
+        {
+          id: 'tdsApplicable',
+          label: 'TDS applicable',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          options: [
+            { value: 'yes', label: 'Yes' },
+            { value: 'no', label: 'No' },
+          ],
+        },
+        {
+          id: 'form15Undertaking',
+          label: 'Form 15G or 15H will be submitted',
+          type: 'checkbox',
+          source: 'manual',
+          required: true,
+          hint: 'The form requires Form 15G/15H where TDS is not to be deducted.',
+          visibleWhen: { fieldId: 'tdsApplicable', equals: ['no'] },
+        },
+      ],
+    },
+    {
+      id: 'funding',
+      title: 'Funding',
+      description: 'The account this deposit is funded from.',
+      fields: [
+        {
+          id: 'paymentMode',
+          label: 'Payment mode',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          options: [
+            { value: 'debit-account', label: 'Debit my account' },
+            { value: 'remittance', label: 'Remittance / TT' },
+          ],
+        },
+        { id: 'fundingBank', label: 'Bank', type: 'text', source: 'bank-account', required: true },
+        {
+          id: 'fundingAccount',
+          label: 'Account number',
+          type: 'text',
+          source: 'bank-account',
+          required: true,
+          visibleWhen: { fieldId: 'paymentMode', equals: ['debit-account'] },
+        },
+        {
+          id: 'modeOfOperation',
+          label: 'Mode of operation',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          options: [
+            { value: 'single', label: 'Single' },
+            { value: 'jointly', label: 'Jointly' },
+            { value: 'either-or-survivor', label: 'Either or Survivor' },
+            { value: 'anyone-or-survivor', label: 'Anyone or Survivor' },
+            { value: 'former-or-survivor', label: 'Former or Survivor' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'maturity',
+      title: 'On maturity',
+      description: 'What DBS does when the term ends.',
+      fields: [
+        {
+          id: 'maturityInstruction',
+          label: 'Maturity instruction',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          options: [
+            {
+              value: 'renew-principal-and-interest',
+              label: 'Auto-renew principal and interest for the same tenure',
+            },
+            {
+              value: 'renew-principal-repay-interest',
+              label: 'Renew principal and repay interest',
+            },
+            { value: 'repay-principal-and-interest', label: 'Repay principal and interest' },
+          ],
+        },
+        {
+          id: 'renewalTenure',
+          label: 'Renew the principal for',
+          type: 'text',
+          source: 'manual',
+          required: true,
+          hint: 'The form asks for the renewal term in years, months or days.',
+          visibleWhen: {
+            fieldId: 'maturityInstruction',
+            equals: ['renew-principal-repay-interest'],
+          },
+        },
+        {
+          id: 'maturityPaymentMode',
+          label: 'Pay the proceeds by',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          options: [
+            { value: 'credit-account', label: 'Credit to my account' },
+            { value: 'pay-order', label: 'Pay order' },
+            { value: 'neft-rtgs', label: 'NEFT / RTGS' },
+          ],
+        },
+        {
+          id: 'maturityAccount',
+          label: 'Account number for the transfer',
+          type: 'text',
+          source: 'bank-account',
+          required: true,
+          visibleWhen: { fieldId: 'maturityPaymentMode', equals: ['neft-rtgs'] },
+        },
+        {
+          id: 'fundingIfsc',
+          label: 'IFSC',
+          type: 'text',
+          source: 'bank-account',
+          required: true,
+          visibleWhen: { fieldId: 'maturityPaymentMode', equals: ['neft-rtgs'] },
+        },
+      ],
+    },
+    {
+      id: 'nomination',
+      title: 'Nomination (Form DA1)',
+      description: 'From the nominee you named earlier.',
+      fields: [
+        {
+          id: 'nomineeName',
+          label: 'Nominee name',
+          type: 'text',
+          source: 'nominee',
+          required: true,
+          editable: true,
+        },
+        {
+          id: 'nomineeAddress',
+          label: 'Nominee address',
+          type: 'text',
+          source: 'manual',
+          required: true,
+          hint: 'The bank’s nomination form asks for the nominee’s address.',
+        },
+        {
+          id: 'nomineeRelationship',
+          label: 'Relationship with depositor',
+          type: 'text',
+          source: 'nominee',
+          required: false,
+          editable: true,
+          hint: 'The form marks this "if any".',
+        },
+        {
+          id: 'nomineeDateOfBirth',
+          label: 'Nominee date of birth',
+          type: 'date',
+          source: 'nominee',
+          required: true,
+          editable: true,
+        },
+        {
+          id: 'nomineeNameOnAdvice',
+          label: 'Print the nominee’s name on the deposit advice',
+          type: 'select',
+          source: 'manual',
+          required: true,
+          options: [
+            { value: 'yes', label: 'Yes' },
+            { value: 'no', label: 'No' },
+          ],
+        },
+        {
+          id: 'nomineeGuardianName',
+          label: 'Guardian name',
+          type: 'text',
+          source: 'nominee',
+          required: false,
+          editable: true,
+          hint: 'The form asks for a guardian where the nominee is a minor.',
+        },
+      ],
+    },
+    {
+      id: 'applicant',
+      title: 'Applicant',
+      description:
+        'DBS’s form does not ask for your PAN, date of birth, address or mobile — it identifies you by the CIF ID the bank fills in.',
+      fields: [
+        {
+          id: 'applicantName',
+          label: 'Name',
+          type: 'text',
+          source: 'identity',
+          required: true,
+        },
+        {
+          id: 'cifId',
+          label: 'CIF ID',
+          type: 'text',
+          source: 'bank-only',
+          required: false,
+        },
+      ],
+    },
+    {
+      id: 'bank-use',
+      title: 'For bank use',
+      description: 'DBS completes this section.',
+      fields: [
+        {
+          id: 'branchName',
+          label: 'Branch name',
+          type: 'text',
+          source: 'bank-only',
+          required: false,
+        },
+        {
+          id: 'branchSolId',
+          label: 'Branch / SOL id',
+          type: 'text',
+          source: 'bank-only',
+          required: false,
+        },
+        {
+          id: 'rmName',
+          label: 'RM / branch staff name',
+          type: 'text',
+          source: 'bank-only',
+          required: false,
+        },
+        {
+          id: 'employeeCode',
+          label: 'Employee code',
+          type: 'text',
+          source: 'bank-only',
+          required: false,
+        },
+        { id: 'bankId', label: '1bank id', type: 'text', source: 'bank-only', required: false },
+        {
+          id: 'csmName',
+          label: 'Customer service manager',
+          type: 'text',
+          source: 'bank-only',
+          required: false,
+        },
+        { id: 'csmCode', label: 'CSM code', type: 'text', source: 'bank-only', required: false },
+      ],
+    },
+  ],
+  declarations: [
+    {
+      id: 'customer-declaration',
+      /* The form's own Customer Declaration, condensed. */
+      text: 'I confirm that the information given in this application is true, correct and complete, and that I have read the terms and conditions applicable to the deposit.',
+      required: true,
+    },
+    {
+      id: 'premature-withdrawal-survivor',
+      /* The form's separate, optional authorisation. Optional here because it is optional there. */
+      text: 'I authorise DBS Bank India Limited to permit premature withdrawal of the deposit by the survivor(s) in the event of the death of a deposit holder before maturity.',
+      required: false,
+    },
+  ],
+  authorization: {
+    requiresApplicantSignature: true,
+    requiresWitness: 'if-thumb-impression',
+    note: 'The bank requires your signature on the deposit form. You will complete that step with the bank; nothing here replaces it.',
+  },
+  submission: {
+    method: 'poc',
+    note: 'Your application is prepared on the platform. No submission route to the bank is connected yet.',
+  },
+};
+
 export const APPLICATION_TEMPLATES: readonly ApplicationTemplate[] = [
   SBI_FD_TEMPLATE,
   AU_FD_TEMPLATE,
+  DBS_FD_TEMPLATE,
 ] as const;

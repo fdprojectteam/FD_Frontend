@@ -3060,6 +3060,209 @@ export async function runJourneySuite() {
 
     window.sessionStorage.clear();
 
+    section('P1 · One application step, three banks’ forms');
+
+    /**
+     * The bank form step, mounted over a draft that has reached it.
+     *
+     * The draft is written to the booking's own key rather than driven through
+     * six preceding screens: what this journey is about is the *application*,
+     * and the steps before it already have their own coverage. The nominee is
+     * deliberately not seeded — the draft schema excludes it on purpose, so
+     * every bank's form should ask for the nominee rather than produce one.
+     */
+    async function loadApplication(productId) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      window.sessionStorage.setItem(
+        `fd:booking-draft:v4:${productId}`,
+        JSON.stringify({
+          version: 4,
+          draft: {
+            bookingId: `journey-${productId}`,
+            productId,
+            investment: { amount: 500_000, tenureMonths: 12, payoutOption: 'at-maturity' },
+            application: {
+              acceptedDeclarations: [],
+              preparedAt: null,
+              identityMethod: 'existing-kyc',
+            },
+            identity: { confirmedAt: Date.now(), method: 'existing-kyc' },
+            bankAccountId: 'ba-demo-axis',
+            declarations: { detailsConfirmed: false, termsAccepted: false },
+            paymentMethod: null,
+            confirmation: null,
+            furthestStep: 'application',
+            /* A draft expires; a stale timestamp would simply not be restored. */
+            updatedAt: Date.now(),
+          },
+        }),
+      );
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory(`/booking/${productId}/application`);
+      requests.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), {
+        label: `application ${productId}`,
+      });
+      await settle(250);
+    }
+
+    const formText = () => norm(document.body.textContent);
+    const labelled = (text) =>
+      $$('label').find((node) => norm(node.textContent).replace(/ \(optional\)$/, '') === text);
+    const inputFor = (text) => {
+      const label = labelled(text);
+      return label === undefined ? undefined : $(`#${CSS.escape(label.getAttribute('for') ?? '')}`);
+    };
+
+    /*
+      One renderer, three banks. Each form must be recognisably its own — the
+      bank's name, the document it was transcribed from — while the screen,
+      the controls and the step furniture stay identical. That is the whole
+      claim of the schema-driven approach, and it is worth asserting on the
+      rendered page rather than only on the templates.
+    */
+    for (const [productId, bankName, formPath] of [
+      ['fd-004', 'State Bank of India', '/bank-forms/sbi/'],
+      ['fd-008', 'AU Small Finance Bank', '/bank-forms/au-small/'],
+      ['fd-015', 'DBS Bank India', '/bank-forms/dbs/'],
+    ]) {
+      await loadApplication(productId);
+
+      ok(`${bankName} · the application step renders`, Boolean($('h1')));
+      ok(`${bankName} · the form names its own bank`, formText().includes(bankName));
+      ok(
+        `${bankName} · and links to that bank's own document`,
+        $$('a').some((node) => (node.getAttribute('href') ?? '').startsWith(formPath)),
+      );
+      ok(
+        `${bankName} · nothing claims the form was sent`,
+        !/submitted to the bank|sent to the bank|received by the bank/i.test(formText()),
+      );
+      ok(
+        `${bankName} · and it says no submission route is connected`,
+        /No submission route to the bank is connected/.test(formText()),
+      );
+      ok(
+        `${bankName} · the signature is stated rather than captured`,
+        /requires your signature/.test(formText()),
+      );
+      /*
+        The account the deposit is funded from is referenced, never reproduced.
+        Nine consecutive digits is the shape of an account number; the only long
+        runs that may appear are the ones the customer chose (an amount is
+        grouped, a rate is not).
+      */
+      ok(`${bankName} · no full account number is on the page`, !/\d{9,}/.test(formText()));
+    }
+
+    /*
+      ⚠ The regression this journey exists for. A prefilled field used to become
+      static text the moment it had a value, so the AU nominee address accepted
+      exactly one character and then had no input left. Typing twice, into every
+      text field on every bank's form, is the check that cannot pass by accident.
+    */
+    for (const [productId, bankName] of [
+      ['fd-004', 'State Bank of India'],
+      ['fd-008', 'AU Small Finance Bank'],
+      ['fd-015', 'DBS Bank India'],
+    ]) {
+      await loadApplication(productId);
+
+      const editable = $$('input').filter(
+        (node) => node.type === 'text' && !node.disabled && !node.readOnly,
+      );
+      ok(`${bankName} · has fields the customer can fill`, editable.length > 0);
+
+      let keptEveryEdit = true;
+      let acceptedASecondEdit = true;
+
+      for (const input of editable) {
+        type(input, 'First');
+        await settle(60);
+        const live = $(`#${CSS.escape(input.id)}`) ?? input;
+        if (live.tagName !== 'INPUT') {
+          keptEveryEdit = false;
+          continue;
+        }
+        type(live, 'Second value');
+        await settle(60);
+        const after = $(`#${CSS.escape(input.id)}`) ?? live;
+        if (after.tagName !== 'INPUT' || after.value !== 'Second value') {
+          acceptedASecondEdit = false;
+        }
+      }
+
+      ok(`${bankName} · every field is still an input after one keystroke`, keptEveryEdit);
+      ok(`${bankName} · and accepts a second, different value`, acceptedASecondEdit);
+    }
+
+    /*
+      DBS's form branches, and the schema branches with it. Form 60 is asked
+      only where PAN does not apply — so it must be absent from the page until
+      that answer is given, and gone again when it is withdrawn.
+    */
+    await loadApplication('fd-015');
+
+    ok(
+      'DBS asks for no PAN, because its form does not',
+      labelled('PAN') === undefined && !/Permanent Account Number/i.test(formText()),
+    );
+    ok('nor a date of birth', labelled('Date of birth') === undefined);
+    ok('nor a mobile number', labelled('Mobile') === undefined);
+    ok('and says the bank identifies the applicant itself', /CIF ID/.test(formText()));
+    /*
+      ⚠ DBS publishes no rate on its form — it refers the customer to the branch.
+      The figure the platform shows is its own, and the customer must be able to
+      read that on the page rather than in a source comment.
+    */
+    ok('the rate on the page is marked a demonstration figure', /demonstration/i.test(formText()));
+    ok(
+      'and DBS is not said to have published or confirmed it',
+      !/DBS (has )?(published|confirmed)/i.test(formText()),
+    );
+    /*
+      The funding account appears only once the customer says they are debiting
+      an account — which is what the form asks. Until then it is not on the page
+      at all.
+    */
+    ok(
+      'the funding account is not asked before the payment mode is chosen',
+      labelled('Account number') === undefined,
+    );
+    ok(
+      'and Form 60 is not asked before PAN applicability is answered',
+      labelled('Form 60 will be submitted') === undefined,
+    );
+
+    /*
+      The conditional itself, driven through the real select. Radix renders a
+      listbox rather than a native <select>, so the answer is given the way the
+      screen offers it.
+    */
+    const panTrigger = $$('button').find(
+      (node) => norm(node.getAttribute('aria-label') ?? '') === 'PAN applicable',
+    );
+    ok('the PAN-applicable question is on the page', Boolean(panTrigger));
+
+    if (panTrigger) {
+      click(panTrigger);
+      await settle(150);
+      const no = $$('[role="option"]').find((node) => norm(node.textContent) === 'No');
+      ok('and offers "No"', Boolean(no));
+      if (no) {
+        click(no);
+        await settle(250);
+        ok(
+          'answering "No" asks for the Form 60 undertaking',
+          Boolean(labelled('Form 60 will be submitted')),
+        );
+        const box = inputFor('Form 60 will be submitted');
+        ok('as a tick, not a text box', box?.type === 'checkbox');
+      }
+    }
+
     section('R1 · Reports — Portfolio → Reports → Document → back');
 
     /**

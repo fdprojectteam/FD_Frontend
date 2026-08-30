@@ -227,6 +227,52 @@ const APPROVED_SEEDS: Seed[] = [
     flags: [],
     noSlabs: true,
   },
+  /*
+    ⚠️ **DBS — demonstration rates.**
+
+    The client's DBS form (`TDA_AOF/001/July25`) is the source for everything
+    about these deposits **except the rate**: the form publishes none, and says
+    so — *"Please refer the latest interest rate chart at the branch or visit
+    www.dbsbank.com"*. The rates below are therefore this platform's own
+    demonstration figures, exactly like every other rate in this fixture, and
+    **nothing in the product, the application or the UI states that DBS
+    published or confirmed them.** The DBS application template repeats that
+    disclosure at the point the rate is shown.
+
+    What *is* from the DBS document:
+
+      • the five-year term of the Tax Saver deposit ("lock-in period of 5 years")
+      • the ₹10,000 minimum, which the form states for its Flexi deposit
+      • the 374-day Flexi term, published separately below because it cannot be
+        expressed in whole months
+
+    Deliberately **unspecified**, because the form does not establish them: any
+    maximum other than the Tax Saver's ₹1,50,000 per financial year, premature
+    withdrawal terms, senior-citizen uplift, and DICGC or tax-benefit claims.
+    `noSlabs` keeps the catalogue's placeholder amount bands from moving a
+    figure that is already a stand-in.
+  */
+  {
+    bankId: 'dbs',
+    rate: 7.15,
+    tenureMonths: 12,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.autoRenewal],
+    categories: [],
+    flags: [],
+    noSlabs: true,
+  },
+  {
+    /* Five years — the lock-in the DBS form states for its Tax Saver deposit. */
+    bankId: 'dbs',
+    rate: 7.4,
+    tenureMonths: 60,
+    minInvestment: 10_000,
+    benefits: [BENEFITS.autoRenewal],
+    categories: ['tax-saving'],
+    flags: [],
+    noSlabs: true,
+  },
 ];
 
 /**
@@ -375,15 +421,54 @@ export const UC2_DAY_BASED_PRODUCT: ProductSummaryDto = {
   flags: [],
 };
 
+/**
+ * DBS Flexi Fixed Deposit — **374 days**, as the DBS form states.
+ *
+ * The form is explicit: a Flexi deposit is created *"for tenure of 374 days"*,
+ * with a *"minimum INR 10,000 & multiples of '000'"*, and *"simple Interest
+ * will be paid on these fixed deposits"*. Both the term and the minimum are the
+ * bank's; the rate, as everywhere else for DBS, is this platform's
+ * demonstration figure and is never presented as published by DBS.
+ *
+ * Like the 91-day deposit above it cannot be expressed in whole months, so it
+ * is appended rather than seeded and carries `tenureMonths: 0` — which is the
+ * platform's honest way of saying *there is no month-based maturity date*, and
+ * is exactly what the maturity, statement and tax-year screens then report.
+ *
+ * `interestType: 'non-cumulative'` follows the form's "simple interest will be
+ * paid on these fixed deposits" statement for this product: the platform's
+ * pricing rule keys off exactly that distinction, so a non-cumulative deposit
+ * earns simple interest and returns the principal at maturity — which is what
+ * the form describes.
+ */
+export const DBS_FLEXI_374D_PRODUCT: ProductSummaryDto = {
+  id: 'fd-dbs-flexi-374d',
+  bank: banks.find((bank) => bank.id === 'dbs')!,
+  name: 'DBS Bank India Flexi Fixed Deposit',
+  interestRate: 6.9,
+  rateSlabs: [],
+  /* Zero: the term is not expressible in whole months. `tenure` carries the truth. */
+  tenureMonths: 0,
+  tenure: { value: 374, unit: 'days' },
+  minInvestment: 10_000,
+  interestType: 'non-cumulative',
+  payout: 'at-maturity',
+  benefits: [BENEFITS.flexible],
+  categories: ['short-term'],
+  flags: [],
+};
+
 /*
-  The 91-day deposit is appended rather than seeded, because it is the one
-  product whose term the month-based `Seed` shape cannot express. The engine
-  compares terms within a unit, so it is a candidate for a 91-day goal and
-  invisible to every month-based one — it is never "3 months".
+  The 91-day and 374-day deposits are appended rather than seeded, because they
+  are the products whose terms the month-based `Seed` shape cannot express. The
+  engine compares terms within a unit, so each is a candidate for a goal stated
+  in days and invisible to every month-based one — 91 days is never "3 months",
+  and 374 days is never "12 months".
 */
 export const productSummaries: ProductSummaryDto[] = [
   ...buildSeeds().map(toSummary),
   UC2_DAY_BASED_PRODUCT,
+  DBS_FLEXI_374D_PRODUCT,
 ];
 
 export function findProductSummary(id: string): ProductSummaryDto | undefined {

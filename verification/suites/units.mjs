@@ -5055,16 +5055,76 @@ export async function runUc1Uc3ScenarioSuite(M) {
   /**
    * **UC3's documented four legs, reproduced by the engine.** Same mechanism as
    * UC2: catalogue + suitability + policy, with no scenario branch anywhere.
+   *
+   * The document specifies an allocation *over the catalogue the document
+   * describes*. Run against the whole catalogue this cannot stay literal —
+   * onboarding a bank whose five-year rate beats IDFC FIRST's 7.2% must change
+   * which four banks win, and an assertion that forbade that would be asserting
+   * that the engine ignores its own catalogue. So the documented figures are
+   * checked against the documented products, and the property that actually
+   * makes them the right answer — highest eligible rate, one leg per bank, the
+   * amount split evenly — is checked against everything the platform lists.
    */
+  const DOCUMENTED_UC3_BANKS = [
+    'Equitas Small Finance Bank',
+    'AU Small Finance Bank',
+    'Suryoday Small Finance Bank',
+    'IDFC FIRST Bank',
+    'ICICI Bank',
+    'State Bank of India',
+    'Axis Bank',
+  ];
+  const documentedCatalogue = products.filter((product) =>
+    DOCUMENTED_UC3_BANKS.includes(product.bank.name),
+  );
+  const documentedLegs = M.recommendForPlan(
+    documentedCatalogue,
+    {
+      totalAmount: 2_000_000,
+      goals: [{ goalType: 'education', amount: 2_000_000, horizon: M.years(5) }],
+    },
+    M.DEFAULT_ALLOCATION_POLICY,
+  ).goals[0].legs;
+
   check(
-    'the documented four-bank allocation is reproduced',
-    uc3Legs.map((leg) => [leg.bank.name, leg.quote.annualRate, leg.amount]),
+    'the documented four-bank allocation is reproduced from the documented catalogue',
+    documentedLegs.map((leg) => [leg.bank.name, leg.quote.annualRate, leg.amount]),
     [
       ['Equitas Small Finance Bank', 7.5, 500_000],
       ['AU Small Finance Bank', 7.5, 500_000],
       ['Suryoday Small Finance Bank', 7.5, 500_000],
       ['IDFC FIRST Bank', 7.2, 500_000],
     ],
+  );
+
+  /*
+    And over the full catalogue, the same rules hold without naming a bank: the
+    legs are the highest rates available, in descending order, one per bank, and
+    every leg is the same size. That is what the document was describing.
+  */
+  const uc3Rates = uc3Legs.map((leg) => leg.quote.annualRate);
+  ok(
+    'the legs are ordered by rate, highest first',
+    uc3Rates.every((rate, index) => index === 0 || uc3Rates[index - 1] >= rate),
+  );
+  /*
+    Nothing better was left on the table: no bank outside the plan publishes a
+    five-year rate above the weakest leg the engine took.
+  */
+  const takenBanks = new Set(uc3Legs.map((leg) => leg.bank.id));
+  const weakestLeg = Math.min(...uc3Rates);
+  ok(
+    'no bank left out publishes a better five-year rate',
+    !products.some(
+      (product) =>
+        product.tenureMonths === 60 &&
+        !takenBanks.has(product.bank.id) &&
+        product.interestRate > weakestLeg,
+    ),
+  );
+  ok(
+    'and the amount is split evenly across them',
+    uc3Legs.every((leg) => leg.amount === 2_000_000 / uc3Legs.length),
   );
 
   /* ---- The catalogue carries every product the document names ---- */
@@ -5813,6 +5873,7 @@ export async function runBookingJourneySuite(M) {
     library.findTemplate('au-small-finance')?.id,
     'au-small-finance-fd-v1',
   );
+  check('DBS resolves its own template', library.findTemplate('dbs')?.id, 'dbs-fd-v1');
   ok('an unknown institution resolves to nothing', library.findTemplate('hdfc') === null);
   ok('and so does an unknown product type', library.findTemplate('sbi', 'mutual-fund') === null);
   check(
@@ -5821,10 +5882,22 @@ export async function runBookingJourneySuite(M) {
     'sbi',
   );
   ok('and an unknown id resolves to nothing', library.findTemplateById('nope') === null);
+  /*
+    Derived from the templates rather than restated. A hardcoded list here is a
+    second declaration of which banks the platform serves, and the failure it
+    produces when a bank is added is a stale test rather than a real defect.
+  */
   check(
-    'the library reports which institutions it serves',
+    'the library serves exactly the institutions its templates declare',
     [...library.supportedInstitutionIds()].sort(),
-    ['au-small-finance', 'sbi'],
+    [...new Set(M.APPLICATION_TEMPLATES.map((template) => template.institutionId))].sort(),
+  );
+  ok(
+    'and every institution resolves to a template of its own',
+    M.APPLICATION_TEMPLATES.every(
+      (template) =>
+        library.findTemplate(template.institutionId)?.institutionId === template.institutionId,
+    ),
   );
 
   const versioned = M.createApplicationLibrary([
@@ -5896,6 +5969,58 @@ export async function runBookingJourneySuite(M) {
   ok(
     'AU requires more nominee detail than SBI',
     nomineeRequired(M.AU_FD_TEMPLATE) > nomineeRequired(M.SBI_FD_TEMPLATE),
+  );
+
+  /*
+    DBS's form is written for an existing customer — it identifies the applicant
+    by the CIF ID the bank fills in and asks for no PAN, date of birth, address
+    or mobile anywhere on its four pages. The schema must carry that absence: a
+    field a bank does not ask for is a field this platform must not ask for, and
+    borrowing SBI's identity block to make the three banks look uniform would be
+    the platform inventing a bank's requirement.
+  */
+  const dbsFieldIds = M.DBS_FD_TEMPLATE.sections.flatMap((s) => s.fields.map((f) => f.id));
+  for (const absent of ['pan', 'dateOfBirth', 'address', 'mobile', 'email']) {
+    ok(`DBS asks for no ${absent}, because its form does not`, !dbsFieldIds.includes(absent));
+  }
+  ok(
+    'and identifies the applicant by the CIF ID the bank fills in',
+    M.DBS_FD_TEMPLATE.sections
+      .flatMap((s) => s.fields)
+      .some((f) => f.id === 'cifId' && f.source === 'bank-only'),
+  );
+  ok(
+    'the applicant name is still asked, because the form prints one',
+    M.DBS_FD_TEMPLATE.sections
+      .flatMap((s) => s.fields)
+      .some((f) => f.id === 'applicantName' && f.source === 'identity'),
+  );
+
+  /*
+    The DBS form covers recurring deposits and pre-closure. This platform books
+    fixed deposits, so those sections are absent rather than rendered disabled —
+    an FD applicant is never asked about a recurring-deposit instalment.
+  */
+  ok(
+    'no recurring-deposit question reaches an FD applicant',
+    !/instalment|installment|recurring/i.test(JSON.stringify(M.DBS_FD_TEMPLATE.sections)),
+  );
+
+  /*
+    ⚠ The DBS form publishes no rate — it refers the customer to the branch. The
+    rate the platform shows is its own demonstration figure, and the field says
+    so where the customer reads it rather than in a comment.
+  */
+  const dbsRate = M.DBS_FD_TEMPLATE.sections
+    .flatMap((s) => s.fields)
+    .find((f) => f.id === 'rateOfInterest');
+  ok(
+    'the DBS rate field states that the rate is a demonstration figure',
+    /demonstration/i.test(dbsRate?.hint ?? ''),
+  );
+  ok(
+    'and claims nothing about DBS having published or confirmed it',
+    !/published by|confirmed by|as per DBS/i.test(dbsRate?.hint ?? ''),
   );
 
   section('Application · mapping reuses what the platform already knows');
@@ -6050,6 +6175,103 @@ export async function runBookingJourneySuite(M) {
     !auResolved.outstanding.some((entry) => entry.field.id === 'sweepIn'),
   );
 
+  section('Application · conditional fields follow the form’s own branches');
+
+  /*
+    Four questions on the DBS form branch. The schema branches with them, and it
+    does so by **omission**: a hidden field is absent from the resolved
+    application, not merely invisible in the renderer. That is the difference
+    between not asking a question and asking it in grey — only the first keeps
+    an unasked question out of `outstanding`, out of validation and out of what
+    the customer is told the bank needs.
+  */
+  const dbsFields = (resolved) => resolved.sections.flatMap((s) => s.fields.map((f) => f.field.id));
+
+  const dbsBase = M.resolveApplication(M.DBS_FD_TEMPLATE, sources());
+  ok(
+    'Form 60 is not asked before PAN applicability is answered',
+    !dbsFields(dbsBase).includes('form60Undertaking'),
+  );
+  ok('nor Form 15G/15H', !dbsFields(dbsBase).includes('form15Undertaking'));
+  ok('nor a renewal term', !dbsFields(dbsBase).includes('renewalTenure'));
+  ok('nor a maturity transfer account', !dbsFields(dbsBase).includes('maturityAccount'));
+  ok(
+    'and none of them is outstanding, because none of them was asked',
+    !dbsBase.outstanding.some((entry) =>
+      ['form60Undertaking', 'form15Undertaking', 'renewalTenure', 'maturityAccount'].includes(
+        entry.field.id,
+      ),
+    ),
+  );
+
+  const dbsAnswered = (answers) =>
+    M.resolveApplication(
+      M.DBS_FD_TEMPLATE,
+      sources({
+        application: {
+          answers,
+          acceptedDeclarations: [],
+          preparedAt: null,
+          identityMethod: null,
+        },
+      }),
+    );
+
+  ok(
+    'answering "PAN applicable: no" asks for Form 60, as the form does',
+    dbsFields(dbsAnswered({ panApplicable: 'no' })).includes('form60Undertaking'),
+  );
+  ok(
+    'answering "yes" does not',
+    !dbsFields(dbsAnswered({ panApplicable: 'yes' })).includes('form60Undertaking'),
+  );
+  ok(
+    'declining TDS asks for Form 15G/15H',
+    dbsFields(dbsAnswered({ tdsApplicable: 'no' })).includes('form15Undertaking'),
+  );
+  ok(
+    'renewing principal and repaying interest asks for the renewal term',
+    dbsFields(dbsAnswered({ maturityInstruction: 'renew-principal-repay-interest' })).includes(
+      'renewalTenure',
+    ),
+  );
+  ok(
+    'auto-renewing both does not',
+    !dbsFields(dbsAnswered({ maturityInstruction: 'renew-principal-and-interest' })).includes(
+      'renewalTenure',
+    ),
+  );
+  ok(
+    'paying out by NEFT asks for the account and the IFSC',
+    ['maturityAccount', 'fundingIfsc'].every((id) =>
+      dbsFields(dbsAnswered({ maturityPaymentMode: 'neft-rtgs' })).includes(id),
+    ),
+  );
+  ok(
+    'crediting the customer’s own account asks for neither',
+    !dbsFields(dbsAnswered({ maturityPaymentMode: 'credit-account' })).includes('maturityAccount'),
+  );
+
+  /*
+    A revealed field is a real question: it becomes outstanding, and answering
+    the branch does not silently complete the application.
+  */
+  const revealed = dbsAnswered({ panApplicable: 'no' });
+  ok(
+    'a revealed field is outstanding until it is answered',
+    revealed.outstanding.some((entry) => entry.field.id === 'form60Undertaking'),
+  );
+
+  /*
+    An answer left behind by a branch the customer has since abandoned must not
+    keep the field alive, and must not count towards completion.
+  */
+  const abandoned = dbsAnswered({ panApplicable: 'yes', form60Undertaking: 'true' });
+  ok(
+    'a stale answer to an abandoned branch does not resurrect the field',
+    !dbsFields(abandoned).includes('form60Undertaking'),
+  );
+
   /* Answering everything outstanding, and accepting the declarations, completes it. */
   const answerAll = (template, resolved) => ({
     answers: Object.fromEntries(
@@ -6057,9 +6279,11 @@ export async function runBookingJourneySuite(M) {
         entry.field.id,
         entry.field.type === 'select'
           ? (entry.field.options?.[0].value ?? '')
-          : entry.field.id === 'nomineePin'
-            ? '560038'
-            : 'Provided',
+          : entry.field.type === 'checkbox'
+            ? M.CHECKBOX_ACCEPTED
+            : entry.field.id === 'nomineePin'
+              ? '560038'
+              : 'Provided',
       ]),
     ),
     acceptedDeclarations: template.declarations.map((d) => d.id),
@@ -6067,7 +6291,7 @@ export async function runBookingJourneySuite(M) {
     identityMethod: 'existing-kyc',
   });
 
-  for (const template of [M.SBI_FD_TEMPLATE, M.AU_FD_TEMPLATE]) {
+  for (const template of [M.SBI_FD_TEMPLATE, M.AU_FD_TEMPLATE, M.DBS_FD_TEMPLATE]) {
     const first = M.resolveApplication(template, sources());
     const done = M.resolveApplication(
       template,
@@ -6183,6 +6407,18 @@ export async function runBookingJourneySuite(M) {
   );
 
   section('Application · validation is schema-driven');
+
+  /*
+    An acknowledgement is ticked or it is not answered. Free text must not pass
+    as a confirmation that a statutory form will be submitted.
+  */
+  const acknowledgement = fieldOf(M.DBS_FD_TEMPLATE, 'form60Undertaking');
+  ok(
+    'a ticked acknowledgement is accepted',
+    M.validateFieldValue(acknowledgement, M.CHECKBOX_ACCEPTED) === null,
+  );
+  ok('and arbitrary text is not', M.validateFieldValue(acknowledgement, 'yes please') !== null);
+  ok('nor is an empty tick', M.validateFieldValue(acknowledgement, '') !== null);
 
   const selectField = fieldOf(M.SBI_FD_TEMPLATE, 'maturityInstruction');
   ok(

@@ -1,3 +1,4 @@
+import { CURRENCY } from '@/constants/app';
 import type { ExternalBankAccount } from '@/types/bank-account';
 import type { InvestorIdentity } from '@/types/investor';
 import { maskAccountNumber } from '@/utils/bank-account';
@@ -165,6 +166,15 @@ function fromBankAccount(fieldId: string, account: ExternalBankAccount | null): 
 
 function fromDeposit(fieldId: string, deposit: SelectedDeposit): string | null {
   switch (fieldId) {
+    /*
+      The currency the platform books in. A canonical fact about the deposit
+      rather than a question: DBS's form offers seven currencies because DBS
+      takes deposits in seven, and this platform places INR deposits. Asking the
+      customer to choose the only currency on offer would be the paper form
+      leaking through.
+    */
+    case 'currency':
+      return CURRENCY;
     case 'institutionName':
       return deposit.bank.name;
     case 'productName':
@@ -224,6 +234,18 @@ export function resolveFieldValue(
   return value === null || value.trim() === '' ? null : value;
 }
 
+/**
+ * The only value a ticked acknowledgement is stored as.
+ *
+ * A checkbox field answers a yes-or-no question a bank's form asks — will Form
+ * 60 be submitted, will Form 15G/15H be. Answers are strings everywhere in this
+ * module, so a ticked box is this exact string and an unticked one is absent.
+ * Pinning it to one value is what lets the validator reject a checkbox
+ * "answered" with arbitrary text, which is what a free-text control would have
+ * allowed.
+ */
+export const CHECKBOX_ACCEPTED = 'acknowledged';
+
 /** Schema-driven validation. The template states the rule; this applies it. */
 export function validateFieldValue(field: ApplicationField, value: string | null): string | null {
   /*
@@ -242,6 +264,11 @@ export function validateFieldValue(field: ApplicationField, value: string | null
     if (!permitted) return `Choose one of the options for ${field.label.toLowerCase()}.`;
   }
 
+  /* An acknowledgement is ticked or absent. Nothing else counts as answering it. */
+  if (field.type === 'checkbox' && value !== CHECKBOX_ACCEPTED) {
+    return `${field.label} needs to be confirmed.`;
+  }
+
   if (field.pattern !== undefined && !new RegExp(field.pattern).test(value)) {
     return `${field.label} does not look right. Please check it.`;
   }
@@ -250,43 +277,76 @@ export function validateFieldValue(field: ApplicationField, value: string | null
 }
 
 /**
+ * Whether a conditional field applies, given what every other field resolved to.
+ *
+ * Hidden means **absent**, not merely invisible: the field is dropped before
+ * statuses are computed, so it cannot be rendered, cannot appear in Review and
+ * can never block completion. A screen-level `if` would have hidden it while
+ * leaving it outstanding, which is a form the customer cannot finish and cannot
+ * see why.
+ */
+function isVisible(
+  field: ApplicationField,
+  resolvedValues: ReadonlyMap<string, string | null>,
+): boolean {
+  if (field.visibleWhen === undefined) return true;
+
+  const governing = resolvedValues.get(field.visibleWhen.fieldId) ?? null;
+  return governing !== null && field.visibleWhen.equals.includes(governing);
+}
+
+/**
  * The whole application, resolved.
  *
  * `outstanding` is what the screen renders as work: required fields the
  * platform could not supply. Everything else is shown as already done, and an
- * optional field that is absent is never presented as outstanding.
+ * optional field that is absent is never presented as outstanding. A field
+ * whose condition does not apply is absent altogether.
  */
 export function resolveApplication(
   template: ApplicationTemplate,
   sources: ApplicationSources,
 ): ResolvedApplication {
+  /*
+    One pass over every field first, so a condition can read the value of a
+    field declared after it. Conditions depend on values, never on statuses,
+    which is what keeps this a single pass rather than a fixed point.
+  */
+  const resolvedValues = new Map<string, string | null>(
+    template.sections.flatMap((section) =>
+      section.fields.map((field) => [field.id, resolveFieldValue(field, sources)] as const),
+    ),
+  );
+
   const sections: ResolvedApplicationSection[] = template.sections.map((section) => ({
     section,
-    fields: section.fields.map<ResolvedApplicationField>((field) => {
-      const value = resolveFieldValue(field, sources);
-      const message = validateFieldValue(field, value);
+    fields: section.fields
+      .filter((field) => isVisible(field, resolvedValues))
+      .map<ResolvedApplicationField>((field) => {
+        const value = resolveFieldValue(field, sources);
+        const message = validateFieldValue(field, value);
 
-      const status: ResolvedApplicationField['status'] =
-        field.source === 'bank-only'
-          ? 'optional'
-          : value !== null && message !== null
-            ? 'invalid'
-            : value === null && field.required
-              ? 'missing'
-              : value === null
-                ? 'optional'
-                : field.editable === true
-                  ? 'requires-confirmation'
-                  : 'prefilled';
+        const status: ResolvedApplicationField['status'] =
+          field.source === 'bank-only'
+            ? 'optional'
+            : value !== null && message !== null
+              ? 'invalid'
+              : value === null && field.required
+                ? 'missing'
+                : value === null
+                  ? 'optional'
+                  : field.editable === true
+                    ? 'requires-confirmation'
+                    : 'prefilled';
 
-      return {
-        field,
-        value,
-        source: field.source,
-        status,
-        ...(message !== null && value !== null ? { message } : {}),
-      };
-    }),
+        return {
+          field,
+          value,
+          source: field.source,
+          status,
+          ...(message !== null && value !== null ? { message } : {}),
+        };
+      }),
   }));
 
   const allFields = sections.flatMap((section) => section.fields);
