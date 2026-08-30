@@ -1160,7 +1160,7 @@ export async function runUnitSuite() {
       order `writeDraft` assembles them, for the same reason `nominee` is last:
       `check` compares serialised JSON.
     */
-    bankAccountId: 'acc-axis-4587',
+    bankAccountId: 'ba-demo-axis',
     declarations: { detailsConfirmed: true, termsAccepted: true },
     paymentMethod: 'net-banking',
     confirmation: null,
@@ -2651,7 +2651,7 @@ export async function runUnitSuite() {
     nominee: { nominationType: 'single', nominees: [NOMINEE] },
     identity: { confirmedAt: 1_000_000, method: 'existing-kyc' },
     application: { acceptedDeclarations: [], preparedAt: null, identityMethod: null },
-    bankAccountId: 'acc-axis-4587',
+    bankAccountId: 'ba-demo-axis',
     declarations: { detailsConfirmed: false, termsAccepted: false },
     paymentMethod: null,
     confirmation: null,
@@ -5496,7 +5496,7 @@ export async function runBookingJourneySuite(M) {
     investment: { amount: 500_000, tenureMonths: 12, payoutOption: 'at-maturity' },
     nominee: { nominationType: 'single', nominees: [] },
     application: { answers: {}, acceptedDeclarations: [], preparedAt: null, identityMethod: null },
-    bankAccountId: 'acc-axis-4587',
+    bankAccountId: 'ba-demo-axis',
     declarations: { detailsConfirmed: true, termsAccepted: true },
     paymentMethod: 'net-banking',
     confirmation,
@@ -5764,21 +5764,32 @@ export async function runBookingJourneySuite(M) {
 
   section('Booking · funding accounts and payment methods');
 
-  ok('a funding account is offered', M.SAVED_BANK_ACCOUNTS.length > 0);
+  ok('a funding account is offered', M.DEMO_BANK_ACCOUNTS.length > 0);
   ok(
     'exactly one is the primary account',
-    M.SAVED_BANK_ACCOUNTS.filter((account) => account.isPrimary).length === 1,
+    M.DEMO_BANK_ACCOUNTS.filter((account) => account.isPrimary).length === 1,
   );
   /*
     The account type cannot hold a full number, so a full number cannot be
     rendered — spec 21e §8 Rule 5 enforced by the data rather than the markup.
   */
-  for (const account of M.SAVED_BANK_ACCOUNTS) {
+  for (const account of M.DEMO_BANK_ACCOUNTS) {
     ok(`${account.id} carries only four digits`, /^\d{4}$/.test(account.lastFourDigits));
     ok(`${account.id} carries no full account number field`, !('accountNumber' in account));
     ok(
       `${account.id} states its verification`,
-      ['verified', 'pending', 'failed'].includes(account.verification),
+      [
+        'unverified',
+        'verification-pending',
+        'verified',
+        'verification-failed',
+        'needs-attention',
+      ].includes(account.verification.status),
+    );
+    /* And the id itself gives nothing away: it reaches the URL. */
+    ok(
+      `${account.id} carries no part of the account number`,
+      !account.id.includes(account.lastFourDigits),
     );
   }
 
@@ -5910,7 +5921,7 @@ export async function runBookingJourneySuite(M) {
         },
       ],
     },
-    bankAccountId: M.SAVED_BANK_ACCOUNTS[0].id,
+    bankAccountId: M.DEMO_BANK_ACCOUNTS[0].id,
     declarations: { detailsConfirmed: false, termsAccepted: false },
     paymentMethod: null,
     confirmation: null,
@@ -5923,6 +5934,12 @@ export async function runBookingJourneySuite(M) {
     deposit: appDeposit,
     draft: appDraft(over),
     identity: appIdentity,
+    /*
+      The funding account is handed to the resolver rather than looked up by it
+      (Module 11). The application prints from the vault's record, and the pure
+      mapping never reaches for a store.
+    */
+    fundingAccount: M.DEMO_BANK_ACCOUNTS[0],
   });
 
   const fieldOf = (template, id) =>
@@ -5968,15 +5985,16 @@ export async function runBookingJourneySuite(M) {
     fieldOf(M.SBI_FD_TEMPLATE, 'fundingAccount'),
     sources(),
   );
-  ok('the funding account is masked', (fundingAccount ?? '').startsWith('XXXX'));
+  ok('the funding account is masked', (fundingAccount ?? '').startsWith('••••'));
   ok(
     'and only the last four digits appear',
-    (fundingAccount ?? '').includes(M.SAVED_BANK_ACCOUNTS[0].lastFourDigits),
+    (fundingAccount ?? '').includes(M.DEMO_BANK_ACCOUNTS[0].lastFourDigits) &&
+      !/\d{5,}/.test(fundingAccount ?? ''),
   );
   check(
     'AU’s IFSC comes from the chosen account',
     M.resolveFieldValue(fieldOf(M.AU_FD_TEMPLATE, 'fundingIfsc'), sources()),
-    M.SAVED_BANK_ACCOUNTS[0].ifsc,
+    M.DEMO_BANK_ACCOUNTS[0].ifsc,
   );
   /* A branch code is the bank's to fill in, and resolves to nothing. */
   ok(
@@ -6331,6 +6349,8 @@ export async function runBookingJourneySuite(M) {
     isCumulative: true,
     payoutLabel: 'At maturity',
     startedAt: START,
+    /* What the investor asked the bank to do at maturity. */
+    maturityInstruction: 'renew-principal-and-interest',
     status: 'active',
     ...over,
   });
@@ -6509,6 +6529,1838 @@ export async function runBookingJourneySuite(M) {
   ok('naming the bank', items[0].title.includes('AU Small Finance Bank'));
   ok('and saying what the decision is', /renew or withdraw/i.test(items[0].detail));
 
+  section('Tax · a Tax Year is stated once, and tiles the calendar');
+
+  const ty2627 = M.taxYearStarting(2026);
+  check('a tax year is labelled once', ty2627.label, 'Tax Year 2026–27');
+  check('with a short form for a selector', ty2627.shortLabel, '2026–27');
+  check('and a stable id', ty2627.id, '2026-27');
+  check('it begins on 1 April', [ty2627.startDate.getDate(), ty2627.startDate.getMonth()], [1, 3]);
+  check(
+    'and ends the instant the next one begins',
+    ty2627.endDate.getTime(),
+    M.taxYearStarting(2027).startDate.getTime(),
+  );
+
+  /*
+    The off-by-one this model exists to get right: January to March belong to
+    the year that began the previous April.
+  */
+  check('1 April opens a year', M.taxYearFor(new Date(2026, 3, 1)).id, '2026-27');
+  check('31 March closes it', M.taxYearFor(new Date(2027, 2, 31)).id, '2026-27');
+  check(
+    'and 1 April the next day opens the next',
+    M.taxYearFor(new Date(2027, 3, 1)).id,
+    '2027-28',
+  );
+  check(
+    'a January date belongs to the previous April’s year',
+    M.taxYearFor(new Date(2027, 0, 15)).id,
+    '2026-27',
+  );
+
+  check('an id round-trips', M.parseTaxYearId('2026-27').id, '2026-27');
+  for (const bad of ['', '2026', '2026-28', '26-27', 'nonsense']) {
+    check(`"${bad}" names no tax year`, M.parseTaxYearId(bad), null);
+  }
+
+  /* Future years are data, not a code change. */
+  check('a taxFuture year is representable', M.taxYearStarting(2040).label, 'Tax Year 2040–41');
+
+  section('Tax · interest is allocated, never recalculated');
+
+  const TAX_NOW = new Date(2026, 7, 22).getTime();
+
+  const taxHolding = (over = {}) =>
+    holding({
+      reference: 'FD-TAX-1',
+      principal: 100_000,
+      annualRate: 7.85,
+      tenureMonths: 12,
+      isCumulative: true,
+      startedAt: new Date(2026, 7, 22).getTime(),
+      ...over,
+    });
+
+  const year = (startYear) => {
+    const ty = M.taxYearStarting(startYear);
+    return { start: ty.startDate, end: ty.endDate };
+  };
+
+  /*
+    The rule this module turns on: the total comes from the canonical engine and
+    is only divided. Asserted directly against `calculateDepositReturns`.
+  */
+  const taxTotal = M.totalInterestForHolding(taxHolding());
+  check(
+    'the total is the canonical engine’s, not a second one',
+    taxTotal,
+    M.calculateDepositReturns({
+      principal: 100_000,
+      annualRate: 7.85,
+      tenureMonths: 12,
+      isCumulative: true,
+    }).totalInterest,
+  );
+
+  /* ---- A deposit crossing two tax years ---- */
+  const crossFirst = M.allocateInterestToPeriod(taxHolding(), year(2026));
+  const crossSecond = M.allocateInterestToPeriod(taxHolding(), year(2027));
+
+  check('the opening year is allocated', crossFirst.status, 'allocated');
+  check('and so is the closing one', crossSecond.status, 'allocated');
+  ok(
+    'neither takes the whole interest',
+    crossFirst.interest < taxTotal && crossSecond.interest < taxTotal,
+  );
+
+  /*
+    The property that makes a tax figure trustworthy: a deposit's years sum to
+    exactly what the deposit earns. Rounding each slice independently would
+    drift; the allocator subtracts two rounded cumulatives instead.
+  */
+  check(
+    'the two years sum to exactly the deposit’s interest',
+    crossFirst.interest + crossSecond.interest,
+    taxTotal,
+  );
+
+  /* And the whole term reports the whole interest. */
+  check(
+    'allocating the entire term returns the entire interest',
+    M.allocateInterestToPeriod(taxHolding(), {
+      start: new Date(2020, 0, 1),
+      end: new Date(2040, 0, 1),
+    }).interest,
+    taxTotal,
+  );
+
+  /* The overlap is the part of the term taxInside the year, not the whole term. */
+  ok(
+    'the period reported is the overlap',
+    crossFirst.periodStart.getTime() === new Date(2026, 7, 22).getTime() &&
+      crossFirst.periodEnd.getMonth() === 2 &&
+      crossFirst.periodEnd.getDate() === 31,
+  );
+  ok('and the overlap is shorter than the term', crossFirst.overlapDays < crossFirst.termDays);
+
+  /* ---- A deposit entirely taxInside one tax year ---- */
+  const taxInside = taxHolding({ startedAt: new Date(2026, 4, 1).getTime(), tenureMonths: 6 });
+  const insideAllocation = M.allocateInterestToPeriod(taxInside, year(2026));
+  check(
+    'a deposit taxInside one year contributes all of its interest',
+    insideAllocation.interest,
+    M.totalInterestForHolding(taxInside),
+  );
+  check(
+    'and nothing to the next year',
+    M.allocateInterestToPeriod(taxInside, year(2027)).status,
+    'outside-period',
+  );
+
+  /* ---- Before and after the year ---- */
+  const taxMatured = taxHolding({ startedAt: new Date(2023, 0, 10).getTime(), tenureMonths: 12 });
+  check(
+    'a deposit that taxMatured before the year contributes nothing',
+    M.allocateInterestToPeriod(taxMatured, year(2026)).status,
+    'outside-period',
+  );
+  check(
+    'and is allocated to the year it actually ran in',
+    M.allocateInterestToPeriod(taxMatured, year(2022)).status,
+    'allocated',
+  );
+
+  const taxFuture = taxHolding({ startedAt: new Date(2030, 5, 1).getTime() });
+  check(
+    'a deposit starting after the year contributes nothing',
+    M.allocateInterestToPeriod(taxFuture, year(2026)).status,
+    'outside-period',
+  );
+
+  /* A term ending exactly as a year begins belongs to the earlier year only. */
+  const endsAtBoundary = taxHolding({
+    startedAt: new Date(2026, 3, 1).getTime(),
+    tenureMonths: 12,
+  });
+  check(
+    'a term ending on 1 April contributes nothing to the year that starts then',
+    M.allocateInterestToPeriod(endsAtBoundary, year(2027)).status,
+    'outside-period',
+  );
+  check(
+    'and everything to the year it ran in',
+    M.allocateInterestToPeriod(endsAtBoundary, year(2026)).interest,
+    M.totalInterestForHolding(endsAtBoundary),
+  );
+
+  /* ---- Fail closed ---- */
+  const taxDayBased = taxHolding({ tenureMonths: 0 });
+  check(
+    'a day-published term cannot be allocated',
+    M.allocateInterestToPeriod(taxDayBased, year(2026)).status,
+    'unavailable',
+  );
+  ok(
+    'and the reason names the missing maturity date',
+    /publishes this deposit’s term in days/.test(
+      M.allocateInterestToPeriod(taxDayBased, year(2026)).reason,
+    ),
+  );
+
+  for (const [label, over] of [
+    ['a zero rate', { annualRate: 0 }],
+    ['a negative rate', { annualRate: -5 }],
+    ['a zero principal', { principal: 0 }],
+  ]) {
+    check(
+      `${label} produces no allocation rather than a guess`,
+      M.allocateInterestToPeriod(taxHolding(over), year(2026)).status,
+      'unavailable',
+    );
+  }
+
+  ok(
+    'an unusable start date is refused',
+    M.allocateInterestToPeriod(taxHolding({ startedAt: Number.NaN }), year(2026)).status ===
+      'unavailable',
+  );
+
+  /* ---- A taxPayout deposit uses the same allocation, over simple interest ---- */
+  const taxPayout = taxHolding({ reference: 'FD-TAX-PAYOUT', isCumulative: false });
+  check(
+    'a taxPayout deposit allocates its simple interest',
+    M.allocateInterestToPeriod(taxPayout, year(2026)).status,
+    'allocated',
+  );
+  check(
+    'and its years still sum to its total',
+    M.allocateInterestToPeriod(taxPayout, year(2026)).interest +
+      M.allocateInterestToPeriod(taxPayout, year(2027)).interest,
+    M.totalInterestForHolding(taxPayout),
+  );
+  ok(
+    'which is the simple-interest figure, not the compounded one',
+    M.totalInterestForHolding(taxPayout) < M.totalInterestForHolding(taxHolding()),
+  );
+
+  /* ---- A ten-year deposit spreads across ten years, not one ---- */
+  const tenYear = taxHolding({ reference: 'FD-TAX-10Y', tenureMonths: 120 });
+  const tenYearTotal = M.totalInterestForHolding(tenYear);
+  const decade = Array.from({ length: 11 }, (_, index) =>
+    M.allocateInterestToPeriod(tenYear, year(2026 + index)),
+  );
+  const allocatedYears = decade.filter((entry) => entry.status === 'allocated');
+
+  ok('a ten-year deposit touches ten tax years or more', allocatedYears.length >= 10);
+  ok(
+    'no single year receives the whole maturity interest',
+    allocatedYears.every((entry) => entry.interest < tenYearTotal),
+  );
+  check(
+    'and every year together sums to the deposit’s interest',
+    allocatedYears.reduce((sum, entry) => sum + entry.interest, 0),
+    tenYearTotal,
+  );
+
+  section('Tax · the summary counts only what it could allocate');
+
+  const taxSummaryFor = (holdings, startYear = 2026) =>
+    M.buildTaxYearSummary(holdings, M.taxYearStarting(startYear), TAX_NOW);
+
+  const emptySummary = taxSummaryFor([]);
+  check('an empty portfolio has no contributions', [...emptySummary.contributions], []);
+  check('no interest', emptySummary.totalInterest, 0);
+  check('and no deposits counted', emptySummary.contributingDeposits, 0);
+
+  const taxMulti = taxSummaryFor([
+    taxHolding(),
+    taxHolding({
+      reference: 'FD-TAX-2',
+      bank: bank('sbi', 'State Bank of India'),
+      principal: 300_000,
+      annualRate: 7.2,
+    }),
+    taxHolding({ reference: 'FD-TAX-3', tenureMonths: 0 }),
+  ]);
+
+  check('every deposit that touches the year is listed', taxMulti.contributions.length, 3);
+  check('two of them were allocated', taxMulti.contributingDeposits, 2);
+  check('and one could not be', taxMulti.unavailableCount, 1);
+  check(
+    'the total is the sum of what was allocated',
+    taxMulti.totalInterest,
+    taxMulti.contributions
+      .filter((entry) => entry.allocation.status === 'allocated')
+      .reduce((sum, entry) => sum + entry.allocation.interest, 0),
+  );
+  ok(
+    'the unallocatable deposit is listed rather than dropped',
+    taxMulti.contributions.some((entry) => entry.allocation.status === 'unavailable'),
+  );
+  ok(
+    'contributions are ordered by size',
+    taxMulti.contributions[0].allocation.interest >= taxMulti.contributions[1].allocation.interest,
+  );
+
+  /* A deposit outside the year is not this year's business at all. */
+  check(
+    'a deposit outside the year is not listed',
+    taxSummaryFor([taxMatured]).contributions.length,
+    0,
+  );
+
+  /* No tax figure other than interest exists anywhere in the summary. */
+  for (const field of [
+    'taxPayable',
+    'taxRate',
+    'tds',
+    'tdsAmount',
+    'netInterest',
+    'taxableIncome',
+  ]) {
+    ok(`the summary carries no ${field}`, !(field in taxMulti));
+  }
+
+  section('Tax · the years offered come from the deposits themselves');
+
+  const taxSpanning = M.selectableTaxYears([taxHolding({ tenureMonths: 120 })], TAX_NOW);
+  ok('a ten-year deposit offers at least ten years', taxSpanning.length >= 10);
+  ok('newest first', taxSpanning[0].startDate.getTime() > taxSpanning[1].startDate.getTime());
+  check(
+    'an empty portfolio still offers the current year',
+    M.selectableTaxYears([], TAX_NOW).length,
+    1,
+  );
+  check(
+    'and it is the year the clock is in',
+    M.selectableTaxYears([], TAX_NOW)[0].id,
+    M.taxYearFor(TAX_NOW).id,
+  );
+  ok(
+    'a deposit with no maturity date still offers its start year',
+    M.selectableTaxYears([taxHolding({ tenureMonths: 0 })], TAX_NOW).some(
+      (entry) => entry.id === '2026-27',
+    ),
+  );
+
+  section('Admin · an operations read model, and one append-only journal');
+
+  const ADM_NOW = new Date('2026-08-28T09:00:00Z').getTime();
+
+  const admStore = new Map();
+  globalThis.window = {
+    sessionStorage: {
+      getItem: (k) => (admStore.has(k) ? admStore.get(k) : null),
+      setItem: (k, v) => admStore.set(k, v),
+      removeItem: (k) => admStore.delete(k),
+      clear: () => admStore.clear(),
+    },
+  };
+
+  /* ---- The journal is never seeded ---- */
+  admStore.clear();
+  check('an audit log starts empty', M.readJournal(), []);
+
+  const admEvent = (over = {}) => ({
+    actorRole: 'operations',
+    actorName: 'Operations Admin',
+    action: 'application.reviewed',
+    subject: { kind: 'application', id: 'APP-1042' },
+    summary: 'Application APP-1042 marked in review',
+    change: null,
+    ...over,
+  });
+
+  const admAfterOne = M.appendEvent(admEvent(), ADM_NOW);
+  check('an action is recorded', admAfterOne.length, 1);
+  check('and is always simulated', admAfterOne[0].isSimulated, true);
+  ok('the journal mints the id', /^EVT-/.test(admAfterOne[0].id));
+  check('and the clock', admAfterOne[0].at, ADM_NOW);
+
+  /* A caller cannot claim something left the platform. */
+  check(
+    'a caller cannot record an unsimulated event',
+    M.appendEvent(admEvent({ isSimulated: false }), ADM_NOW + 1)[0].isSimulated,
+    true,
+  );
+
+  /* Nothing personal or financial reaches the journal. */
+  const admRaw = admStore.get('fd:admin-journal:v1') ?? '';
+  for (const leak of ['pan', 'aadhaar', 'accountNumber', 'principal', '₹']) {
+    ok(`no ${leak} reaches the journal`, !new RegExp(leak, 'i').test(admRaw));
+  }
+
+  /* ---- Roles: visibility is not permission to change ---- */
+  ok('an auditor sees the customers', M.can('auditor', 'customers.view'));
+  ok('and the audit log', M.can('auditor', 'audit.view'));
+  for (const action of [
+    'applications.decide',
+    'products.propose',
+    'products.approve',
+    'support.act',
+  ]) {
+    ok(`an auditor cannot ${action}`, !M.can('auditor', action));
+  }
+
+  /*
+    Maker and checker are different roles. A change one person can both propose
+    and approve is not a control, and the permission table is where that is
+    either true or not.
+  */
+  ok('a product admin proposes', M.can('product', 'products.propose'));
+  ok('but cannot approve', !M.can('product', 'products.approve'));
+  ok('operations approves', M.can('operations', 'products.approve'));
+  ok('but never proposes', !M.can('operations', 'products.propose'));
+
+  ok('support acts on support', M.can('support', 'support.act'));
+  ok('and operations does not', !M.can('operations', 'support.act'));
+  ok(
+    'a denial explains itself in the operator’s words',
+    /does not hold/.test(M.deniedReason('auditor', 'applications.decide')),
+  );
+
+  /* ---- Customers: one live record, the rest demonstration ---- */
+  const admHolding = (over = {}) =>
+    holding({ startedAt: new Date('2026-02-28T00:00:00Z').getTime(), ...over });
+
+  const admCustomers = M.buildCustomerRows(
+    {
+      sessionHoldings: [admHolding({ reference: 'FD-LIVE-1', principal: 600_000 })],
+      sessionKycState: 'verified',
+      sessionCustomerId: M.SESSION_CUSTOMER_ID,
+      sessionDisplayName: 'Arjun Sharma',
+      demo: M.demoCustomers(ADM_NOW),
+    },
+    ADM_NOW,
+  );
+
+  check('the live investor comes first', admCustomers[0].id, M.SESSION_CUSTOMER_ID);
+  check('and is not demonstration data', admCustomers[0].isDemo, false);
+  ok(
+    'every other customer is',
+    admCustomers.slice(1).every((row) => row.isDemo),
+  );
+
+  /*
+    Figures are the platform's own derivation, not a second one. Asserted
+    against `summarisePortfolio` over the same holdings.
+  */
+  check(
+    'a customer’s total is the portfolio derivation',
+    admCustomers[0].totalPrincipal,
+    M.summarisePortfolio([admHolding({ reference: 'FD-LIVE-1', principal: 600_000 })], ADM_NOW)
+      .totalPrincipal,
+  );
+
+  /* The register holds no identity document, and has no field for one. */
+  for (const row of admCustomers) {
+    for (const field of ['pan', 'aadhaar', 'dateOfBirth', 'address', 'accountNumber']) {
+      ok(`a customer row carries no ${field}`, !(field in row));
+    }
+  }
+
+  check(
+    'search matches name, id or city',
+    M.filterCustomers(admCustomers, 'meera', 'all').map((row) => row.id),
+    ['CUS-1024'],
+  );
+  check(
+    'and the verification filter narrows to a state',
+    M.filterCustomers(admCustomers, '', 'needs-attention').every(
+      (row) => row.kycState === 'needs-attention',
+    ),
+    true,
+  );
+  check(
+    'a search that matches nothing returns nothing',
+    M.filterCustomers(admCustomers, 'zzz', 'all'),
+    [],
+  );
+
+  /* ---- Applications: status replayed from the journal ---- */
+  const admApplications = (events) =>
+    M.buildApplicationRows({
+      demo: M.demoApplications(ADM_NOW),
+      sessionHoldings: [admHolding({ reference: 'FD-LIVE-1', principal: 600_000 })],
+      sessionCustomerId: M.SESSION_CUSTOMER_ID,
+      events,
+    });
+
+  const admQueue = admApplications([]);
+  ok(
+    'the queue holds the demonstration applications',
+    admQueue.some((row) => row.id === 'APP-1042'),
+  );
+  ok(
+    'and the deposits the platform actually recorded',
+    admQueue.some((row) => row.id === 'FD-LIVE-1' && row.status === 'completed'),
+  );
+  ok(
+    'a confirmed deposit is never decidable',
+    !M.isDecidable(admQueue.find((row) => row.id === 'FD-LIVE-1')),
+  );
+  ok('a pending application is', M.isDecidable(admQueue.find((row) => row.id === 'APP-1042')));
+
+  const admDecided = admApplications([
+    {
+      id: 'e1',
+      at: ADM_NOW,
+      actorRole: 'operations',
+      actorName: 'Operations Admin',
+      action: 'application.approved',
+      subject: { kind: 'application', id: 'APP-1042' },
+      summary: 'approved',
+      change: null,
+      isSimulated: true,
+    },
+  ]);
+  check(
+    'a decision is replayed from the journal',
+    admDecided.find((row) => row.id === 'APP-1042').status,
+    'approved',
+  );
+  check(
+    'and filtering finds it',
+    M.filterApplications(admDecided, 'approved').map((row) => row.id),
+    ['APP-1042'],
+  );
+
+  /* ---- Maker / checker, entirely from events ---- */
+  const proposalEvent = (over = {}) => ({
+    id: 'p1',
+    at: ADM_NOW,
+    actorRole: 'product',
+    actorName: 'Product Admin',
+    action: 'product.change.proposed',
+    subject: { kind: 'product', id: 'fd-002' },
+    summary: 'Rate change proposed',
+    change: { field: 'Base rate', from: '7.1%', to: '7.25%' },
+    isSimulated: true,
+    ...over,
+  });
+
+  const admProposed = M.buildProposals([proposalEvent()]);
+  check('a proposal exists only as its event', admProposed.length, 1);
+  check('and starts pending review', admProposed[0].status, 'pending-review');
+  check('carrying what would change', [admProposed[0].from, admProposed[0].to], ['7.1%', '7.25%']);
+  check('one proposal is awaiting review', M.pendingProposals(admProposed).length, 1);
+
+  const admApproved = M.buildProposals([
+    proposalEvent(),
+    {
+      ...proposalEvent(),
+      id: 'p2',
+      at: ADM_NOW + 1000,
+      actorRole: 'operations',
+      actorName: 'Operations Admin',
+      action: 'product.change.approved',
+    },
+  ]);
+  check('approving it is also an event', admApproved[0].status, 'approved');
+  check('recorded against the reviewing role', admApproved[0].reviewedByRole, 'operations');
+  check('and nothing is left pending', M.pendingProposals(admApproved).length, 0);
+
+  /*
+    The one status this build must never reach: publishing means telling the
+    bank, and no bank integration exists.
+  */
+  ok(
+    'no proposal is ever published',
+    M.buildProposals([
+      proposalEvent(),
+      { ...proposalEvent(), id: 'p3', at: ADM_NOW + 2000, action: 'product.change.approved' },
+    ]).every((proposal) => proposal.status !== 'published'),
+  );
+
+  check('proposals are found by product', M.proposalsForProduct(admApproved, 'fd-002').length, 1);
+  check('and a product with none has none', M.proposalsForProduct(admApproved, 'fd-999'), []);
+
+  /* ---- Attention: counted, never padded ---- */
+  const admAttention = M.buildAttention({
+    applications: admQueue,
+    customers: admCustomers,
+    proposals: admProposed,
+    openSupport: 2,
+  });
+  ok(
+    'every attention item has something outstanding',
+    admAttention.every((item) => item.count > 0),
+  );
+  check(
+    'nothing outstanding means nothing listed',
+    M.buildAttention({ applications: [], customers: [], proposals: [], openSupport: 0 }),
+    [],
+  );
+
+  /* ---- The demonstration role survives, and defaults safely ---- */
+  check('the default role is operations', M.readAdminRole(), 'operations');
+  M.writeAdminRole('auditor');
+  check('a chosen role is remembered', M.readAdminRole(), 'auditor');
+  admStore.set('fd:admin-session:v1', '{not json');
+  check('and an unreadable one falls back rather than crashing', M.readAdminRole(), 'operations');
+
+  M.clearJournal();
+  check('a cleared journal is empty', M.readJournal(), []);
+
+  delete globalThis.window;
+
+  section('Support · the interaction, and never the money');
+
+  const SUP_NOW = new Date('2026-08-27T09:00:00Z').getTime();
+
+  const supStore = new Map();
+  globalThis.window = {
+    sessionStorage: {
+      getItem: (k) => (supStore.has(k) ? supStore.get(k) : null),
+      setItem: (k, v) => supStore.set(k, v),
+      removeItem: (k) => supStore.delete(k),
+      clear: () => supStore.clear(),
+    },
+  };
+
+  /* ---- The store seeds a demonstration, and says it is one ---- */
+  supStore.clear();
+  const supSeeded = M.readRequests(SUP_NOW);
+  ok('the store seeds demonstration requests', supSeeded.length > 0);
+  ok(
+    'every one is marked simulated',
+    supSeeded.every((request) => request.isSimulated),
+  );
+  ok(
+    'and the lifecycle is demonstrable',
+    new Set(supSeeded.map((request) => request.status)).size > 1,
+  );
+  ok(
+    'no seed points at a deposit the investor does not hold',
+    supSeeded.every((request) => request.relatedTo.kind === 'none'),
+  );
+
+  /*
+    The rule the module turns on: a support record holds the interaction, and no
+    financial value at all. A copied figure is one that can disagree with the
+    portfolio, in the place a customer would most trust it.
+  */
+  const supRaw = supStore.get('fd:support-requests:v1') ?? '';
+  for (const leak of [
+    'principal',
+    'annualRate',
+    'maturityValue',
+    'lastFourDigits',
+    'ifsc',
+    'pan',
+    'aadhaar',
+  ]) {
+    ok(`no ${leak} reaches the support store`, !new RegExp(leak, 'i').test(supRaw));
+  }
+  ok('and no rupee figure is stored', !/₹/.test(supRaw));
+
+  /* Nobody is on the other end, and the type cannot say otherwise. */
+  ok(
+    'a message is the customer’s or the platform’s — never an agent’s',
+    supSeeded
+      .flatMap((request) => request.messages)
+      .every((message) => ['customer', 'platform'].includes(message.author)),
+  );
+  ok(
+    'the acknowledgement states that nothing was sent',
+    /No support team, bank or external system was contacted/.test(M.DEMO_ACKNOWLEDGEMENT) &&
+      /no email or message was sent/.test(M.DEMO_ACKNOWLEDGEMENT),
+  );
+
+  /* ---- Creating a request ---- */
+  const supCreated = M.createRequest(
+    {
+      category: 'maturity',
+      subject: 'When does my deposit mature?',
+      message: 'I want to check the maturity date on my deposit.',
+      relatedTo: { kind: 'holding', reference: 'FD-SUP-1' },
+    },
+    SUP_NOW,
+  );
+
+  check('a new request is open', supCreated.status, 'open');
+  ok('and is numbered for the customer to quote', /^SUP-\d+$/.test(supCreated.id));
+  ok('above every existing number', Number(supCreated.id.slice(4)) > 1042);
+  check('it refers to the deposit by reference', supCreated.relatedTo, {
+    kind: 'holding',
+    reference: 'FD-SUP-1',
+  });
+  check('the customer’s own words are kept', supCreated.messages[0].author, 'customer');
+  check('and are not marked as simulated', supCreated.messages[0].isSimulated, false);
+  check('the platform acknowledges immediately', supCreated.messages[1].author, 'platform');
+  check('and that acknowledgement is simulated', supCreated.messages[1].isSimulated, true);
+  check('the request itself is simulated', supCreated.isSimulated, true);
+
+  check('it is found by its number', M.findRequest(supCreated.id, SUP_NOW).id, supCreated.id);
+  check('and an unknown number finds nothing', M.findRequest('SUP-9999', SUP_NOW), null);
+
+  /* ---- Replying ---- */
+  const supReplied = M.replyToRequest(supCreated.id, 'Any update on this?', SUP_NOW + 1000);
+  const supAfter = supReplied.find((request) => request.id === supCreated.id);
+  check('a reply joins the thread', supAfter.messages.length, 3);
+  check('as the customer', supAfter.messages[2].author, 'customer');
+  check('an open request stays open', supAfter.status, 'open');
+
+  /* A request waiting on the customer moves along when they reply. */
+  supStore.set(
+    'fd:support-requests:v1',
+    JSON.stringify({
+      version: 1,
+      requests: [
+        {
+          ...supCreated,
+          id: 'SUP-2000',
+          status: 'waiting-for-customer',
+        },
+      ],
+    }),
+  );
+  check(
+    'replying to a waiting request moves it back to in progress',
+    M.replyToRequest('SUP-2000', 'Here is what you asked for.', SUP_NOW)[0].status,
+    'in-progress',
+  );
+
+  M.clearRequests();
+  check('a cleared store is empty, not reseeded', M.readRequests(SUP_NOW), []);
+
+  delete globalThis.window;
+
+  section('Support · status says what is true and what to do');
+
+  for (const [status, presentation] of Object.entries(M.STATUS_PRESENTATION)) {
+    ok(`${status} states what is true now`, presentation.current.length > 0);
+    ok(`${status} states the next step`, presentation.nextStep.length > 0);
+    /* No SLA, no queue position, no agent. None of them exists in this build. */
+    ok(
+      `${status} promises no time`,
+      !/within \d|24 hours|business day|shortly|soon/i.test(
+        `${presentation.current} ${presentation.nextStep}`,
+      ),
+    );
+    ok(
+      `${status} names no agent`,
+      !/our team|an agent|advisor|representative/i.test(
+        `${presentation.current} ${presentation.nextStep}`,
+      ),
+    );
+  }
+  ok(
+    'only a waiting request asks the customer for something',
+    M.STATUS_PRESENTATION['waiting-for-customer'].needsCustomer &&
+      !M.STATUS_PRESENTATION.open.needsCustomer &&
+      !M.STATUS_PRESENTATION.resolved.needsCustomer,
+  );
+  check(
+    'and the waiting ones are the ones reported as needing the customer',
+    M.requestsNeedingCustomer([
+      { status: 'open' },
+      { status: 'waiting-for-customer' },
+      { status: 'resolved' },
+    ]).map((request) => request.status),
+    ['waiting-for-customer'],
+  );
+
+  section('Support · context is resolved from canonical data, never copied');
+
+  const supHolding = holding({ reference: 'FD-SUP-1', bank: bank('sbi', 'State Bank of India') });
+  const supAccount = {
+    id: 'ba-sup-1',
+    institution: { name: 'HDFC Bank', initials: 'HB' },
+    lastFourDigits: '4521',
+    accountHolderName: 'Arjun Sharma',
+    ifsc: 'HDFC0001234',
+    branch: { name: 'Perungudi', city: 'Chennai' },
+    accountType: 'savings',
+    verification: { status: 'unverified' },
+    isPrimary: false,
+    createdAt: 0,
+  };
+  const supSources = { holdings: [supHolding], accounts: [supAccount] };
+
+  const supResolvedHolding = M.resolveSubject(
+    { kind: 'holding', reference: 'FD-SUP-1' },
+    supSources,
+  );
+  check('a held deposit resolves', supResolvedHolding.kind, 'holding');
+  check(
+    'and is described by bank and reference',
+    M.describeSubject(supResolvedHolding),
+    'State Bank of India fixed deposit · FD-SUP-1',
+  );
+  ok('never by its amount', !/₹|\d{5,}/.test(M.describeSubject(supResolvedHolding)));
+
+  const supResolvedAccount = M.resolveSubject(
+    { kind: 'bank-account', accountId: 'ba-sup-1' },
+    supSources,
+  );
+  check('an account in the vault resolves', supResolvedAccount.kind, 'bank-account');
+  check(
+    'and is named without its number',
+    M.describeSubject(supResolvedAccount),
+    'HDFC Bank account',
+  );
+  ok('with no digits at all', !/\d/.test(M.describeSubject(supResolvedAccount)));
+
+  /* A reference that resolves to nothing is stated, never rendered as blank. */
+  check(
+    'a deposit that is no longer held is reported as missing',
+    M.resolveSubject({ kind: 'holding', reference: 'FD-GONE' }, supSources).kind,
+    'holding-missing',
+  );
+  check(
+    'an account that is no longer in the vault too',
+    M.resolveSubject({ kind: 'bank-account', accountId: 'ba-gone' }, supSources).kind,
+    'bank-account-missing',
+  );
+  check(
+    'and a request about nothing is general support',
+    M.describeSubject(M.resolveSubject({ kind: 'none' }, supSources)),
+    'General support',
+  );
+
+  section('Support · search finds answers, and says so when it cannot');
+
+  check('a query too short to discriminate finds nothing', M.searchHelp('a', M.HELP_ARTICLES), []);
+  check('and an empty one too', M.searchHelp('   ', M.HELP_ARTICLES), []);
+
+  const supMaturity = M.searchHelp('maturity', M.HELP_ARTICLES);
+  ok('a real question finds articles', supMaturity.length > 0);
+  ok('and the best match is about maturity', /maturity/i.test(supMaturity[0].article.title));
+  ok(
+    'results are ordered by score',
+    supMaturity.every((result, index, all) => index === 0 || all[index - 1].score >= result.score),
+  );
+
+  ok(
+    'a title match outranks a keyword-only match',
+    M.searchHelp('statement', M.HELP_ARTICLES)[0].article.id === 'view-statement',
+  );
+  ok(
+    'a word the content does not use finds nothing',
+    M.searchHelp('mortgage', M.HELP_ARTICLES).length === 0,
+  );
+  ok(
+    'search is case-insensitive',
+    M.searchHelp('IFSC', M.HELP_ARTICLES).length === M.searchHelp('ifsc', M.HELP_ARTICLES).length,
+  );
+
+  check(
+    'a category lists its own articles',
+    M.articlesInCategory('maturity', M.HELP_ARTICLES).every(
+      (article) => article.category === 'maturity',
+    ),
+    true,
+  );
+
+  /*
+    Help content may only describe what exists. Asserted through the routes it
+    links to: an article pointing at a route the product does not have would be
+    an article about a feature nobody built.
+  */
+  ok(
+    'every article links to a real route or to none',
+    M.HELP_ARTICLES.every(
+      (article) => article.route === null || String(article.route).startsWith('/'),
+    ),
+  );
+  ok(
+    'no article states a rate, a policy or a legal position',
+    M.HELP_ARTICLES.every(
+      (article) => !/\d+(\.\d+)?%|as per rbi|regulation|tax will|you must pay/i.test(article.body),
+    ),
+  );
+
+  section('Family · a projection over canonical domains, never a second store');
+
+  const FAM_NOW = new Date('2026-08-27T00:00:00Z').getTime();
+  const famComposition = M.readFamilyComposition();
+
+  const famInputs = (primaryHoldings, over = {}) => ({
+    composition: famComposition,
+    primaryHoldings,
+    demoHoldings: (memberId) => M.demoHoldingsFor(memberId, FAM_NOW),
+    ...over,
+  });
+
+  /* ---- Nothing held by anyone real ---- */
+  const famDemoOnly = M.buildFamilyOverview(famInputs([]), FAM_NOW);
+  const famPrimary = M.primaryPosition(famDemoOnly);
+
+  check('the family is composed of its members', famDemoOnly.memberCount, 2);
+  check('the primary member is the investor', famPrimary.member.role, 'primary');
+  check('who holds nothing yet', famPrimary.activeCount, 0);
+  ok('and is not demonstration data', !famPrimary.isDemo);
+
+  /*
+    The distinction the whole module turns on: a demonstration member's money is
+    reported as demonstration data, so a screen can say so rather than implying
+    the investor holds it.
+  */
+  ok('a demonstration member is marked as one', famDemoOnly.members[1].isDemo);
+  check('their principal is counted separately', famDemoOnly.demoPrincipal, 500_000);
+  check('and the total says it includes demo data', famDemoOnly.includesDemoData, true);
+
+  /* ---- The investor's own deposits ---- */
+  const famHolding = (over = {}) =>
+    holding({ startedAt: new Date('2026-02-27T00:00:00Z').getTime(), ...over });
+
+  const famWithReal = M.buildFamilyOverview(
+    famInputs([
+      famHolding({ reference: 'FD-REAL-1', principal: 600_000 }),
+      famHolding({ reference: 'FD-REAL-2', principal: 400_000 }),
+    ]),
+    FAM_NOW,
+  );
+
+  check('the primary member’s deposits are counted', M.primaryPosition(famWithReal).activeCount, 2);
+  check('their principal is their own', M.primaryPosition(famWithReal).totalPrincipal, 1_000_000);
+  check('the family total is the sum of its members', famWithReal.totalPrincipal, 1_500_000);
+  check('and the deposit count spans them', famWithReal.activeDeposits, 3);
+
+  /*
+    Every figure must be the portfolio's own derivation, not a second one. The
+    family total is asserted against `summarisePortfolio` run over the same
+    holdings — if this module ever grew its own interest rule, these diverge.
+  */
+  check(
+    'family figures agree with the portfolio derivation',
+    M.primaryPosition(famWithReal).totalMaturityValue,
+    M.summarisePortfolio(
+      [
+        famHolding({ reference: 'FD-REAL-1', principal: 600_000 }),
+        famHolding({ reference: 'FD-REAL-2', principal: 400_000 }),
+      ],
+      FAM_NOW,
+    ).totalMaturityValue,
+  );
+
+  /* ---- Maturities are the schedule's, with whose deposit each one is ---- */
+  const famMaturities = famWithReal.upcomingMaturities;
+  ok('upcoming maturities are listed', famMaturities.length > 0);
+  ok(
+    'each names the member it belongs to',
+    famMaturities.every((entry) => typeof entry.member.displayName === 'string'),
+  );
+  ok(
+    'and they are ordered soonest first',
+    famMaturities.every(
+      (entry, index, all) =>
+        index === 0 ||
+        (all[index - 1].entry.view.maturesOn?.getTime() ?? 0) <=
+          (entry.entry.view.maturesOn?.getTime() ?? 0),
+    ),
+  );
+  check(
+    'the dates are the schedule’s own',
+    famMaturities.map((entry) => entry.entry.view.maturesOn?.getTime() ?? null),
+    M.buildMaturitySchedule(
+      M.summarisePortfolio(
+        [
+          famHolding({ reference: 'FD-REAL-1', principal: 600_000 }),
+          famHolding({ reference: 'FD-REAL-2', principal: 400_000 }),
+          ...M.demoHoldingsFor('fam-spouse', FAM_NOW),
+        ],
+        FAM_NOW,
+      ),
+      FAM_NOW,
+    )
+      .upcoming.map((entry) => entry.view.maturesOn?.getTime() ?? null)
+      .sort((a, b) => (a ?? 0) - (b ?? 0)),
+  );
+
+  /* ---- Goals: measured only where the platform can attribute a deposit ---- */
+  const famGoals = famWithReal.goals;
+  check('every family goal is projected', famGoals.length, famComposition.goals.length);
+
+  const linkedGoal = famGoals.find((entry) => entry.linkedCount > 0);
+  const unlinkedGoal = famGoals.find((entry) => entry.linkedCount === 0);
+
+  check('a linked goal counts the deposit that is linked', linkedGoal.contributed, 500_000);
+  check(
+    'and its progress is a proportion of the target',
+    linkedGoal.percent,
+    Math.round((500_000 / linkedGoal.targetAmount) * 100),
+  );
+
+  /*
+    The honest half: Booking never records which goal a deposit was opened for,
+    so an unlinked goal reports `null` — not zero. Zero reads as a measurement.
+  */
+  check('a goal with nothing linked reports no progress', unlinkedGoal.percent, null);
+  check('rather than zero progress', unlinkedGoal.contributed, 0);
+
+  /* A reference naming a deposit nobody holds contributes nothing. */
+  const famGhost = M.buildFamilyOverview(
+    famInputs([], {
+      composition: {
+        members: famComposition.members,
+        goals: [
+          {
+            id: 'ghost',
+            label: 'Ghost',
+            targetAmount: 100_000,
+            memberId: null,
+            contributingReferences: ['FD-DOES-NOT-EXIST'],
+            isDemo: true,
+          },
+        ],
+      },
+    }),
+    FAM_NOW,
+  );
+  check('an unheld reference contributes nothing', famGhost.goals[0].contributed, 0);
+  check('and is reported as unlinked', famGhost.goals[0].percent, null);
+
+  /* Progress can never exceed the target it is measured against. */
+  const famCapped = M.buildFamilyOverview(
+    famInputs([], {
+      composition: {
+        members: famComposition.members,
+        goals: [
+          {
+            id: 'small',
+            label: 'Small target',
+            targetAmount: 100_000,
+            memberId: null,
+            contributingReferences: ['FD-DEMO-SPOUSE-01'],
+            isDemo: true,
+          },
+        ],
+      },
+    }),
+    FAM_NOW,
+  );
+  check('progress is capped at the target', famCapped.goals[0].percent, 100);
+
+  /* ---- An empty family ---- */
+  const famEmpty = M.buildFamilyOverview(
+    famInputs([], { composition: { members: [], goals: [] } }),
+    FAM_NOW,
+  );
+  check('a family with no members has no members', famEmpty.memberCount, 0);
+  check('no total', famEmpty.totalPrincipal, 0);
+  check('no maturities', [...famEmpty.upcomingMaturities], []);
+  check('and no primary member to speak of', M.primaryPosition(famEmpty), null);
+  check('nor any demonstration data', famEmpty.includesDemoData, false);
+
+  /* ---- Nothing sensitive is in the family model ---- */
+  for (const member of M.DEMO_FAMILY_MEMBERS) {
+    for (const field of ['pan', 'aadhaar', 'dateOfBirth', 'address', 'accountNumber', 'kyc']) {
+      ok(`a family member carries no ${field}`, !(field in member));
+    }
+  }
+  ok(
+    'the demonstration member is marked demo on the record',
+    M.DEMO_FAMILY_MEMBERS.filter((member) => member.role !== 'primary').every(
+      (member) => member.isDemo,
+    ),
+  );
+  ok(
+    'and the primary member is not',
+    M.DEMO_FAMILY_MEMBERS.filter((member) => member.role === 'primary').every(
+      (member) => !member.isDemo,
+    ),
+  );
+  ok(
+    'a demonstration member has no funding account',
+    M.demoHoldingsFor('fam-spouse', FAM_NOW).every((entry) => entry.fundingAccountId === null),
+  );
+
+  section('Bank accounts · one vault, and it cannot hold a full account number');
+
+  const vaultStore = new Map();
+  globalThis.window = {
+    sessionStorage: {
+      getItem: (k) => (vaultStore.has(k) ? vaultStore.get(k) : null),
+      setItem: (k, v) => vaultStore.set(k, v),
+      removeItem: (k) => vaultStore.delete(k),
+      clear: () => vaultStore.clear(),
+    },
+  };
+
+  /* ---- The vault seeds itself, and states what it seeded ---- */
+  vaultStore.clear();
+  const seeded = M.readAccounts();
+  check(
+    'a first read seeds the demonstration accounts',
+    seeded.length,
+    M.DEMO_BANK_ACCOUNTS.length,
+  );
+  check('exactly one is primary', seeded.filter((account) => account.isPrimary).length, 1);
+  ok(
+    'every verified account names the method that verified it',
+    seeded
+      .filter((account) => account.verification.status === 'verified')
+      .every((account) => account.verification.method === 'demo'),
+  );
+  ok(
+    'and the wording says so rather than claiming a bank did',
+    seeded
+      .filter((account) => account.verification.status === 'verified')
+      .every((account) => M.verificationLabel(account.verification) === 'Demo verified'),
+  );
+  ok(
+    'the states this product models are demonstrated, not merely declared',
+    new Set(seeded.map((account) => account.verification.status)).size > 1,
+  );
+
+  /*
+    ---- Nothing stored can be a full account number ----
+
+    Digit runs alone are not the test: an IFSC legitimately contains seven of
+    them. What must never appear is the number the customer typed, and no field
+    that could hold one.
+  */
+  const storedVault = () => vaultStore.get('fd:bank-accounts:v1') ?? '';
+  for (const leak of ['accountNumber', 'password', 'pin', 'upi']) {
+    ok(`no "${leak}" reaches the vault`, !new RegExp(leak, 'i').test(storedVault()));
+  }
+  ok(
+    'every stored account holds exactly four digits of its number',
+    JSON.parse(storedVault()).accounts.every((account) => /^\d{4}$/.test(account.lastFourDigits)),
+  );
+
+  /* ---- Adding an account ---- */
+  const addedList = M.addAccount(
+    {
+      institution: { name: 'HDFC Bank', initials: 'HB' },
+      lastFourDigits: '4521',
+      accountHolderName: 'Arjun Sharma',
+      ifsc: 'HDFC0001234',
+      branch: { name: 'Perungudi', city: 'Chennai' },
+      accountType: 'savings',
+    },
+    1_700_000_000_000,
+  );
+  const added = addedList.at(-1);
+
+  ok(
+    'the number the customer typed never reaches storage',
+    !storedVault().includes('123456789012') && !storedVault().includes('12345678'),
+  );
+  check('an added account joins the vault', addedList.length, seeded.length + 1);
+  check('and is never verified on arrival', added.verification.status, 'unverified');
+  ok(
+    'because nothing checked it',
+    /No verification provider is connected/.test(M.verificationDescription(added.verification)),
+  );
+  ok('it cannot fund an investment', !M.isUsableForFunding(added));
+  ok('it does not steal primary from an existing account', !added.isPrimary);
+  ok('its id carries no part of the account number', !added.id.includes('4521'));
+  ok('and no account number field exists on it', !('accountNumber' in added));
+
+  /* ---- The demonstration's own check ---- */
+  const verifiedList = M.markDemoVerified(added.id, 1_700_000_001_000);
+  const nowVerified = verifiedList.find((account) => account.id === added.id);
+  check('a demo check records its method', nowVerified.verification.method, 'demo');
+  check('and when it happened', nowVerified.verification.verifiedAt, 1_700_000_001_000);
+  ok('the account can now fund an investment', M.isUsableForFunding(nowVerified));
+  ok(
+    'and it is still described as a simulation',
+    /simulated check/.test(M.verificationDescription(nowVerified.verification)) &&
+      !/verified by (the )?bank/i.test(M.verificationDescription(nowVerified.verification)),
+  );
+
+  /* ---- Primary is single, always ---- */
+  const primaryMoved = M.setPrimaryAccount(added.id);
+  check(
+    'making one primary makes every other one not',
+    primaryMoved.filter((account) => account.isPrimary).length,
+    1,
+  );
+  check('and it is the one that was chosen', M.primaryAccount(primaryMoved).id, added.id);
+  check(
+    'an unknown id changes nothing',
+    M.setPrimaryAccount('ba-not-here').filter((account) => account.isPrimary).length,
+    1,
+  );
+
+  /* ---- The default funding account is never an unusable one ---- */
+  const unusableOnly = [
+    { ...M.DEMO_BANK_ACCOUNTS[2], isPrimary: true },
+    { ...M.DEMO_BANK_ACCOUNTS[1], isPrimary: false },
+  ];
+  check(
+    'an unusable primary is not offered as the default',
+    M.defaultFundingAccount(unusableOnly).id,
+    M.DEMO_BANK_ACCOUNTS[1].id,
+  );
+  check('and nothing usable means no default', M.defaultFundingAccount([unusableOnly[0]]), null);
+
+  /* ---- Removal ---- */
+  check(
+    'the primary account cannot be removed while others exist',
+    M.removeAccount(added.id).length,
+    primaryMoved.length,
+  );
+  M.setPrimaryAccount(M.DEMO_BANK_ACCOUNTS[0].id);
+  check(
+    'a non-primary account can be',
+    M.removeAccount(added.id).some((account) => account.id === added.id),
+    false,
+  );
+  check('and removing an unknown id is a no-op', M.removeAccount('ba-not-here').length, 3);
+
+  /* ---- Masking is the only way an account number is written ---- */
+  check(
+    'an account number is written as dots and four digits',
+    M.maskAccountNumber('4521'),
+    '•••• 4521',
+  );
+  ok(
+    'and one account reads as bank plus mask',
+    M.describeAccount(M.DEMO_BANK_ACCOUNTS[0]) === 'Axis Bank •••• 4587',
+  );
+
+  M.clearAccounts();
+  check('a cleared vault is empty, not reseeded', M.readAccounts(), []);
+
+  delete globalThis.window;
+
+  section('Bank accounts · IFSC is resolved, never guessed');
+
+  const resolvedIfsc = M.resolveIfsc('hdfc0001234');
+  check('a known code resolves its bank', resolvedIfsc.institution.name, 'HDFC Bank');
+  check('and its branch', resolvedIfsc.branch, { name: 'Perungudi', city: 'Chennai' });
+  check('the code is normalised to upper case', resolvedIfsc.ifsc, 'HDFC0001234');
+
+  /*
+    The temptation this refuses: reading the first four characters as a bank
+    code. It is right often enough to be dangerous — it would confidently name
+    a bank for a mistyped code, and the customer would confirm an account at a
+    bank they do not hold one with.
+  */
+  check('an unknown code resolves to nothing', M.resolveIfsc('HDFC0009999'), null);
+  ok('even though it is well formed', M.isWellFormedIfsc('HDFC0009999'));
+  for (const bad of ['', 'HDFC', 'HDFC1001234', '1234000HDFC', 'HDFC00012345']) {
+    check(`"${bad}" is not a well-formed IFSC`, M.isWellFormedIfsc(bad), false);
+  }
+
+  section('Bank accounts · the entry form keeps the number and gives up four digits');
+
+  const entry = (over = {}) => ({
+    ...M.EMPTY_ACCOUNT_ENTRY,
+    accountNumber: '123456789012',
+    confirmAccountNumber: '123456789012',
+    ifsc: 'HDFC0001234',
+    accountHolderName: 'Arjun Sharma',
+    accountType: 'savings',
+    ...over,
+  });
+
+  check('digits only are accepted', M.toAccountDigits('1234-5678 90ab'), '1234567890');
+  check('and the field is bounded', M.toAccountDigits('9'.repeat(40)).length, 18);
+  check('four digits are what survives', M.lastFourOf('123456789012'), '9012');
+
+  check('a complete entry is valid', M.validateAccountEntry(entry(), true), {});
+  ok(
+    'a mistyped confirmation is caught',
+    M.validateAccountEntry(entry({ confirmAccountNumber: '123456789013' }), true)
+      .confirmAccountNumber !== undefined,
+  );
+  ok(
+    'a number too short to be one is caught',
+    M.validateAccountEntry(entry({ accountNumber: '1234', confirmAccountNumber: '1234' }), true)
+      .accountNumber !== undefined,
+  );
+  ok(
+    'and an unresolved IFSC is stated plainly',
+    /couldn’t be identified/.test(M.validateAccountEntry(entry(), false).ifsc ?? ''),
+  );
+  ok(
+    'a missing name is caught',
+    M.validateAccountEntry(entry({ accountHolderName: '  ' }), true).accountHolderName !==
+      undefined,
+  );
+
+  const prepared = M.toNewAccount(entry(), M.resolveIfsc('HDFC0001234'));
+  check('what is saved carries four digits', prepared.lastFourDigits, '9012');
+  ok(
+    'and the number itself is nowhere in the record',
+    !JSON.stringify(prepared).includes('123456789012') &&
+      !JSON.stringify(prepared).includes('12345678'),
+  );
+  check('the institution comes from the directory', prepared.institution.name, 'HDFC Bank');
+  check(
+    'an unresolved IFSC produces no account at all',
+    M.toNewAccount(entry({ ifsc: 'ZZZZ0000000' }), null),
+    null,
+  );
+  check(
+    'and neither does an incomplete entry',
+    M.toNewAccount(entry({ confirmAccountNumber: '' }), M.resolveIfsc('HDFC0001234')),
+    null,
+  );
+
+  section('Bank accounts · usage and removal rules are derived, not configured');
+
+  const vaultAccount = (over = {}) => ({ ...M.DEMO_BANK_ACCOUNTS[0], ...over });
+  const fundedHolding = (accountId, over = {}) =>
+    holding({ reference: `FD-${accountId}`, fundingAccountId: accountId, ...over });
+
+  const soleAccount = vaultAccount({ isPrimary: true });
+  check(
+    'the only account, funding nothing, can be removed',
+    M.describeAccountUsage(soleAccount, [soleAccount], []).canRemove,
+    true,
+  );
+
+  const secondAccount = vaultAccount({ id: 'ba-demo-hdfc', isPrimary: false });
+  const primaryBlocked = M.describeAccountUsage(soleAccount, [soleAccount, secondAccount], []);
+  check('the primary account is protected while others exist', primaryBlocked.canRemove, false);
+  ok(
+    'and the reason says what to do about it',
+    /Make another account primary/.test(primaryBlocked.removalBlockedReason),
+  );
+
+  const funding = M.describeAccountUsage(
+    secondAccount,
+    [soleAccount, secondAccount],
+    [fundedHolding('ba-demo-hdfc'), holding({ reference: 'OTHER', fundingAccountId: 'ba-other' })],
+  );
+  check('an account that funded a deposit cannot be removed', funding.canRemove, false);
+  check('and the deposit it funded is named', funding.fundedHoldings.length, 1);
+  ok(
+    'the reason states the dependency rather than a policy',
+    /funded 1 investment you still hold/.test(funding.removalBlockedReason),
+  );
+  check(
+    'a closed deposit is not a reason to keep an account',
+    M.describeAccountUsage(
+      secondAccount,
+      [soleAccount, secondAccount],
+      [fundedHolding('ba-demo-hdfc', { status: 'closed' })],
+    ).canRemove,
+    true,
+  );
+
+  /* Name comparison reports a difference; it never resolves one. */
+  check('the same name matches', M.nameMatchesIdentity('Arjun Sharma', ' arjun  sharma '), true);
+  check(
+    'an abbreviated name is reported as different',
+    M.nameMatchesIdentity('A. Sharma', 'Arjun Sharma'),
+    false,
+  );
+  check(
+    'and with no identity on file there is nothing to compare',
+    M.nameMatchesIdentity('A', null),
+    null,
+  );
+
+  section('Reports · a projection of canonical data, never a second source');
+
+  const REP_NOW = new Date('2026-08-27T10:00:00Z').getTime();
+  const repStart = new Date('2026-02-27T10:00:00Z').getTime();
+
+  const repHolding = holding({
+    reference: 'FD-2026-0001',
+    bank: bank('hdfc', 'HDFC Bank'),
+    productName: 'HDFC Bank Fixed Deposit',
+    principal: 500_000,
+    annualRate: 7.5,
+    tenureMonths: 18,
+    startedAt: repStart,
+    maturityInstruction: 'renew-principal-and-interest',
+  });
+
+  const catalogueFor = (holdings, at = REP_NOW) => {
+    const summary = M.summarisePortfolio(holdings, at);
+    const schedule = M.buildMaturitySchedule(summary, at);
+    return { summary, schedule, catalogue: M.buildReportCatalogue(summary, schedule, at) };
+  };
+
+  /* ---- Nothing held means nothing to report ---- */
+  const repEmpty = catalogueFor([]);
+  check('an investor with no deposits has no documents', repEmpty.catalogue.all, []);
+  check('and no consolidated statement to offer', repEmpty.catalogue.portfolioStatement, null);
+  check('nothing is available', repEmpty.catalogue.availableCount, 0);
+
+  /* ---- One deposit ---- */
+  const repOne = catalogueFor([repHolding]);
+  const repDocs = repOne.catalogue.byHolding[0].documents;
+
+  check('one deposit produces one group', repOne.catalogue.byHolding.length, 1);
+  check(
+    'with the documents an investor would look for',
+    repDocs.map((entry) => entry.kind),
+    ['fd-statement', 'booking-confirmation', 'maturity-advice', 'bank-deposit-advice'],
+  );
+  check(
+    'each is identified by kind and deposit, not by position',
+    repDocs.map((entry) => entry.id),
+    [
+      'fd-statement--FD-2026-0001',
+      'booking-confirmation--FD-2026-0001',
+      'maturity-advice--FD-2026-0001',
+      'bank-deposit-advice--FD-2026-0001',
+    ],
+  );
+  check(
+    'and every one names the deposit it belongs to',
+    repDocs.every(
+      (entry) => entry.subject.kind === 'holding' && entry.subject.id === 'FD-2026-0001',
+    ),
+    true,
+  );
+
+  /* Provenance: the bank's document is the bank's, and it is not produced here. */
+  const repBankDoc = repDocs.find((entry) => entry.kind === 'bank-deposit-advice');
+  check('the bank advice is attributed to the bank', repBankDoc.issuer, 'bank');
+  check('and is not available', repBankDoc.availability.status, 'unavailable');
+  ok(
+    'with the reason stated in full',
+    repBankDoc.availability.reason === M.BANK_DOCUMENT_REASON &&
+      /no connection to bank document systems/.test(M.BANK_DOCUMENT_REASON),
+  );
+  ok(
+    'an unavailable document carries no file name and no generated date',
+    !('fileName' in repBankDoc.availability) && !('generatedAt' in repBankDoc.availability),
+  );
+
+  const repStatement = repDocs.find((entry) => entry.kind === 'fd-statement');
+  check('a platform document says so', repStatement.issuer, 'platform');
+  check('and states how it came to exist', repStatement.availability.origin, 'platform-derived');
+  ok(
+    'its file name names the bank, the deposit and the day',
+    repStatement.availability.fileName === 'fd-statement-hdfc-bank-fd-2026-0001-2026-08-27',
+  );
+
+  /* ---- A term published in days has no maturity to advise on ---- */
+  const repUndated = catalogueFor([
+    holding({ reference: 'FD-DAYS', tenureMonths: 0, startedAt: repStart }),
+  ]);
+  const repUndatedAdvice = repUndated.catalogue.byHolding[0].documents.find(
+    (entry) => entry.kind === 'maturity-advice',
+  );
+  check(
+    'a day-based term has no maturity advice',
+    repUndatedAdvice.availability.status,
+    'unavailable',
+  );
+  ok(
+    'and the reason is the missing date, not a promise',
+    /published in days/.test(repUndatedAdvice.availability.reason),
+  );
+  ok(
+    'the statement for it is still available',
+    repUndated.catalogue.byHolding[0].documents.find((entry) => entry.kind === 'fd-statement')
+      .availability.status === 'available',
+  );
+
+  /* ---- Ids round-trip, and refuse to guess ---- */
+  check('an id round-trips', M.parseDocumentId(M.documentId('fd-statement', 'FD-2026-0001')), {
+    kind: 'fd-statement',
+    subjectId: 'FD-2026-0001',
+  });
+  check('a dashed reference survives it', M.parseDocumentId('maturity-advice--FD-2026-0001'), {
+    kind: 'maturity-advice',
+    subjectId: 'FD-2026-0001',
+  });
+  check('the consolidated sheet has its own id', M.parseDocumentId('portfolio-statement'), {
+    kind: 'portfolio-statement',
+    subjectId: 'portfolio',
+  });
+  for (const bad of [
+    '',
+    'nonsense',
+    'invented-kind--FD-1',
+    'fd-statement--',
+    '--FD-1',
+    'portfolio-statement--FD-1',
+  ]) {
+    check(`"${bad}" names no document`, M.parseDocumentId(bad), null);
+  }
+
+  /* ---- The document itself invents nothing ---- */
+  const repView = repOne.summary.holdings[0];
+  const contentFor = (id, source = repOne, identity = null) =>
+    M.buildDocumentContent({
+      descriptor: M.findDocument(source.catalogue, id),
+      summary: source.summary,
+      schedule: source.schedule,
+      identity,
+    });
+
+  const repSheet = contentFor('fd-statement--FD-2026-0001');
+  const repValues = repSheet.sections
+    .flatMap((sectionEntry) => sectionEntry.fields)
+    .map((field) => field.value);
+  const repMoney = repValues.filter((value) => typeof value === 'string' && value.includes('₹'));
+
+  /*
+    Every rupee figure on the sheet is one the portfolio already derived. A
+    statement that computed its own would be a second source of financial truth
+    — the one thing this module must never become.
+  */
+  check(
+    'every figure on the statement comes from the portfolio derivation',
+    [...repMoney].sort(),
+    [
+      M.formatCurrency(repHolding.principal),
+      M.formatCurrency(repView.totalInterest),
+      M.formatCurrency(repView.maturityValue),
+    ].sort(),
+  );
+  ok(
+    'the maturity date is the one the portfolio derived',
+    repValues.includes(M.formatMaturityDate(repView.maturesOn)),
+  );
+  ok(
+    'the rate is stated as recorded, not rounded',
+    repValues.includes(`${M.formatPercentage(repHolding.annualRate)} per annum`),
+  );
+  ok('and the tenure is never converted', repValues.includes('18 months'));
+
+  /* ---- What the platform does not know stays blank ---- */
+  const repNoInstruction = catalogueFor([
+    holding({ reference: 'FD-NOINST', startedAt: repStart, maturityInstruction: null }),
+  ]);
+  const repBlank = contentFor('fd-statement--FD-NOINST', repNoInstruction);
+  const repInstructionField = repBlank.sections
+    .flatMap((sectionEntry) => sectionEntry.fields)
+    .find((field) => field.label === 'Maturity instruction');
+  check('an unrecorded instruction is null, never a default', repInstructionField.value, null);
+  ok('and the row says why', /did not record an instruction/.test(repInstructionField.hint));
+
+  const repDayTenure = contentFor('fd-statement--FD-DAYS', repUndated)
+    .sections.flatMap((sectionEntry) => sectionEntry.fields)
+    .find((field) => field.label === 'Tenure');
+  check('a day-based term prints no month count', repDayTenure.value, null);
+
+  /* Identity is read, never invented. */
+  check(
+    'an unknown investor is left blank on the sheet',
+    repSheet.issuedTo.map((field) => field.value),
+    [null, null],
+  );
+  const repNamed = contentFor(
+    'fd-statement--FD-2026-0001',
+    repOne,
+    M.identityWithStatus('verified'),
+  );
+  ok(
+    'a known investor is named from the identity record',
+    typeof repNamed.issuedTo[0].value === 'string' && repNamed.issuedTo[0].value.length > 0,
+  );
+  ok(
+    'and the PAN is the masked form the platform holds',
+    repNamed.issuedTo[1].value === null || repNamed.issuedTo[1].value.includes('•'),
+  );
+
+  /* ---- Provenance is printed, not merely modelled ---- */
+  ok(
+    'the sheet states it is not a bank certificate',
+    repSheet.notes.some((note) => /not a bank certificate/.test(note)),
+  );
+  ok(
+    'and no note claims the bank issued it',
+    repSheet.notes.every((note) => !/issued by the bank on your behalf|official/i.test(note)),
+  );
+  ok(
+    'the booking confirmation defers the bank’s own document',
+    contentFor('booking-confirmation--FD-2026-0001').notes.some((note) =>
+      /separate document, issued by the bank/.test(note),
+    ),
+  );
+
+  /* ---- A document that does not exist produces no sheet ---- */
+  check(
+    'an unavailable document renders nothing',
+    contentFor('bank-deposit-advice--FD-2026-0001'),
+    null,
+  );
+  check(
+    'and an unknown id resolves to no descriptor',
+    M.findDocument(repOne.catalogue, 'fd-statement--NOT-HELD'),
+    undefined,
+  );
+
+  /* ---- The consolidated sheet totals only what can be totalled ---- */
+  const repTwo = catalogueFor([
+    repHolding,
+    holding({ reference: 'FD-2026-0002', principal: 300_000, annualRate: 7, startedAt: repStart }),
+  ]);
+  const repPortfolio = contentFor('portfolio-statement', repTwo);
+  check('the consolidated sheet lists every deposit', repPortfolio.table.rows.length, 2);
+  check(
+    'its total invested is the portfolio’s own total',
+    repPortfolio.table.totals[2],
+    M.formatCurrency(repTwo.summary.totalPrincipal),
+  );
+  check('and no average rate is invented', repPortfolio.table.totals[3], '');
+
+  section('Notifications · derived from domain state, never a stored feed');
+
+  const NOW_N = new Date('2026-08-23T00:00:00Z').getTime();
+  const notifVerified = M.deriveKycReadiness(M.identityWithStatus('verified'), M.KYC_METHODS);
+  const notifPending = M.deriveKycReadiness(M.identityWithStatus('in-progress'), M.KYC_METHODS);
+
+  const notify = (holdings, readiness = notifVerified) =>
+    M.deriveNotifications({ holdings, readiness, investorId: 'inv-1' }, NOW_N);
+
+  /* Nothing held and nothing outstanding still produces the identity update. */
+  const noneHeld = notify([]);
+  check('an investor with no deposits sees only their identity status', noneHeld.length, 1);
+  check('and it is the verified confirmation', noneHeld[0].id, 'identity-verified');
+
+  /* A confirmed deposit produces exactly one booking notification. */
+  const oneHeld = notify([holding({ reference: 'REF-A', startedAt: NOW_N })]);
+  const bookingOnes = oneHeld.filter((entry) => entry.category === 'booking');
+  check('a confirmed deposit is announced once', bookingOnes.length, 1);
+  check('and its id names the deposit', bookingOnes[0].id, 'booking-confirmed:REF-A');
+  check('it refers to the holding rather than copying it', bookingOnes[0].subject, {
+    kind: 'holding',
+    id: 'REF-A',
+  });
+  ok('and carries no financial figure', !/\d{4,}/.test(bookingOnes[0].body));
+
+  /* Maturity: outside the window, inside it, and past it. */
+  const far = notify([holding({ reference: 'FAR', tenureMonths: 120, startedAt: NOW_N })]);
+  ok('a distant maturity raises nothing', !far.some((entry) => entry.category === 'maturity'));
+
+  /* Started 22 months ago on a 24-month term: two months left. */
+  const nearStart = new Date('2024-10-23T00:00:00Z').getTime();
+  const nearing = notify([holding({ reference: 'SOON', tenureMonths: 24, startedAt: nearStart })]);
+  const soonNote = nearing.find((entry) => entry.category === 'maturity');
+  check('a maturity inside the window is raised', soonNote?.id, 'maturity-approaching:SOON');
+  check('as something to act on', soonNote?.severity, 'action');
+  ok('with a destination that exists', soonNote?.action?.href === '/portfolio/maturities');
+
+  const elapsed = notify([
+    holding({
+      reference: 'PAST',
+      tenureMonths: 6,
+      startedAt: new Date('2025-01-23T00:00:00Z').getTime(),
+    }),
+  ]);
+  const pastNote = elapsed.find((entry) => entry.category === 'maturity');
+  check('a passed maturity is raised', pastNote?.id, 'maturity-due:PAST');
+  ok('and defers settlement to the bank', /confirmed by the bank/i.test(pastNote?.body ?? ''));
+  ok('never claiming a credit', !/credited/i.test(pastNote?.body ?? ''));
+
+  /* A term published in days has no date, so it raises no maturity notice. */
+  ok(
+    'a day-based term raises no maturity notification',
+    !notify([holding({ reference: 'DAYS', tenureMonths: 0 })]).some(
+      (entry) => entry.category === 'maturity',
+    ),
+  );
+
+  /* Identity: one notification, whichever kind of attention is outstanding. */
+  const needsIdentity = notify([], notifPending);
+  check('an unverified investor is asked once', needsIdentity.length, 1);
+  check('and it is an action', needsIdentity[0].severity, 'action');
+  check('with a stable id', needsIdentity[0].id, 'identity-attention');
+
+  /* Only confirmed, active deposits are announced. */
+  ok(
+    'a closed deposit raises nothing',
+    !notify([holding({ reference: 'X', status: 'closed' })]).some(
+      (entry) => entry.subject.id === 'X',
+    ),
+  );
+
+  /* Ids are stable across renders — read state depends on it. */
+  const firstPass = notify([holding({ reference: 'REF-A', startedAt: NOW_N })]);
+  const secondPass = M.deriveNotifications(
+    {
+      holdings: [holding({ reference: 'REF-A', startedAt: NOW_N })],
+      readiness: notifVerified,
+      investorId: 'inv-1',
+    },
+    NOW_N + 60_000,
+  );
+  check(
+    'the same state yields the same ids',
+    firstPass.map((entry) => entry.id).sort(),
+    secondPass.map((entry) => entry.id).sort(),
+  );
+
+  /* Newest first. */
+  ok(
+    'notifications are ordered newest first',
+    notify([
+      holding({
+        reference: 'OLD',
+        startedAt: new Date('2025-01-23T00:00:00Z').getTime(),
+        tenureMonths: 120,
+      }),
+      holding({ reference: 'NEW', startedAt: NOW_N, tenureMonths: 120 }),
+    ]).every((entry, index, all) => index === 0 || all[index - 1].occurredAt >= entry.occurredAt),
+  );
+
+  /* Everything in this build is simulated, and says so. */
+  ok(
+    'every notification declares itself simulated',
+    notify([holding({ reference: 'REF-A' })]).every((entry) => entry.isSimulated === true),
+  );
+
+  section('Notifications · read state is the only thing stored');
+
+  const notifStore = new Map();
+  globalThis.window = {
+    sessionStorage: {
+      getItem: (k) => (notifStore.has(k) ? notifStore.get(k) : null),
+      setItem: (k, v) => notifStore.set(k, v),
+      removeItem: (k) => notifStore.delete(k),
+    },
+  };
+
+  M.clearReadIds();
+  check('nothing is read to begin with', M.readReadIds(), []);
+
+  M.markRead(['booking-confirmed:REF-A']);
+  check('an id is remembered', M.readReadIds(), ['booking-confirmed:REF-A']);
+  check('and marking it twice changes nothing', M.markRead(['booking-confirmed:REF-A']).length, 1);
+
+  M.markRead(['identity-verified']);
+  check('a second id is added', M.readReadIds().length, 2);
+
+  const sample = notify([holding({ reference: 'REF-A', startedAt: NOW_N })]);
+  check(
+    'unread counts what has not been seen',
+    M.unreadCount(sample, ['booking-confirmed:REF-A']),
+    sample.length - 1,
+  );
+  check('and nothing read means everything unread', M.unreadCount(sample, []), sample.length);
+
+  /* Stored content is ids only — no titles, amounts or bank names. */
+  const storedRaw = notifStore.get('fd:notifications-read:v1');
+  for (const leak of ['State Bank', 'AU Small', '₹', 'matures']) {
+    ok(`no "${leak}" reaches the read store`, !storedRaw.includes(leak));
+  }
+
+  /* A malformed payload means "nothing read" — never a crash. */
+  notifStore.set('fd:notifications-read:v1', '{not json');
+  check('unreadable storage reads as nothing', M.readReadIds(), []);
+
+  delete globalThis.window;
+
+  section('Maturity · the schedule is derived from dates, never asserted');
+
+  const NOW_M = new Date('2026-08-23T00:00:00Z').getTime();
+  /* Started 18 months before "now", on a 24-month term: 6 months still to run. */
+  const soonStart = new Date('2025-02-23T00:00:00Z').getTime();
+
+  const schedule = M.buildMaturitySchedule(
+    M.summarisePortfolio(
+      [
+        holding({
+          reference: 'PAST',
+          tenureMonths: 6,
+          startedAt: new Date('2025-01-23T00:00:00Z').getTime(),
+        }),
+        holding({ reference: 'SOON', tenureMonths: 20, startedAt: soonStart }),
+        holding({ reference: 'FAR', tenureMonths: 120, startedAt: NOW_M }),
+        holding({ reference: 'DAYS', tenureMonths: 0, startedAt: NOW_M }),
+      ],
+      NOW_M,
+    ),
+    NOW_M,
+  );
+
+  check(
+    'a passed date is matured',
+    schedule.matured.map((e) => e.view.holding.reference),
+    ['PAST'],
+  );
+  check(
+    'a date inside the notice window is maturing soon',
+    schedule.maturingSoon.map((e) => e.view.holding.reference),
+    ['SOON'],
+  );
+  ok(
+    'and maturing-soon is part of upcoming',
+    schedule.upcoming.some((e) => e.view.holding.reference === 'SOON'),
+  );
+  check(
+    'a term published in days has no schedule position',
+    schedule.undated.map((e) => e.view.holding.reference),
+    ['DAYS'],
+  );
+  check(
+    'upcoming is ordered soonest first',
+    schedule.upcoming.map((e) => e.view.holding.reference),
+    ['SOON', 'FAR'],
+  );
+  check('the next maturity is the soonest', schedule.next?.view.holding.reference, 'SOON');
+  ok('days remaining is counted, not guessed', (schedule.next?.daysRemaining ?? 0) > 0);
+  check(
+    'the timeline groups by calendar year, ascending',
+    schedule.byYear.map((g) => g.year),
+    [2026, 2036],
+  );
+  check(
+    'upcoming value sums only what is still to come',
+    schedule.totalUpcomingValue,
+    schedule.upcoming.reduce((sum, e) => sum + e.view.maturityValue, 0),
+  );
+  check('and the schedule records its own instant', schedule.generatedAt, NOW_M);
+
+  /* Nothing claims the bank settled anything. */
+  ok(
+    'every outlook defers final handling to the bank',
+    schedule.upcoming.every((e) => /confirmed by the bank/i.test(e.outlook)),
+  );
+  ok(
+    'and none claims proceeds were credited',
+    [...schedule.upcoming, ...schedule.matured].every((e) => !/credited/i.test(e.outlook)),
+  );
+
+  /* An unrecorded instruction is stated as unknown, never defaulted. */
+  const unknown = M.buildMaturitySchedule(
+    M.summarisePortfolio([holding({ maturityInstruction: null })], NOW_M),
+    NOW_M,
+  );
+  check('an absent instruction stays absent', unknown.upcoming[0].instruction, null);
+  ok(
+    'and is described as not recorded',
+    /No maturity instruction is recorded/.test(unknown.upcoming[0].outlook),
+  );
+
+  /* Each canonical instruction has customer-facing wording, stated once. */
+  for (const key of ['renew-principal-and-interest', 'renew-principal-only', 'pay-out']) {
+    ok(`"${key}" has a label`, (M.MATURITY_INSTRUCTION_LABEL[key] ?? '').length > 0);
+  }
+
+  section('Maturity · each bank’s own option ids translate to one vocabulary');
+
+  /*
+    SBI and AU ask the same question with different values. The portfolio must
+    not have to know which form a deposit came from.
+  */
+  check(
+    'SBI renew-and-payback maps to renew-principal-only',
+    M.toMaturityInstruction('renew-principal-payback-interest'),
+    'renew-principal-only',
+  );
+  check(
+    'AU renew-repay maps to the same',
+    M.toMaturityInstruction('renew-principal-repay-interest'),
+    'renew-principal-only',
+  );
+  check(
+    'SBI pay-principal-and-interest maps to pay-out',
+    M.toMaturityInstruction('pay-principal-and-interest'),
+    'pay-out',
+  );
+  check(
+    'AU repay-principal-and-interest maps to pay-out',
+    M.toMaturityInstruction('repay-principal-and-interest'),
+    'pay-out',
+  );
+  check(
+    'and renew-both is shared by both forms',
+    M.toMaturityInstruction('renew-principal-and-interest'),
+    'renew-principal-and-interest',
+  );
+
+  /* An unknown id is unknown — never a default. */
+  ok('an unrecognised option yields nothing', M.toMaturityInstruction('something-else') === null);
+  ok('and so does an unanswered field', M.toMaturityInstruction(undefined) === null);
+
   section('Portfolio · the store records ownership once');
 
   const holdingsStore = new Map();
@@ -6543,11 +8395,11 @@ export async function runBookingJourneySuite(M) {
 
   /* A malformed entry is dropped rather than rendered as a deposit that exists. */
   holdingsStore.set(
-    'fd:portfolio-holdings:v1',
+    'fd:portfolio-holdings:v2',
     JSON.stringify({ version: 1, holdings: [{ reference: 'X' }] }),
   );
   check('a malformed holding is refused', M.readHoldings(), []);
-  holdingsStore.set('fd:portfolio-holdings:v1', '{not json');
+  holdingsStore.set('fd:portfolio-holdings:v2', '{not json');
   check('and so is unreadable storage', M.readHoldings(), []);
 
   delete globalThis.window;

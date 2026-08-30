@@ -572,6 +572,35 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Printing (Module 10 — Reports & Statements).
+ *
+ * A document on this platform is saved by printing it: there is no PDF
+ * generator, and the browser's own print-to-PDF is a real capability rather
+ * than a simulated one. These rules make the printed page the *document* and
+ * nothing else — the application shell, navigation and actions are screen
+ * furniture and must not appear on a sheet somebody files.
+ *
+ * `print:hidden` (Tailwind's print variant) marks the furniture at each call
+ * site; this block handles what a utility class cannot: page margins, and
+ * flattening the page surface to white so a tinted background does not print
+ * as a grey wash.
+ */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  /* Links inside a printed document read as text; their URLs are meaningless on paper. */
+  a {
+    text-decoration: none;
+  }
+}
+
 /* Reduced motion is a platform requirement (Document 14 §16). */
 @media (prefers-reduced-motion: reduce) {
   *,

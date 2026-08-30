@@ -59,6 +59,29 @@ export type HoldingStatus =
  */
 export type HoldingProductType = 'fixed-deposit';
 
+/**
+ * What the bank does when the deposit matures.
+ *
+ * ## Why a canonical set rather than each bank's own option ids
+ *
+ * SBI and AU ask the same question with different wording and different values
+ * — "Auto-renew principal, pay back interest" against "Renew principal, repay
+ * interest". Storing whichever string that bank's form happened to use would
+ * make the portfolio unable to say anything about a deposit without also
+ * knowing which form it came from.
+ *
+ * These three are the union of what the two real forms actually offer, reduced
+ * to what they mean. **No fourth option is invented**: a bank that offers
+ * something else adds a member here when its form says so.
+ */
+export type MaturityInstruction =
+  /** Both principal and interest roll into a new deposit. */
+  | 'renew-principal-and-interest'
+  /** The principal rolls over; interest is paid out. */
+  | 'renew-principal-only'
+  /** Principal and interest are both paid out. */
+  | 'pay-out';
+
 export interface PortfolioHolding {
   /** The bank's reference for this deposit — the investor's own identifier. */
   reference: string;
@@ -84,5 +107,28 @@ export interface PortfolioHolding {
   payoutLabel: string;
   /** Epoch ms the deposit began, taken from the confirmed booking. */
   startedAt: number;
+  /**
+   * What the investor asked the bank to do at maturity.
+   *
+   * `null` when the bank's form did not ask, or the answer was not captured —
+   * an absence the screens state rather than fill in with a default. Guessing
+   * here would tell someone their money renews when it may be paid out.
+   */
+  maturityInstruction: MaturityInstruction | null;
+  /**
+   * The vault account that funded this deposit — **a reference, not a copy.**
+   *
+   * `ExternalBankAccount.id` and nothing else. The bank name, the IFSC and the
+   * four digits stay in the vault, so an account corrected there is corrected
+   * everywhere, and a holding cannot carry bank-account details that have
+   * drifted from the record they describe.
+   *
+   * `null` for a deposit recorded before the vault existed, or one whose
+   * funding account was never chosen. Stated as unknown rather than guessed.
+   *
+   * It says which account was **nominated at booking**. It does not say money
+   * moved: there is no payment rail here, and nothing claims one.
+   */
+  fundingAccountId: string | null;
   status: HoldingStatus;
 }

@@ -1,6 +1,5 @@
 'use client';
 
-import { Bell } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -9,6 +8,8 @@ import { MobileNavPanel } from '@/components/navigation/mobile-nav';
 import { PRIMARY_NAV, isNavItemActive } from '@/constants/navigation';
 import { ROUTES } from '@/constants/routes';
 import { cn } from '@/lib/utils';
+
+import { NotificationBell } from './notification-bell';
 
 /**
  * TopNav — the public shell header from the approved Marketplace UI
@@ -75,14 +76,12 @@ export function TopNav() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="Notifications"
-            aria-disabled="true"
-            className="focus-ring text-content-muted hover:bg-surface-muted duration-fast inline-flex size-10 items-center justify-center rounded-full transition ease-out"
-          >
-            <Bell aria-hidden="true" className="size-5" />
-          </button>
+          {/*
+            The one place this shell reads application state. It is isolated in
+            its own client island so the navigation itself stays
+            presentation-only — see `NotificationBell`.
+          */}
+          <NotificationBell />
           <span
             aria-label="Account"
             className="bg-surface-muted text-caption text-content-muted inline-flex size-10 items-center justify-center rounded-full font-medium"

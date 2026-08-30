@@ -58,9 +58,18 @@ function pill(prefix) {
   return group ? buttonStartingWith(prefix, group) : undefined;
 }
 
+/**
+ * A real activation, not a synthetic bubble.
+ *
+ * `dispatchEvent(new MouseEvent('click'))` reaches React's listeners but skips
+ * the element's *activation behaviour*, so a `type="submit"` button never
+ * submits its form and a step that advances on submit looks stuck. `.click()`
+ * runs the activation behaviour the way a pointer does, and still bubbles into
+ * React — one helper that is honest for both kinds of control.
+ */
 function click(element) {
   if (!element) throw new Error('click: element not found');
-  element.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  element.click();
 }
 
 /** Sets a controlled input's value the way a user typing would. */
@@ -77,7 +86,18 @@ export async function runJourneySuite() {
   const appOut = await buildApp();
 
   const dom = createDom();
-  const { handlers } = await import(`file://${handlersOut}?t=${Date.now()}`);
+  const { handlers, productSummaries } = await import(`file://${handlersOut}?t=${Date.now()}`);
+
+  /* Totals are counted from the catalogue the handlers serve, never restated. */
+  const catalogueSize = productSummaries.length;
+  /** Mirrors the handler's `q` predicate — free-text search is bank name + product name. */
+  const matching = (term) =>
+    productSummaries.filter((product) =>
+      `${product.name} ${product.bank.name}`.toLowerCase().includes(term.toLowerCase()),
+    ).length;
+  const withBank = (bankId) => productSummaries.filter((p) => p.bank.id === bankId).length;
+  /** The announced total, read back as a number so counts compare exactly. */
+  const announcedTotal = () => Number(/of (\d+) products/.exec(resultCount())?.[1] ?? NaN);
   const { setupServer } = await import('msw/node');
 
   const requests = [];
@@ -164,11 +184,23 @@ export async function runJourneySuite() {
       'each goal carries its intent into the planner',
       $$('a', calloutSection).map((node) => node.getAttribute('href')),
       [
+        '/goal-planner/plan',
         '/goal-planner?goal=emergency',
         '/goal-planner?goal=education',
         '/goal-planner?goal=retirement',
         '/goal-planner',
       ],
+    );
+    /*
+      Stated as a rule rather than a list, so adding a fourth goal cannot
+      quietly ship a column that drops the customer's choice on the floor.
+    */
+    ok(
+      'every single-goal column carries a goal, and only the two open-ended entries do not',
+      $$('a', calloutSection)
+        .map((node) => node.getAttribute('href') ?? '')
+        .filter((href) => !['/goal-planner', '/goal-planner/plan'].includes(href))
+        .every((href) => href.startsWith('/goal-planner?goal=')),
     );
     check(
       'and the duplicate "Find my FD" button is gone from the callout',
@@ -304,7 +336,14 @@ export async function runJourneySuite() {
       A quick amount fills the field; the form's Continue action advances the
       planner. Both controls are part of the current UI contract.
     */
+    /*
+      The chip sets the field through React state, so the Continue button is
+      still disabled in this tick. Settling first is what a customer does by
+      simply being slower than a synchronous test.
+    */
     click(buttonStartingWith('₹1 lakh'));
+    await settle();
+
     click(buttonByText('Continue'));
     await settle();
 
@@ -327,9 +366,7 @@ export async function runJourneySuite() {
     */
     ok(
       'the last question asks for a target, and allows none',
-      /Is your goal a specific amount\?|Is there an amount you.re aiming for\?/.test(
-        norm(document.body.textContent),
-      ),
+      /Is there a maturity amount you.re aiming for\?/.test(norm(document.body.textContent)),
     );
     ok(
       'declining a target is offered as an explicit answer',
@@ -571,13 +608,22 @@ export async function runJourneySuite() {
       compareRowValues('Interest Rate')[namedColumn]?.includes('Best interest rate'),
       true,
     );
+    /*
+      Select is a live control now, not a placeholder: Comparison is one of the
+      two approved entries into Booking, and the button chooses the product the
+      action bar then books. What must hold is that each one still names its own
+      product, is operable, and reports whether it is the current choice — an
+      unlabelled or unpressed-state button is what breaks the screen reader's
+      account of the selection.
+    */
     check(
-      'one inert Select per column, each naming its product (D3)',
+      'one Select per column, each naming its product and reporting its state (D3)',
       $$('table tfoot button').map((node) => [
         node.getAttribute('aria-label'),
-        node.getAttribute('aria-disabled'),
+        node.getAttribute('aria-pressed'),
+        node.disabled,
       ]),
-      compareNames().map((name) => [`Select ${name}`, 'true']),
+      compareNames().map((name) => [`Select ${name}`, 'false', false]),
     );
     check('the table is captioned for screen readers', Boolean($('table caption')), true);
 
@@ -968,12 +1014,13 @@ export async function runJourneySuite() {
       [false, true],
     );
     check(
-      'one inert Select per card, each naming its product',
+      'one Select per card, each naming its product and reporting its state',
       $$(`${MOBILE} article > button`).map((node) => [
         node.getAttribute('aria-label'),
-        node.getAttribute('aria-disabled'),
+        node.getAttribute('aria-pressed'),
+        node.disabled,
       ]),
-      mobileNames().map((name) => [`Select ${name}`, 'true']),
+      mobileNames().map((name) => [`Select ${name}`, 'false', false]),
     );
 
     /*
@@ -1279,10 +1326,14 @@ export async function runJourneySuite() {
       element unmounts, so without the screen's handler focus would land on
       `<body>` and the next Tab would restart at the top of the page.
     */
-    check(
+    /*
+      Compared by identity, not by value: `check` serialises what it is given,
+      and a DOM node is circular. This is the assertion, not a formatting
+      preference — two different nodes must not compare equal.
+    */
+    ok(
       'focus returns to the field rather than the document',
-      document.activeElement,
-      amountField(),
+      document.activeElement === amountField(),
     );
     check(
       'and the status names the newly applied amount',
@@ -1327,8 +1378,21 @@ export async function runJourneySuite() {
     await settle();
     check('a below-minimum draft is still only a draft', belowMinimumCount(), 0);
 
+    /*
+      Captured before applying, so the wait below can be on the figures
+      themselves. Waiting only for the below-minimum flag was a race: the flag
+      appears a render before the recomputed values do, and a `heldValues` taken
+      in that window held the *previous* amount's figures — which then failed an
+      assertion three steps later, intermittently and for no visible reason.
+    */
+    const beforeSmallAmount = compareRowValues('Maturity Value');
+
     click(applyButton());
     await waitFor(() => belowMinimumCount() > 0, { label: 'a column falls below its minimum' });
+    await waitFor(
+      () => compareRowValues('Maturity Value').join('|') !== beforeSmallAmount.join('|'),
+      { label: 'the figures recompute for the smaller amount' },
+    );
 
     check(
       'the flagged columns still show their returns',
@@ -1407,7 +1471,11 @@ export async function runJourneySuite() {
       'Grow your savings with I',
     );
     check('first load renders a full page of products', productCount(), 6);
-    check('first load announces the range', resultCount(), 'Showing 1–6 of 24 products');
+    check(
+      'first load announces the range',
+      resultCount(),
+      `Showing 1–6 of ${catalogueSize} products`,
+    );
     check(
       'the approved chip row is present',
       ['Bank', 'Tenure', 'Interest Rate', 'Amount'].map((label) => Boolean(buttonByText(label))),
@@ -1435,8 +1503,17 @@ export async function runJourneySuite() {
     check('search performs exactly one write', writes(), 1);
     check('search pushes — the user asked for this result set (I8)', pushes(), 1);
     check('search writes q', app.currentUrl(), '/?q=hdfc');
-    await waitFor(() => resultCount().includes('of 4'), { label: 'search applied' });
-    check('search narrows the listing (G1 closed)', resultCount(), 'Showing 1–4 of 4 products');
+    await waitFor(() => announcedTotal() === matching('hdfc'), { label: 'search applied' });
+    /*
+      Counted from the catalogue the handlers serve rather than restated. A
+      literal "4" is an assertion about the fixture's shape, and it fails the
+      day a bank gains a product — which reads as a search defect when it is
+      not one. What is asserted is the rule: the listing announces exactly the
+      products that match, and shows a page of them.
+    */
+    ok('search narrows the listing (G1 closed)', announcedTotal() < catalogueSize);
+    check('and it announces exactly the matches', announcedTotal(), matching('hdfc'));
+    check('rendering one card per match', productCount(), matching('hdfc'));
 
     // 2. Bank filter on top of the search.
     click(facetChip('Bank'));
@@ -1460,7 +1537,8 @@ export async function runJourneySuite() {
     await waitFor(() => !app.currentUrl().includes('q='), { label: 'remove search pill' });
     check('removing a pill is one write', writes(), 3);
     check('removing the search keeps the bank filter', app.currentUrl(), '/?bank=hdfc');
-    await waitFor(() => resultCount().includes('of 4'), { label: 'bank-only results' });
+    await waitFor(() => announcedTotal() === withBank('hdfc'), { label: 'bank-only results' });
+    check('the bank filter alone returns that bank’s deposits', announcedTotal(), withBank('hdfc'));
 
     // 4. Tenure chip, then a rate band.
     click(facetChip('Tenure'));
@@ -1481,10 +1559,14 @@ export async function runJourneySuite() {
       !/[?&]search=/.test(lastListingRequest()),
     );
     await settle(400);
-    // Every HDFC product in the fixture set is a 12-month deposit, so this
-    // combination legitimately returns the same four rows. The assertion that
-    // matters is that both filters reached the API, above.
-    check('combined filters return a coherent set', resultCount(), 'Showing 1–4 of 4 products');
+    /*
+      A combination cannot widen the set. Asserted as that rule rather than as a
+      count, because the count depends on how the fixture happens to distribute
+      tenures — and the defect worth catching is a filter that silently does
+      nothing, which this catches and a matching literal would not.
+    */
+    ok('combined filters cannot widen the set', announcedTotal() <= withBank('hdfc'));
+    check('and the listing renders what it announces', productCount(), announcedTotal());
 
     // 5. A combination with no matches must reach the empty state, not a
     //    stale list — this is where a filter that silently does nothing shows.
@@ -1506,8 +1588,12 @@ export async function runJourneySuite() {
     check('every step of the journey was intent, none a correction', replaces(), 0);
     check('clear all returns to /', app.currentUrl(), '/');
     check('the whole journey is walkable backwards', app.historyStack().entries.length, 7);
-    await waitFor(() => resultCount().includes('of 24'), { label: 'cleared' });
-    check('clearing restores the full set', resultCount(), 'Showing 1–6 of 24 products');
+    await waitFor(() => resultCount().includes(`of ${catalogueSize}`), { label: 'cleared' });
+    check(
+      'clearing restores the full set',
+      resultCount(),
+      `Showing 1–6 of ${catalogueSize} products`,
+    );
 
     /* ============================================================== */
     section('J1b · Filters combined with pagination');
@@ -1571,14 +1657,14 @@ export async function runJourneySuite() {
       Boolean(buttonStartingWith('Bank: Axis Bank')),
       false,
     );
-    await waitFor(() => resultCount().includes('of 4'), { label: 'back restores results' });
-    check('back restores the result set', resultCount(), 'Showing 1–4 of 4 products');
+    await waitFor(() => announcedTotal() === matching('axis'), { label: 'back restores results' });
+    check('back restores the result set', announcedTotal(), matching('axis'));
 
     app.historyBack();
     await settle(300);
     check('back again reaches the unfiltered start', app.currentUrl(), '/');
     check('the search input is cleared with it', $('#home-search-query').value, '');
-    await waitFor(() => resultCount().includes('of 24'), { label: 'back to start' });
+    await waitFor(() => resultCount().includes(`of ${catalogueSize}`), { label: 'back to start' });
 
     app.historyForward();
     app.historyForward();
@@ -1626,7 +1712,11 @@ export async function runJourneySuite() {
     );
     check('the clamp adds no history entry', app.historyStack().entries.length, 1);
     await settle(300);
-    check('the clamp never announces a garbled range', resultCount(), 'Showing 1–4 of 4 products');
+    check(
+      'the clamp never announces a garbled range',
+      resultCount(),
+      `Showing 1–${withBank('hdfc')} of ${withBank('hdfc')} products`,
+    );
 
     /* ============================================================== */
     section('J4 · Shared and hostile URLs');
@@ -1648,7 +1738,11 @@ export async function runJourneySuite() {
     await load('/?bank=%3Cscript%3E&minRate=abc&tenure=99&sort=nonsense&order=up&amount=abc');
     check('a hostile URL renders a valid screen', productCount(), 6);
     check('a hostile URL performs no write', writes(), 0);
-    check('rejected values apply no filter', resultCount(), 'Showing 1–6 of 24 products');
+    check(
+      'rejected values apply no filter',
+      resultCount(),
+      `Showing 1–6 of ${catalogueSize} products`,
+    );
     check('rejected values press no chip', $('[aria-label="Active filters"]'), null);
     check(
       'rejected values never reach the API',
@@ -1725,7 +1819,7 @@ export async function runJourneySuite() {
     check('clearing from the empty state is one write', writes(), 1);
     check('clearing from the empty state returns to /', app.currentUrl(), '/');
     await waitFor(() => productCount() === 6, { label: 'recovered' });
-    check('the listing recovers', resultCount(), 'Showing 1–6 of 24 products');
+    check('the listing recovers', resultCount(), `Showing 1–6 of ${catalogueSize} products`);
 
     // A well-formed but unknown bank id is a data question, not a syntax one:
     // it must reach the API and land in the recoverable empty state.
@@ -1976,6 +2070,1383 @@ export async function runJourneySuite() {
         .every((level, index, all) => index === 0 || level - all[index - 1] <= 1),
       true,
     );
+
+    /* ============================================================== */
+    section('T1 · Tax Center — interest attributed to a year, and nothing more');
+
+    /** Mounts the Tax Center over a seeded portfolio. */
+    async function loadTax(holdings) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      if (holdings !== null) {
+        window.sessionStorage.setItem(
+          'fd:portfolio-holdings:v2',
+          JSON.stringify({ version: 2, holdings }),
+        );
+      }
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory('/tax');
+      requests.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: 'tax render' });
+      await settle(200);
+    }
+
+    const taxText = () => norm(document.body.textContent);
+
+    const taxDeposit = (over = {}) => ({
+      reference: 'FD-TAX-J1',
+      productType: 'fixed-deposit',
+      productId: 'fd-004',
+      productName: 'State Bank of India Fixed Deposit',
+      bank: {
+        id: 'sbi',
+        name: 'State Bank of India',
+        shortCode: 'SBI',
+        initials: 'SB',
+        logoUrl: null,
+        rating: 'AAA',
+        category: 'universal',
+      },
+      principal: 100_000,
+      annualRate: 7.85,
+      tenureMonths: 24,
+      isCumulative: true,
+      payoutLabel: 'At maturity',
+      /* Opened 22 Aug 2026: crosses 2026–27 and 2027–28. */
+      startedAt: new Date(2026, 7, 22).getTime(),
+      maturityInstruction: 'renew-principal-and-interest',
+      fundingAccountId: null,
+      status: 'active',
+      ...over,
+    });
+
+    /* ---- Nothing held ---- */
+    await loadTax([]);
+    check('the Tax Center is titled', norm($('h1')?.textContent), 'Tax Center');
+    ok(
+      'an investor with no deposits is told there is nothing to report',
+      /No FD interest to report yet/.test(taxText()),
+    );
+    ok('and is not shown a calculated zero', !/₹0\b/.test(taxText()));
+    ok(
+      'with the way to start',
+      $$('a').some((node) => norm(node.textContent).startsWith('Explore fixed deposits')),
+    );
+
+    /* Even with nothing held, the honest statements still stand. */
+    ok('TDS is stated as not connected', /Not connected/.test(taxText()));
+    ok(
+      'and no tax liability is claimed anywhere',
+      !/tax payable|your tax liability is|estimated tax/i.test(taxText()),
+    );
+
+    /* ---- A deposit crossing two tax years ---- */
+    await loadTax([taxDeposit()]);
+
+    const selector = $('#tax-year');
+    ok('a tax year can be chosen', Boolean(selector));
+    ok(
+      'and the years offered come from the deposit',
+      [...selector.options].some((option) => option.value === '2026-27') &&
+        [...selector.options].some((option) => option.value === '2027-28'),
+    );
+
+    const setYear = async (id) => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        'value',
+      ).set;
+      setter.call($('#tax-year'), id);
+      $('#tax-year').dispatchEvent(new window.Event('change', { bubbles: true }));
+      await settle(200);
+    };
+
+    await setYear('2026-27');
+    ok('the year is named in full', /Tax Year 2026–27/.test(taxText()));
+    ok(
+      'the period is stated as 1 April to 31 March',
+      /1 Apr 2026/.test(taxText()) && /31 Mar 2027/.test(taxText()),
+    );
+
+    /* The figure is labelled for what it is, beside itself. */
+    ok('the figure is labelled platform-derived', /Platform-derived/.test(taxText()));
+    ok('and a straight-line approximation', /Straight-line approximation/.test(taxText()));
+    ok(
+      'and explicitly not a tax liability',
+      /not your complete taxable income/.test(taxText()) &&
+        /not a tax liability|not your final tax liability/.test(taxText()),
+    );
+
+    /* The deposit contributes part of its interest, over the overlap only. */
+    ok('the deposit is listed', /State Bank of India/.test(taxText()));
+    ok('with the principal and rate', /₹1,00,000/.test(taxText()) && /7\.85%/.test(taxText()));
+    ok(
+      'and the applicable period is the overlap, not the whole term',
+      /22 Aug 2026 – 31 Mar 2027/.test(taxText()),
+    );
+
+    const firstYearText = taxText();
+
+    /* Switching year changes the figure — the interest is not all in one year. */
+    await setYear('2027-28');
+    ok('the next year is its own view', /Tax Year 2027–28/.test(taxText()));
+    ok('and reports a different period', taxText() !== firstYearText);
+    ok('the closing year runs from 1 April', /1 Apr 2027/.test(taxText()));
+
+    /* ---- A deposit the platform cannot allocate ---- */
+    await loadTax([taxDeposit({ reference: 'FD-TAX-DAYS', tenureMonths: 0 })]);
+    ok(
+      'a day-published term is reported as unallocatable',
+      /Tax-year allocation unavailable/.test(taxText()),
+    );
+    ok('with the reason stated', /publishes this deposit’s term in days/.test(taxText()));
+    ok(
+      'and it is excluded from the total rather than counted as zero',
+      /could not be allocated to a tax year/.test(taxText()),
+    );
+
+    /* ---- Multiple deposits, multiple banks ---- */
+    await loadTax([
+      taxDeposit(),
+      taxDeposit({
+        reference: 'FD-TAX-J2',
+        productName: 'HDFC Bank Fixed Deposit',
+        bank: {
+          id: 'hdfc',
+          name: 'HDFC Bank',
+          shortCode: 'HDFC',
+          initials: 'HB',
+          logoUrl: null,
+          rating: 'AAA',
+          category: 'universal',
+        },
+        principal: 300_000,
+        annualRate: 7.2,
+      }),
+    ]);
+    ok(
+      'every contributing deposit is listed',
+      /State Bank of India/.test(taxText()) && /HDFC Bank/.test(taxText()),
+    );
+
+    /* ---- Nothing sensitive is on the page ---- */
+    for (const leak of ['PAN', 'Aadhaar', 'IFSC', '••••']) {
+      ok(`no ${leak} appears in the Tax Center`, !taxText().includes(leak));
+    }
+
+    /* ---- Documents: linked, never generated ---- */
+    ok(
+      'the available document links to reports and statements',
+      $$('a').some((node) => node.getAttribute('href') === '/portfolio/reports'),
+    );
+    ok(
+      'a bank-issued certificate is listed as unavailable',
+      /Form 16A/.test(taxText()) && /no connection to bank document systems/.test(taxText()),
+    );
+    ok(
+      'and no document is generated here',
+      !$$('button').some((node) => /download|generate/i.test(norm(node.textContent))),
+    );
+
+    /* ---- Out to the portfolio and back ---- */
+    ok(
+      'a deposit links to the portfolio',
+      $$('a').some((node) => node.getAttribute('href') === '/portfolio'),
+    );
+
+    /* ---- A refresh derives the same page ---- */
+    const taxBefore = taxText();
+    app.unmount?.();
+    document.body.innerHTML = '<div id="root"></div>';
+    app.mount($('#root'));
+    await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: 'tax remount' });
+    await settle(200);
+    check('a refresh derives the same summary', taxText(), taxBefore);
+
+    check('the Tax Center has exactly one h1', $$('h1').length, 1);
+    check(
+      'and no heading level is skipped',
+      $$('h1,h2,h3,h4')
+        .map((node) => Number(node.tagName[1]))
+        .every((level, index, all) => index === 0 || level - all[index - 1] <= 1),
+      true,
+    );
+
+    window.sessionStorage.clear();
+
+    section('A1 · Admin — an operations console over the same platform');
+
+    /** Mounts an admin route with an optional seeded portfolio. */
+    async function loadAdmin(url, { holdings = null } = {}) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      if (holdings !== null) {
+        window.sessionStorage.setItem(
+          'fd:portfolio-holdings:v2',
+          JSON.stringify({ version: 2, holdings }),
+        );
+      }
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory(url);
+      requests.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: `load ${url}` });
+      await settle(300);
+    }
+
+    const adminText = () => norm(document.body.textContent);
+    const setRole = async (role) => {
+      const select = $('#admin-role');
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        'value',
+      ).set;
+      setter.call(select, role);
+      select.dispatchEvent(new window.Event('change', { bubbles: true }));
+      await settle(200);
+    };
+
+    const adminHolding = {
+      reference: 'FD-ADMIN-1',
+      productType: 'fixed-deposit',
+      productId: 'fd-002',
+      productName: 'HDFC Bank Fixed Deposit',
+      bank: {
+        id: 'hdfc',
+        name: 'HDFC Bank',
+        shortCode: 'HDFC',
+        initials: 'HB',
+        logoUrl: null,
+        rating: 'AAA',
+        category: 'universal',
+      },
+      principal: 800_000,
+      annualRate: 7.35,
+      tenureMonths: 24,
+      isCumulative: true,
+      payoutLabel: 'At maturity',
+      startedAt: Date.now() - 100 * 24 * 60 * 60 * 1000,
+      maturityInstruction: 'renew-principal-and-interest',
+      fundingAccountId: null,
+      status: 'active',
+    };
+
+    /* ---- Overview ---- */
+    await loadAdmin('/admin', { holdings: [adminHolding] });
+    check('the console opens on operations', norm($('h1')?.textContent), 'Operations overview');
+    ok('it leads with what needs attention', /Needs attention/.test(adminText()));
+    ok('and its own navigation is present', Boolean($('nav[aria-label="Operations"]')));
+
+    /*
+      The two portals stay separate: the console has no customer navigation, and
+      nothing in it links into the customer product's own shell.
+      */
+    ok('the customer navigation is absent', !$('nav[aria-label="Main"]'));
+    ok(
+      'the demonstration is declared on every screen',
+      /Demo environment/.test(adminText()) && /not authorisation/.test(adminText()),
+    );
+    ok(
+      'the audit trail starts empty rather than pre-populated',
+      /No actions have been taken yet/.test(adminText()),
+    );
+
+    /* ---- Customers ---- */
+    await loadAdmin('/admin/customers', { holdings: [adminHolding] });
+    check('the register is titled', norm($('h1')?.textContent), 'Customers');
+    ok('the live investor is listed', /CUS-1001/.test(adminText()));
+    ok('demonstration customers are tagged', /Demo/.test(adminText()));
+    ok('their deposits are counted from the portfolio', /₹8,00,000/.test(adminText()));
+
+    /* No identity document is anywhere on an operations screen. */
+    for (const leak of ['PAN', 'Aadhaar', 'IFSC', '••••']) {
+      ok(`no ${leak} appears in the register`, !adminText().includes(leak));
+    }
+
+    type($('#admin-customer-search'), 'meera');
+    await settle(200);
+    ok(
+      'search narrows the register',
+      /Meera Iyer/.test(adminText()) && !/CUS-1001/.test(adminText()),
+    );
+
+    type($('#admin-customer-search'), 'zzzz');
+    await settle(200);
+    ok('and a search that matches nothing says so', /No customer matched/.test(adminText()));
+
+    await loadAdmin('/admin/customers/CUS-1024');
+    check('a customer opens', norm($('h1')?.textContent), 'Meera Iyer');
+    ok(
+      'showing verification and deposits',
+      /Verification/.test(adminText()) && /Fixed deposits/.test(adminText()),
+    );
+
+    await loadAdmin('/admin/customers/CUS-9999');
+    check('an unknown customer is refused', norm($('h1')?.textContent), 'Customer not found');
+
+    /* ---- Applications: review, then decide ---- */
+    await loadAdmin('/admin/applications', { holdings: [adminHolding] });
+    check('the queue is titled', norm($('h1')?.textContent), 'Applications');
+    ok('a demonstration application is queued', /APP-1042/.test(adminText()));
+    ok(
+      'and a confirmed deposit appears as completed',
+      /FD-ADMIN-1/.test(adminText()) && /Completed/.test(adminText()),
+    );
+
+    await loadAdmin('/admin/applications/APP-1042');
+    ok('an application opens', /APP-1042/.test(adminText()));
+    ok('with a decision available', Boolean(buttonByText('Approve (demo)')));
+    ok(
+      'labelled as a demonstration rather than a bank submission',
+      /No bank receives an application from this console/.test(adminText()),
+    );
+
+    click(buttonByText('Approve (demo)'));
+    await settle(300);
+    ok('the decision is reflected', /Approved \(simulated\)/.test(adminText()));
+    ok('and recorded as activity', /approved \(simulated\)/.test(adminText()));
+
+    /* The queue reads the same journal, so it agrees. */
+    app.visit('/admin/applications');
+    await settle(400);
+    ok(
+      'the queue shows the decision the audit log recorded',
+      /Approved \(simulated\)/.test(adminText()),
+    );
+
+    /* ---- Maker and checker ---- */
+    app.visit('/admin/products');
+    await waitFor(() => /FD products/.test(adminText()), { label: 'products load' });
+    await settle(400);
+    ok('the catalogue is listed', /Base rate/.test(adminText()));
+    ok(
+      'and the console says a change here does not alter it',
+      /Changes proposed here do not alter it/.test(adminText()),
+    );
+
+    app.visit('/admin/products/fd-002');
+    await waitFor(
+      () => Boolean(buttonByText('Propose change')) || /Rate change/.test(adminText()),
+      {
+        label: 'product detail',
+      },
+    );
+    await settle(300);
+
+    /* Operations approves but never proposes — the separation is the control. */
+    ok(
+      'operations cannot propose a change',
+      !buttonByText('Propose change') && /does not hold/.test(adminText()),
+    );
+
+    await setRole('product');
+    await settle(300);
+    ok('a product admin can', Boolean(buttonByText('Propose change')));
+
+    type($('#admin-proposed-rate'), '7.6');
+    await settle(200);
+    click(buttonByText('Propose change'));
+    await settle(300);
+
+    ok('the proposal is pending review', /Pending review/.test(adminText()));
+    ok('and states what would change', /→/.test(adminText()));
+    ok(
+      'the proposing role cannot approve its own change',
+      !buttonByText('Approve (demo)') && /does not hold/.test(adminText()),
+    );
+
+    await setRole('operations');
+    await settle(300);
+    ok('the checker can', Boolean(buttonByText('Approve (demo)')));
+    click(buttonByText('Approve (demo)'));
+    await settle(300);
+    ok('an approved change says it is simulated', /Approved \(simulated\)/.test(adminText()));
+    ok(
+      'and is never described as published',
+      !/Published/.test(adminText()) &&
+        /publishing requires a bank integration|not connected/i.test(adminText()),
+    );
+
+    /* ---- Verification ---- */
+    app.visit('/admin/verification');
+    await settle(400);
+    ok('verification cases are listed', /Needs a decision/.test(adminText()));
+    ok(
+      'and no external check is claimed',
+      /registry or bureau check has been performed/.test(adminText()),
+    );
+
+    /* ---- Support operations ---- */
+    app.visit('/admin/support');
+    await settle(400);
+    ok('the support queue is the customer’s own', /SUP-1042/.test(adminText()));
+    ok(
+      'operations cannot act on it',
+      !buttonByText('Resolved') && /does not hold/.test(adminText()),
+    );
+
+    await setRole('support');
+    await settle(300);
+    click(buttonByText('Resolved'));
+    await settle(300);
+    ok('a support admin can resolve a request', /Resolved/.test(adminText()));
+    ok(
+      'and nothing is sent to the customer',
+      /No email, message or notification is sent/.test(adminText()),
+    );
+
+    /* ---- Audit ---- */
+    app.visit('/admin/audit');
+    await settle(400);
+    ok('every action taken is in the log', /Application APP-1042/.test(adminText()));
+    ok('including the product change', /Rate change/.test(adminText()));
+    ok('and the support change', /Support request SUP-1042/.test(adminText()));
+    ok(
+      'each line names the role that acted',
+      /Product Administrator|Operations Administrator/.test(adminText()),
+    );
+    ok('and declares itself simulated', /Simulated/.test(adminText()));
+
+    /* ---- An auditor sees everything and changes nothing ---- */
+    await setRole('auditor');
+    await settle(300);
+    app.visit('/admin/applications/APP-1043');
+    await settle(400);
+    ok(
+      'an auditor cannot decide an application',
+      !buttonByText('Approve (demo)') && /does not hold/.test(adminText()),
+    );
+
+    /* ---- Refresh keeps the console coherent ---- */
+    app.unmount?.();
+    document.body.innerHTML = '<div id="root"></div>';
+    app.mount($('#root'));
+    await waitFor(() => Boolean($('h1')), { label: 'admin remount' });
+    await settle(300);
+    ok('a refresh keeps the chosen role', /Auditor/.test(adminText()));
+
+    window.sessionStorage.clear();
+
+    section('S1 · Support — self-service first, context carried, nothing faked');
+
+    /** Mounts a support route over a seeded portfolio and support store. */
+    async function loadSupport(url, { holdings = null, requests = null } = {}) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      if (holdings !== null) {
+        window.sessionStorage.setItem(
+          'fd:portfolio-holdings:v2',
+          JSON.stringify({ version: 2, holdings }),
+        );
+      }
+      if (requests !== null) {
+        window.sessionStorage.setItem(
+          'fd:support-requests:v1',
+          JSON.stringify({ version: 1, requests }),
+        );
+      }
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory(url);
+      requests_.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: `load ${url}` });
+      await settle(200);
+    }
+
+    /* `requests` is the journey's own name for the seeded list; the harness's
+       recorded network calls are `requests` too, so alias the outer one. */
+    const requests_ = requests;
+
+    const supportText = () => norm(document.body.textContent);
+
+    const supportHolding = {
+      reference: 'FD-SUP-JOURNEY',
+      productType: 'fixed-deposit',
+      productId: 'fd-008',
+      productName: 'AU Small Finance Bank Fixed Deposit',
+      bank: {
+        id: 'au-small-finance',
+        name: 'AU Small Finance Bank',
+        shortCode: 'AU',
+        initials: 'AU',
+        logoUrl: null,
+        rating: 'AA',
+        category: 'small-finance',
+      },
+      principal: 300_000,
+      annualRate: 7.75,
+      tenureMonths: 18,
+      isCumulative: true,
+      payoutLabel: 'At maturity',
+      startedAt: Date.now() - 60 * 24 * 60 * 60 * 1000,
+      maturityInstruction: 'pay-out',
+      fundingAccountId: null,
+      status: 'active',
+    };
+
+    /* ---- Support home ---- */
+    await loadSupport('/support');
+    check('support is titled as a question', norm($('h1')?.textContent), 'How can we help?');
+    ok('self-service comes first', Boolean($('#support-search')));
+    ok(
+      'and it is described as a search rather than an assistant',
+      /not an assistant/.test(supportText()),
+    );
+    ok('topics are offered', /Popular topics/.test(supportText()));
+
+    /* Searching filters the help content deterministically. */
+    type($('#support-search'), 'maturity');
+    await settle(200);
+    ok(
+      'a search finds the article about maturity dates',
+      /Where can I see my maturity date/.test(supportText()),
+    );
+    ok(
+      'and links to the screen that answers it',
+      $$('a').some((node) => node.getAttribute('href') === '/portfolio/maturities'),
+    );
+
+    type($('#support-search'), 'mortgage');
+    await settle(200);
+    ok('a word we have no content for says so', /No help articles matched/.test(supportText()));
+    ok(
+      'and offers the way to ask',
+      $$('a').some((node) => node.getAttribute('href') === '/support/new'),
+    );
+
+    /* Topics filter in place. */
+    type($('#support-search'), '');
+    await settle(100);
+    click(buttonByText('Bank account'));
+    await settle(200);
+    ok('a topic lists its own articles', /How do I add a bank account/.test(supportText()));
+
+    /* The seeded demonstration requests are visible and labelled. */
+    ok('recent requests are shown', /SUP-1042/.test(supportText()));
+    ok('with their status in words', /In progress/.test(supportText()));
+    ok(
+      'and the page states that nothing is received by anyone',
+      /No support team, bank or external system receives them/.test(supportText()),
+    );
+
+    /* ---- Empty state ---- */
+    await loadSupport('/support', { requests: [] });
+    ok(
+      'a customer who has never asked is told so',
+      /You haven't contacted support yet|You haven’t contacted support yet/.test(supportText()),
+    );
+
+    /* ---- Contextual contact ---- */
+    await loadSupport('/support/new?holding=FD-SUP-JOURNEY', { holdings: [supportHolding] });
+    check('contacting support is titled', norm($('h1')?.textContent), 'Contact support');
+
+    /*
+      The point of the module: the deposit came with the customer, so the
+      product states it rather than asking which one they mean.
+    */
+    ok(
+      'the deposit the customer arrived from is already known',
+      /AU Small Finance Bank fixed deposit/.test(supportText()) &&
+        /FD-SUP-JOURNEY/.test(supportText()),
+    );
+    ok('and it is never asked for', !/which fd|which deposit/i.test(supportText()));
+    ok('nor is any figure about it restated', !/₹3,00,000/.test(supportText()));
+    ok(
+      'the customer is warned not to send credentials',
+      /do not include your full bank account number/i.test(supportText()),
+    );
+    ok(
+      'and told what submitting actually does',
+      /no support desk to receive it/.test(supportText()),
+    );
+
+    /* A reference that names nothing falls back to general support. */
+    await loadSupport('/support/new?holding=FD-NOT-HELD', { holdings: [supportHolding] });
+    ok(
+      'an unknown deposit is named as no longer held',
+      /no longer in your portfolio/.test(supportText()),
+    );
+    ok(
+      'and the request is raised as general support instead',
+      /raised as general support/.test(supportText()),
+    );
+
+    /* ---- Creating a request ---- */
+    await loadSupport('/support/new?holding=FD-SUP-JOURNEY', {
+      holdings: [supportHolding],
+      requests: [],
+    });
+
+    const supportField = (text) => {
+      const label = $$('label').find((node) => norm(node.textContent) === text);
+      return label === undefined ? undefined : $(`#${CSS.escape(label.getAttribute('for') ?? '')}`);
+    };
+
+    click(buttonByText('Add account') ?? buttonByText('Submit request'));
+    await settle(200);
+    ok('an empty request is refused', /Give your request a short subject/.test(supportText()));
+
+    type(supportField('Subject'), 'Maturity instruction question');
+    const messageField = supportField('Your message');
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      'value',
+    ).set;
+    setter.call(messageField, 'I would like to change what happens when this deposit matures.');
+    messageField.dispatchEvent(new window.Event('input', { bubbles: true }));
+    await settle(100);
+
+    click(buttonByText('Submit request'));
+    await settle(300);
+
+    ok(
+      'a submitted request opens on its own page',
+      /\/support\/requests\/SUP-/.test(app.currentUrl()),
+    );
+    ok('numbered for the customer to quote', /SUP-\d+/.test(supportText()));
+    ok('it is open', /Open/.test(supportText()));
+    ok(
+      'the platform acknowledges it without claiming anyone received it',
+      /recorded in this demonstration environment/.test(supportText()) &&
+        /No support team, bank or external system was contacted/.test(supportText()),
+    );
+    ok(
+      'the customer’s own words are kept',
+      /what happens when this deposit matures/.test(supportText()),
+    );
+    ok(
+      'the deposit it is about is named from the portfolio',
+      /AU Small Finance Bank fixed deposit/.test(supportText()),
+    );
+    ok('and the next step is stated', /Next step/.test(supportText()));
+    ok(
+      'no agent, team or reply time is claimed',
+      !/an agent|our team is|within \d+ hours|typically replies/i.test(supportText()),
+    );
+
+    /* Replying is a real action, so the control does something. */
+    const replyField = $('#support-reply');
+    setter.call(replyField, 'Any update on this?');
+    replyField.dispatchEvent(new window.Event('input', { bubbles: true }));
+    await settle(100);
+    click(buttonByText('Send reply'));
+    await settle(200);
+    ok('a reply joins the conversation', /Any update on this\?/.test(supportText()));
+
+    /* ---- An unknown request number ---- */
+    await loadSupport('/support/requests/SUP-9999', { requests: [] });
+    ok(
+      'an unknown request is refused plainly',
+      /^We couldn.t find that request$/.test(norm($('h1')?.textContent)),
+    );
+    ok(
+      'with the way back',
+      $$('a').some((node) => node.getAttribute('href') === '/support'),
+    );
+
+    window.sessionStorage.clear();
+
+    section('F1 · Family — a projection over what each member holds');
+
+    /** Mounts the family dashboard over a seeded portfolio for the primary member. */
+    async function loadFamily(holdings) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      if (holdings) {
+        window.sessionStorage.setItem(
+          'fd:portfolio-holdings:v2',
+          JSON.stringify({ version: 2, holdings }),
+        );
+      }
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory('/family');
+      requests.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: 'family render' });
+      await settle(200);
+    }
+
+    const familyText = () => norm(document.body.textContent);
+
+    const ownFd = {
+      reference: 'FD-FAM-1',
+      productType: 'fixed-deposit',
+      productId: 'fd-002',
+      productName: 'HDFC Bank Fixed Deposit',
+      bank: {
+        id: 'hdfc',
+        name: 'HDFC Bank',
+        shortCode: 'HDFC',
+        initials: 'HB',
+        logoUrl: null,
+        rating: 'AAA',
+        category: 'universal',
+      },
+      principal: 1_000_000,
+      annualRate: 7.5,
+      tenureMonths: 24,
+      isCumulative: true,
+      payoutLabel: 'At maturity',
+      startedAt: Date.now() - 120 * 24 * 60 * 60 * 1000,
+      maturityInstruction: 'renew-principal-and-interest',
+      fundingAccountId: null,
+      status: 'active',
+    };
+
+    /* ---- The investor holds nothing of their own ---- */
+    await loadFamily(null);
+    check('the family view is titled', norm($('h1')?.textContent), 'Family financial overview');
+    ok('the family is composed of its members', /Your family/.test(familyText()));
+    ok('and the primary member is named as such', /Primary member/.test(familyText()));
+
+    /*
+      The rule this module must never break: a demonstration member's money is
+      never presented as the investor's own.
+    */
+    ok('a demonstration member is labelled', /Demo data|Demonstration member/.test(familyText()));
+    ok(
+      'and the totals say how much of them is demonstration data',
+      /demonstration data for/.test(familyText()),
+    );
+    ok(
+      'the screen never claims anyone else signed in',
+      !/signed in as/i.test(familyText()) && /has not signed in/.test(familyText()),
+    );
+
+    /* ---- The investor's own deposit joins the family total ---- */
+    await loadFamily([ownFd]);
+    ok('the investor’s own deposit is counted', /₹10,00,000/.test(familyText()));
+    ok('and the family total is the sum of both', /₹15,00,000/.test(familyText()));
+    ok(
+      'each member’s deposits are attributed to them',
+      /1 FD/.test(familyText()) && /Spouse/.test(familyText()),
+    );
+
+    /* Upcoming maturities come from the schedule, with whose deposit each is. */
+    ok('upcoming maturities are listed', /Upcoming family maturities/.test(familyText()));
+    ok('with the expected value the portfolio derived', /Expected maturity ₹/.test(familyText()));
+
+    /* Goals report only what the platform can attribute. */
+    ok(
+      'a goal with nothing linked says so rather than showing zero',
+      /No deposits are linked to this goal yet/.test(familyText()),
+    );
+    ok('and the reason is stated once', /Booking does not yet record/.test(familyText()));
+
+    /* ---- Nothing sensitive is anywhere on the page ---- */
+    for (const leak of ['PAN', 'Aadhaar', 'IFSC', '••••']) {
+      ok(`no ${leak} appears on the family view`, !familyText().includes(leak));
+    }
+
+    /* ---- Every destination is a route that exists ---- */
+    const familyLinks = () => $$('a').map((node) => node.getAttribute('href') ?? '');
+    for (const destination of [
+      '/portfolio',
+      '/portfolio/maturities',
+      '/goal-planner',
+      '/portfolio/reports',
+    ]) {
+      ok(`the family view leads to ${destination}`, familyLinks().includes(destination));
+    }
+    ok(
+      'and offers no link that goes nowhere',
+      familyLinks().every((href) => href.length > 0),
+    );
+
+    /* ---- A refresh derives the same view ---- */
+    const familyBefore = familyText();
+    app.unmount?.();
+    document.body.innerHTML = '<div id="root"></div>';
+    app.mount($('#root'));
+    await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: 'family remount' });
+    await settle(200);
+    check('a refresh derives the same family view', familyText(), familyBefore);
+
+    check('the family view has exactly one h1', $$('h1').length, 1);
+    check(
+      'and no heading level is skipped',
+      $$('h1,h2,h3,h4')
+        .map((node) => Number(node.tagName[1]))
+        .every((level, index, all) => index === 0 || level - all[index - 1] <= 1),
+      true,
+    );
+
+    window.sessionStorage.clear();
+
+    section('B1 · Bank accounts — the vault, and what Booking refers to');
+
+    /**
+     * Mounts a vault route.
+     *
+     * `seed` is written to the vault's own key when given; passing `null` lets
+     * the store seed its demonstration accounts, and passing `[]` produces the
+     * empty vault a new customer sees.
+     */
+    async function loadVault(url, seed) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      if (seed !== null) {
+        window.sessionStorage.setItem(
+          'fd:bank-accounts:v1',
+          JSON.stringify({ version: 1, accounts: seed }),
+        );
+      }
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory(url);
+      requests.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: `load ${url}` });
+      await settle(200);
+    }
+
+    const vaultText = () => norm(document.body.textContent);
+
+    /* ---- Empty vault ---- */
+    await loadVault('/bank-accounts', []);
+    check('an empty vault is titled', norm($('h1')?.textContent), 'Bank accounts');
+    ok('and states what an account is for', /fund your investments/.test(vaultText()));
+    ok(
+      'with one way forward',
+      $$('a').some((node) => node.getAttribute('href') === '/bank-accounts/new'),
+    );
+    ok('and no invented account', !/••••/.test(vaultText()));
+
+    /* ---- The seeded vault ---- */
+    await loadVault('/bank-accounts', null);
+
+    const accountLinks = () =>
+      $$('a')
+        .map((node) => node.getAttribute('href') ?? '')
+        .filter((href) => href.startsWith('/bank-accounts/') && href !== '/bank-accounts/new');
+
+    check('every saved account is listed', accountLinks().length, 3);
+    ok('each is masked to four digits', /•••• 4587/.test(vaultText()));
+    ok(
+      'and no full account number is anywhere on the page',
+      !/\d{5,}/.test(vaultText().replace(/[A-Z]{4}0[A-Z0-9]{6}/g, '')),
+    );
+
+    /*
+      The URL is the other place masking can leak. An id built from the last
+      four digits would put them in the address bar and in history.
+    */
+    ok(
+      'no account id carries part of the account number',
+      accountLinks().every((href) => !/4587|2456|7890/.test(href)),
+    );
+
+    ok('exactly one account is marked primary', vaultText().split('Primary').length - 1 === 1);
+    ok(
+      'a simulated check is labelled as one',
+      /Demo verified/.test(vaultText()) && !/Verified by bank/i.test(vaultText()),
+    );
+    ok('an account needing a decision says so', /Needs your attention/.test(vaultText()));
+    ok(
+      'and the vault states that no credential is ever asked for',
+      /never ask for your internet banking password/.test(vaultText()),
+    );
+
+    /* ---- One account ---- */
+    await loadVault('/bank-accounts/ba-demo-hdfc', null);
+    check('the account names its bank', norm($('h1')?.textContent), 'HDFC Bank');
+    ok('shows the masked number', /•••• 2456/.test(vaultText()));
+    ok('the IFSC and branch', /HDFC0005678/.test(vaultText()) && /Koramangala/.test(vaultText()));
+    ok('and what it is used for', /Used for/.test(vaultText()));
+    ok('a verified account is not offered another check', !buttonByText('Mark as verified (demo)'));
+    ok('a non-primary account can be made primary', Boolean(buttonByText('Set as primary')));
+
+    click(buttonByText('Set as primary'));
+    await settle(200);
+    ok('and doing so is reflected immediately', !buttonByText('Set as primary'));
+
+    /* One primary, always: the account that was primary no longer is. */
+    await loadVault('/bank-accounts', null);
+    const primaryCount = vaultText().split('Primary').length - 1;
+    check('there is still exactly one primary account', primaryCount, 1);
+
+    /* ---- Adding an account ---- */
+    await loadVault('/bank-accounts/new', null);
+    check('the add screen is titled', norm($('h1')?.textContent), 'Add a bank account');
+
+    const fieldByLabel = (text) => {
+      const label = $$('label').find((node) => norm(node.textContent) === text);
+      return label === undefined ? undefined : $(`#${CSS.escape(label.getAttribute('for') ?? '')}`);
+    };
+
+    ok(
+      'the customer is never asked to type the bank',
+      !$$('label').some((node) => /Bank name|Branch name/.test(norm(node.textContent))),
+    );
+    ok('and never for a banking credential', !$$('input').some((node) => node.type === 'password'));
+
+    /* An IFSC that is well formed but unknown is refused, not guessed at. */
+    type(fieldByLabel('IFSC'), 'HDFC0009999');
+    await settle(200);
+    ok('an unknown IFSC identifies no bank', /couldn’t be identified/.test(vaultText()));
+    ok('and names none', !/HDFC Bank/.test(vaultText()));
+
+    type(fieldByLabel('IFSC'), 'HDFC0001234');
+    await settle(200);
+    ok(
+      'a known IFSC resolves the bank and branch',
+      /HDFC Bank/.test(vaultText()) && /Perungudi/.test(vaultText()),
+    );
+
+    type(fieldByLabel('Account number'), '123456789012');
+    type(fieldByLabel('Confirm account number'), '123456789013');
+    await settle(100);
+    click(buttonByText('Add account'));
+    await settle(200);
+    ok('a mistyped confirmation stops the save', /do not match/.test(vaultText()));
+
+    type(fieldByLabel('Confirm account number'), '123456789012');
+    await settle(100);
+    click(buttonByText('Add account'));
+    await settle(300);
+
+    ok('a saved account opens on its own page', app.currentUrl().startsWith('/bank-accounts/ba-'));
+    ok(
+      'the number typed is nowhere in the URL',
+      !app.currentUrl().includes('123456789012') && !/\d{5,}/.test(app.currentUrl()),
+    );
+    ok(
+      'nor in what is stored',
+      !(window.sessionStorage.getItem('fd:bank-accounts:v1') ?? '').includes('123456789012'),
+    );
+    ok('only its last four digits are shown', /•••• 9012/.test(vaultText()));
+
+    /*
+      The distinction this module exists to draw: details supplied is not
+      ownership verified, and the product says so rather than showing a tick.
+    */
+    ok('a new account is not verified', /Not verified/.test(vaultText()));
+    ok(
+      'and the reason is the missing provider, not a promise',
+      /No verification provider is connected/.test(vaultText()),
+    );
+
+    click(buttonByText('Mark as verified (demo)'));
+    await settle(200);
+    ok('the demonstration’s own check is labelled as one', /Demo verified/.test(vaultText()));
+    ok(
+      'and still says no bank was contacted',
+      /No bank or verification provider was contacted/.test(vaultText()),
+    );
+
+    /* ---- Removal rules ---- */
+    ok('an account funding nothing can be removed', Boolean(buttonByText('Remove account')));
+    click(buttonByText('Remove account'));
+    await settle(100);
+    ok('and removal is confirmed first', Boolean(buttonByText('Yes, remove it')));
+
+    await loadVault('/bank-accounts/ba-demo-axis', null);
+    ok(
+      'the primary account is not removable while others exist',
+      !buttonByText('Remove account') && /Make another account primary/.test(vaultText()),
+    );
+
+    /* ---- An id that names no account ---- */
+    await loadVault('/bank-accounts/ba-not-here', null);
+    check(
+      'an unknown account is refused plainly',
+      norm($('h1')?.textContent),
+      'This account is not in your vault',
+    );
+    ok(
+      'with the way back',
+      $$('a').some((node) => node.getAttribute('href') === '/bank-accounts'),
+    );
+
+    window.sessionStorage.clear();
+
+    section('R1 · Reports — Portfolio → Reports → Document → back');
+
+    /**
+     * Mounts a reports route over a seeded portfolio.
+     *
+     * The holdings go into `sessionStorage` because that is where the portfolio
+     * genuinely lives, and the investor record still comes from the real
+     * handlers — so the document is assembled from the same two sources the
+     * application uses.
+     */
+    async function loadReports(url, holdings) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      if (holdings) {
+        window.sessionStorage.setItem(
+          'fd:portfolio-holdings:v2',
+          JSON.stringify({ version: 2, holdings }),
+        );
+      }
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory(url);
+      requests.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: `load ${url}` });
+      await settle(200);
+    }
+
+    const reportBank = (id, name, initials) => ({
+      id,
+      name,
+      shortCode: initials,
+      initials,
+      logoUrl: null,
+      rating: 'AA+',
+      category: 'universal',
+    });
+
+    /* Eighteen months, opened six months ago — a running deposit with a date. */
+    const datedFd = {
+      reference: 'FD-REP-1',
+      productType: 'fixed-deposit',
+      productId: 'fd-002',
+      productName: 'HDFC Bank Fixed Deposit',
+      bank: reportBank('hdfc', 'HDFC Bank', 'HD'),
+      principal: 500_000,
+      annualRate: 7.5,
+      tenureMonths: 18,
+      isCumulative: true,
+      payoutLabel: 'At maturity',
+      startedAt: Date.now() - 180 * 24 * 60 * 60 * 1000,
+      maturityInstruction: 'renew-principal-and-interest',
+      status: 'active',
+    };
+
+    /* The 91-day deposit: a term the bank publishes in days, so no maturity date. */
+    const dayBasedFd = {
+      ...datedFd,
+      reference: 'FD-REP-2',
+      productId: 'fd-uc2-equitas-91d',
+      productName: 'Equitas Small Finance Bank Fixed Deposit',
+      bank: reportBank('equitas', 'Equitas Small Finance Bank', 'EQ'),
+      principal: 100_000,
+      annualRate: 6.85,
+      tenureMonths: 0,
+      maturityInstruction: null,
+    };
+
+    /* ---- Nothing held ---- */
+    await loadReports('/portfolio/reports', null);
+    check(
+      'an investor with no deposits is told there is nothing to show',
+      norm($('h1')?.textContent),
+      'No documents yet',
+    );
+    ok(
+      'and is offered the way to start',
+      $$('a').some((node) => norm(node.textContent).startsWith('Explore FDs')),
+    );
+
+    /* ---- Two deposits ---- */
+    await loadReports('/portfolio/reports', [datedFd, dayBasedFd]);
+    check('the centre is titled', norm($('h1')?.textContent), 'Reports & statements');
+
+    const reportLinks = () =>
+      $$('a')
+        .map((node) => node.getAttribute('href') ?? '')
+        .filter((href) => href.startsWith('/portfolio/reports/'));
+
+    /*
+      Every document that exists is reachable, and every document that does not
+      is not a link. This is the module's central rule expressed as navigation:
+      nothing on this page can be clicked unless clicking it leads to a document
+      the platform can genuinely produce.
+    */
+    check(
+      'each available document is reachable by its own id',
+      reportLinks().sort(),
+      [
+        '/portfolio/reports/booking-confirmation--FD-REP-1',
+        '/portfolio/reports/booking-confirmation--FD-REP-2',
+        '/portfolio/reports/fd-statement--FD-REP-1',
+        '/portfolio/reports/fd-statement--FD-REP-2',
+        '/portfolio/reports/maturity-advice--FD-REP-1',
+        '/portfolio/reports/portfolio-statement',
+      ].sort(),
+    );
+    ok(
+      'the bank’s own document is listed but not linked',
+      /Bank deposit advice/.test(norm(document.body.textContent)) &&
+        !reportLinks().some((href) => href.includes('bank-deposit-advice')),
+    );
+    ok(
+      'and it says why, naming the bank as the issuer',
+      /no connection to bank document systems/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'a deposit with no maturity date offers no maturity advice',
+      !reportLinks().some((href) => href.includes('maturity-advice--FD-REP-2')),
+    );
+    ok(
+      'each deposit is identified by bank and reference',
+      /HDFC Bank/.test(norm(document.body.textContent)) &&
+        /FD-REP-1/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'and the page states that nothing here is a bank certificate',
+      /not bank certificates/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'the way back to the portfolio is offered',
+      $$('a').some((node) => node.getAttribute('href') === '/portfolio'),
+    );
+
+    /* ---- One document ---- */
+    await loadReports('/portfolio/reports/fd-statement--FD-REP-1', [datedFd, dayBasedFd]);
+
+    const sheetText = () => norm($('article')?.textContent ?? '');
+
+    check('the document names itself', norm($('h1')?.textContent), 'Fixed deposit statement');
+    ok('and declares its provenance on the sheet', /Platform-generated/.test(sheetText()));
+    ok(
+      'it names the deposit it belongs to',
+      /HDFC Bank/.test(sheetText()) && /FD-REP-1/.test(sheetText()),
+    );
+
+    /*
+      The figures are the portfolio's own. Asserted through the amount invested
+      and the rate as recorded — a statement that recomputed either would be a
+      second source of financial truth.
+    */
+    ok('the amount invested is the recorded principal', /₹5,00,000/.test(sheetText()));
+    ok('the rate is stated as recorded', /7\.5% per annum/.test(sheetText()));
+    ok('and the tenure is never converted', /18 months/.test(sheetText()));
+
+    ok(
+      'the sheet states it is not a bank certificate',
+      /It is not a bank certificate and is not issued by the bank/.test(sheetText()),
+    );
+    ok(
+      'and that expected figures are confirmed by the bank at maturity',
+      /confirmed by the bank at maturity/.test(sheetText()),
+    );
+
+    /* Saving is the browser's own print dialogue, and it is labelled as such. */
+    ok('saving is offered as printing', Boolean(buttonByText('Print or save as PDF')));
+    ok(
+      'no download is offered that the platform cannot perform',
+      !$$('a').some((node) => node.hasAttribute('download')) &&
+        !/Download PDF/.test(norm(document.body.textContent)),
+    );
+    ok(
+      'the file it would save is named after the document',
+      /fd-statement-hdfc-bank-fd-rep-1-\d{4}-\d{2}-\d{2}\.pdf/.test(
+        norm(document.body.textContent),
+      ),
+    );
+
+    ok(
+      'the way back to the document list is offered',
+      $$('a').some((node) => node.getAttribute('href') === '/portfolio/reports'),
+    );
+
+    /* ---- A refresh derives the same document ---- */
+    const sheetBefore = sheetText();
+    app.unmount?.();
+    document.body.innerHTML = '<div id="root"></div>';
+    app.mount($('#root'));
+    await waitFor(() => Boolean($('article')), { label: 'document remount' });
+    await settle(200);
+    check('a refresh derives the same document', sheetText(), sheetBefore);
+
+    /* ---- A document the platform cannot produce ---- */
+    await loadReports('/portfolio/reports/bank-deposit-advice--FD-REP-1', [datedFd]);
+    check(
+      'a bank document renders no sheet',
+      norm($('h1')?.textContent),
+      'This document is not available',
+    );
+    check('and no sheet is drawn at all', $('article'), null);
+
+    await loadReports('/portfolio/reports/fd-statement--NOT-HELD', [datedFd]);
+    check(
+      'an id naming a deposit that is not held is refused',
+      norm($('h1')?.textContent),
+      'This document is not available',
+    );
+
+    await loadReports('/portfolio/reports/nonsense', [datedFd]);
+    check(
+      'and so is an id that names no document at all',
+      norm($('h1')?.textContent),
+      'This document is not available',
+    );
+    ok(
+      'each refusal offers the way back',
+      $$('a').some((node) => node.getAttribute('href') === '/portfolio/reports'),
+    );
+
+    /* ---- The consolidated sheet ---- */
+    await loadReports('/portfolio/reports/portfolio-statement', [datedFd, dayBasedFd]);
+    check('the consolidated sheet is titled', norm($('h1')?.textContent), 'Portfolio statement');
+    check('it lists every deposit', $$('article tbody tr').length, 2);
+    ok(
+      'the deposit with no maturity date says so rather than guessing one',
+      /Not recorded/.test(sheetText()),
+    );
+    ok('its total invested is the sum of what was invested', /₹6,00,000/.test(sheetText()));
+
+    window.sessionStorage.clear();
+
+    section('N1 · Notifications — derived from what the investor holds');
+
+    /**
+     * Mounts the notification centre over a seeded portfolio.
+     *
+     * The holdings go into `sessionStorage` because that is where the portfolio
+     * genuinely lives; seeding the hook instead would test a tree the app never
+     * renders. The identity record still comes from the real handlers.
+     */
+    async function loadNotifications(holdings) {
+      app.unmount?.();
+      window.sessionStorage.clear();
+      if (holdings) {
+        window.sessionStorage.setItem(
+          'fd:portfolio-holdings:v2',
+          JSON.stringify({ version: 2, holdings }),
+        );
+      }
+      document.body.innerHTML = '<div id="root"></div>';
+      app.resetHistory('/notifications');
+      requests.length = 0;
+      app.mount($('#root'));
+      await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), {
+        label: 'notifications render',
+      });
+      await settle(200);
+    }
+
+    const heldFd = {
+      reference: 'FD-DEMO-1',
+      productType: 'fixed-deposit',
+      productId: 'fd-001',
+      productName: 'IDFC FIRST Bank Fixed Deposit',
+      bank: {
+        id: 'idfc-first',
+        name: 'IDFC FIRST Bank',
+        shortCode: 'IDFC',
+        initials: 'ID',
+        logoUrl: null,
+        rating: 'AA+',
+        category: 'universal',
+      },
+      principal: 500_000,
+      annualRate: 7.75,
+      tenureMonths: 12,
+      isCumulative: true,
+      payoutLabel: 'At maturity',
+      /* Started thirteen months ago: this deposit has passed its maturity date. */
+      startedAt: Date.now() - 400 * 24 * 60 * 60 * 1000,
+      maturityInstruction: 'renew-principal-and-interest',
+      status: 'active',
+    };
+
+    /*
+      ---- Holding nothing ----
+
+      The investor served by the handlers still has an identity to settle, so
+      this is not the empty state — it is the proof that notifications are
+      *derived*: with no deposits there is nothing about deposits to say.
+    */
+    await loadNotifications(null);
+    const headings = () => $$('article h3').map((node) => norm(node.textContent));
+    ok(
+      'with nothing held, nothing is said about deposits',
+      headings().every((title) => !/deposit/i.test(title)),
+    );
+    ok('and the identity request still stands on its own', headings().length > 0);
+
+    /* ---- One deposit, past its maturity date ---- */
+    await loadNotifications([heldFd]);
+    check('the centre is titled', norm($('h1')?.textContent), 'Notifications');
+
+    const bodyText = () => norm(document.body.textContent);
+
+    ok(
+      'the deposit is reported as confirmed, named by its bank',
+      headings().includes('IDFC FIRST Bank deposit confirmed'),
+    );
+    ok(
+      'the passed maturity is reported',
+      headings().includes('IDFC FIRST Bank deposit has reached maturity'),
+    );
+    ok(
+      'the passed maturity is surfaced as something needing attention',
+      Boolean($('#notifications-attention-title')),
+    );
+    ok(
+      'and settlement is left to the bank',
+      /confirmed by the bank/i.test(bodyText()) && !/credited to your account/i.test(bodyText()),
+    );
+
+    /*
+      The one claim this build must never make. Nothing is emailed, texted or
+      pushed, and the screen says so instead of implying delivery.
+    */
+    ok(
+      'the centre states that nothing was sent',
+      /No message has been sent to you, and no bank has been contacted/.test(bodyText()),
+    );
+    ok('and says the updates are a demonstration', /Demonstration only/.test(bodyText()));
+
+    /* No figure from the portfolio is restated here — a stale amount is worse than none. */
+    ok(
+      'no notification restates an amount',
+      !/₹\s?[\d,]{4,}/.test(
+        norm($('#notifications-attention-title')?.closest('section')?.textContent ?? ''),
+      ),
+    );
+
+    /* ---- Read state is deliberate, and it survives a remount ---- */
+    const unreadLine = () => norm($('h1')?.closest('div')?.textContent ?? '');
+    ok('unread updates are counted in words', /you have not read yet/.test(unreadLine()));
+
+    const markAll = buttonByText('Mark all as read');
+    ok('and clearing them is offered', Boolean(markAll));
+    click(markAll);
+    await settle(200);
+
+    check('reading them all is acknowledged', unreadLine().includes('You are up to date.'), true);
+    ok('and the action leaves once there is nothing to clear', !buttonByText('Mark all as read'));
+
+    /* The stored record is ids only — never the notification text. */
+    const storedRead = window.sessionStorage.getItem('fd:notifications-read:v1') ?? '';
+    ok('read state persists', storedRead.includes('booking-confirmed:FD-DEMO-1'));
+    ok(
+      'and stores no notification content',
+      !/matured|confirmed by the bank|IDFC/.test(storedRead),
+    );
+
+    /* A remount is a refresh: what was read stays read, and the list is unchanged. */
+    /* Identified by what the customer reads, not by a hook added for the test. */
+    const notificationTitles = () => $$('article h3').map((node) => norm(node.textContent));
+    const titlesBefore = notificationTitles();
+    ok('the list is not empty to begin with', titlesBefore.length > 0);
+    app.unmount?.();
+    document.body.innerHTML = '<div id="root"></div>';
+    app.mount($('#root'));
+    await waitFor(() => Boolean($('h1')) && !$('[aria-busy="true"]'), { label: 'remount' });
+    await settle(200);
+
+    check('a refresh keeps them read', unreadLine().includes('You are up to date.'), true);
+    check(
+      'and derives the same notifications, in the same order',
+      notificationTitles(),
+      titlesBefore,
+    );
+
+    check('the centre has exactly one h1', $$('h1').length, 1);
+    check(
+      'and no heading level is skipped',
+      $$('h1,h2,h3,h4')
+        .map((node) => Number(node.tagName[1]))
+        .every((level, index, all) => index === 0 || level - all[index - 1] <= 1),
+      true,
+    );
+
+    window.sessionStorage.clear();
   } finally {
     app.unmount?.();
     server.close();

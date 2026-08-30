@@ -1,5 +1,10 @@
 import type { PortfolioHolding } from '@/types/portfolio';
-import { calculateDepositReturns, maturityDate, monthsUntil } from '@/utils/finance';
+import {
+  MATURING_SOON_MONTHS,
+  calculateDepositReturns,
+  maturityDate,
+  monthsUntil,
+} from '@/utils/finance';
 
 /**
  * What the investor's holdings add up to.
@@ -258,7 +263,12 @@ export interface PortfolioAttention {
  * because that is the one thing the data actually knows and the one that has a
  * deadline.
  */
-const MATURING_SOON_MONTHS = 3;
+/*
+  The notice window is platform-level: the notification layer raises a maturity
+  on the same threshold these screens use, and three copies of `3` is how one
+  surface starts warning a month before another.
+*/
+export { MATURING_SOON_MONTHS };
 
 export function portfolioAttention(summary: PortfolioSummary): PortfolioAttention[] {
   return summary.upcomingMaturities

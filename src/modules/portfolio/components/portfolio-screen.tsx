@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePortfolio } from '@/hooks/use-portfolio';
+import { summarisePortfolio } from '@/utils/portfolio';
 
 import { FixedDepositHoldingCard } from './fixed-deposit-holding-card';
 import { PortfolioEmptyState } from './portfolio-empty-state';
@@ -13,7 +14,6 @@ import { PortfolioKpiGrid } from './portfolio-kpi-grid';
 import { PortfolioTrustNotice } from './portfolio-trust-notice';
 import { QuickActions } from './quick-actions';
 import { UpcomingMaturities } from './upcoming-maturities';
-import { summarisePortfolio } from '../utils/portfolio-summary';
 
 /**
  * The Portfolio dashboard — the platform's surface for **ownership**.

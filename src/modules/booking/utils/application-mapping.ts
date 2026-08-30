@@ -1,9 +1,10 @@
+import type { ExternalBankAccount } from '@/types/bank-account';
 import type { InvestorIdentity } from '@/types/investor';
+import { maskAccountNumber } from '@/utils/bank-account';
 import { formatCurrency, formatTenure } from '@/utils/format';
 
 import { resolveRate } from './tenure-rates';
 import { PAYOUT_OPTION_LABELS } from '../constants/payout-options';
-import { SAVED_BANK_ACCOUNTS } from '../fixtures/bank-accounts';
 import type {
   ApplicationField,
   ApplicationFieldSource,
@@ -34,7 +35,7 @@ import type { BookingDraft } from '../types/draft';
  * | `identity` | `InvestorIdentity` — the platform Investor domain |
  * | `investment` | `BookingDraft.investment` |
  * | `nominee` | `BookingDraft.nominee` |
- * | `bank-account` | the saved account referenced by `BookingDraft.bankAccountId` |
+ * | `bank-account` | the vault account `BookingDraft.bankAccountId` refers to |
  * | `deposit` | the `SelectedDeposit` being booked |
  *
  * Nothing is copied into a new store on the way through. The application is
@@ -137,16 +138,24 @@ function fromNominee(fieldId: string, draft: BookingDraft): string | null {
   }
 }
 
-function fromBankAccount(fieldId: string, draft: BookingDraft): string | null {
-  const account = SAVED_BANK_ACCOUNTS.find((entry) => entry.id === draft.bankAccountId);
-  if (!account) return null;
+/**
+ * The funding account is **passed in**, not looked up.
+ *
+ * This function is pure and the vault is a runtime store, so reaching for it
+ * here would have made the whole application resolution depend on a browser
+ * API — and would have re-introduced the module-owned account list this
+ * refactor removed. The caller reads the vault through the platform hook and
+ * hands over the one account the booking refers to.
+ */
+function fromBankAccount(fieldId: string, account: ExternalBankAccount | null): string | null {
+  if (account === null) return null;
 
   switch (fieldId) {
     case 'fundingBank':
-      return account.bankName;
+      return account.institution.name;
     /* Masked, exactly as every other screen shows it. */
     case 'fundingAccount':
-      return `XXXX ${account.lastFourDigits}`;
+      return maskAccountNumber(account.lastFourDigits);
     case 'fundingIfsc':
       return account.ifsc;
     default:
@@ -171,6 +180,8 @@ export interface ApplicationSources {
   deposit: SelectedDeposit;
   draft: BookingDraft;
   identity: InvestorIdentity | null;
+  /** The vault account `draft.bankAccountId` refers to, or `null` if none does. */
+  fundingAccount: ExternalBankAccount | null;
 }
 
 /** One field's value from its declared source, or `null`. */
@@ -182,7 +193,7 @@ export function resolveFieldValue(
     identity: () => fromIdentity(field.id, sources.identity),
     investment: () => fromInvestment(field.id, sources.draft, sources.deposit),
     nominee: () => fromNominee(field.id, sources.draft),
-    'bank-account': () => fromBankAccount(field.id, sources.draft),
+    'bank-account': () => fromBankAccount(field.id, sources.fundingAccount),
     deposit: () => fromDeposit(field.id, sources.deposit),
     /*
       The bank fills these in. Nothing to resolve, and — crucially — never

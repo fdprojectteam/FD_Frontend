@@ -12,7 +12,30 @@ import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { ROUTES } from '@/constants/routes';
+import {
+  AccountDetailsScreen,
+  AddAccountScreen,
+  BankAccountsScreen,
+} from '@/modules/bank-accounts';
+import {
+  AdminApplicationDetailScreen,
+  AdminApplicationsScreen,
+  AdminAuditScreen,
+  AdminCustomerDetailScreen,
+  AdminCustomersScreen,
+  AdminDashboardScreen,
+  AdminKycScreen,
+  AdminPortal,
+  AdminProductDetailScreen,
+  AdminProductsScreen,
+  AdminSupportScreen,
+} from '@/modules/admin';
+import { FamilyScreen } from '@/modules/family';
+import { TaxCenterScreen } from '@/modules/tax';
+import { ContactSupportScreen, RequestDetailScreen, SupportHomeScreen } from '@/modules/support';
 import { GoalPlannerScreen } from '@/modules/goal-based-fd';
+import { NotificationsScreen } from '@/modules/notifications';
+import { ReportDocumentScreen, ReportsScreen } from '@/modules/portfolio/components/reports';
 import { CompareScreen } from '@/modules/marketplace/components/compare-screen';
 import { HomeScreen } from '@/modules/marketplace/components/home-screen';
 import { CompareSelectionProvider } from '@/modules/marketplace/hooks/use-compare-selection';
@@ -52,10 +75,78 @@ let root: Root | null = null;
  * concern (defect C2); there is no prerendering here, so it is not reproduced.
  * Its presence in the route is asserted statically instead.
  */
+/** The admin route table, mirroring `app/(admin)/admin/**`. */
+function adminScreenFor(pathname: string) {
+  if (pathname === ROUTES.adminCustomers) return <AdminCustomersScreen />;
+  if (pathname.startsWith(`${ROUTES.adminCustomers}/`)) {
+    return (
+      <AdminCustomerDetailScreen customerId={pathname.slice(ROUTES.adminCustomers.length + 1)} />
+    );
+  }
+  if (pathname === ROUTES.adminApplications) return <AdminApplicationsScreen />;
+  if (pathname.startsWith(`${ROUTES.adminApplications}/`)) {
+    return (
+      <AdminApplicationDetailScreen
+        applicationId={pathname.slice(ROUTES.adminApplications.length + 1)}
+      />
+    );
+  }
+  if (pathname === ROUTES.adminProducts) return <AdminProductsScreen />;
+  if (pathname.startsWith(`${ROUTES.adminProducts}/`)) {
+    return <AdminProductDetailScreen productId={pathname.slice(ROUTES.adminProducts.length + 1)} />;
+  }
+  if (pathname === ROUTES.adminVerification) return <AdminKycScreen />;
+  if (pathname === ROUTES.adminSupport) return <AdminSupportScreen />;
+  if (pathname === ROUTES.adminAudit) return <AdminAuditScreen />;
+
+  return <AdminDashboardScreen />;
+}
+
 function ScreenForRoute() {
   const pathname = usePathname();
 
   if (pathname === ROUTES.compare) return <CompareScreen />;
+  /* The notification centre, rendered exactly as `(public)/notifications/page.tsx` does. */
+  if (pathname === ROUTES.notifications) return <NotificationsScreen />;
+  /*
+    Reports, and one document. The document route reads its id from the path
+    exactly as the App Router segment does — the harness resolves the segment,
+    it does not invent a prop.
+  */
+  /*
+    The bank account vault. The details route reads its id from the path
+    exactly as the App Router segment does.
+  */
+  /*
+    The operations console. Every admin route renders inside the admin shell,
+    exactly as `(admin)/layout.tsx` composes it — the role selector in the
+    header and the screen beneath it are one tree, as they are in the app.
+  */
+  if (pathname.startsWith(ROUTES.admin)) {
+    return <AdminPortal>{adminScreenFor(pathname)}</AdminPortal>;
+  }
+  /* The family dashboard, rendered exactly as `(public)/family/page.tsx` does. */
+  if (pathname === ROUTES.family) return <FamilyScreen />;
+  /* Tax Center, rendered exactly as `(public)/tax/page.tsx` does. */
+  if (pathname === ROUTES.tax) return <TaxCenterScreen />;
+  /*
+    Help & support. The contact screen reads its context from the query exactly
+    as it does in the application; the request route reads its id from the path.
+  */
+  if (pathname === ROUTES.support) return <SupportHomeScreen />;
+  if (pathname === ROUTES.supportNew()) return <ContactSupportScreen />;
+  if (pathname.startsWith(`${ROUTES.support}/requests/`)) {
+    return <RequestDetailScreen requestId={pathname.slice(`${ROUTES.support}/requests/`.length)} />;
+  }
+  if (pathname === ROUTES.bankAccounts) return <BankAccountsScreen />;
+  if (pathname === ROUTES.bankAccountNew) return <AddAccountScreen />;
+  if (pathname.startsWith(`${ROUTES.bankAccounts}/`)) {
+    return <AccountDetailsScreen accountId={pathname.slice(ROUTES.bankAccounts.length + 1)} />;
+  }
+  if (pathname === ROUTES.reports) return <ReportsScreen />;
+  if (pathname.startsWith(`${ROUTES.reports}/`)) {
+    return <ReportDocumentScreen reportId={pathname.slice(ROUTES.reports.length + 1)} />;
+  }
   /* The planner is a real route with a real screen; the harness renders it as the router would. */
   if (pathname === ROUTES.goalPlanner) return <GoalPlannerScreen />;
 

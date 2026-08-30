@@ -5,8 +5,7 @@ import type { ReactNode } from 'react';
 
 import { Card } from '@/components/ui/card';
 import { formatCurrency, formatTenure } from '@/utils/format';
-
-import type { PortfolioSummary } from '../utils/portfolio-summary';
+import type { PortfolioSummary } from '@/utils/portfolio';
 
 /**
  * The four figures that answer "where do I stand", in one row.

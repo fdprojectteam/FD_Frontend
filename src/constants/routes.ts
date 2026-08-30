@@ -119,7 +119,126 @@ export const ROUTES = {
    * The investor's holdings — the first surface where the product moves from
    * "I am booking an FD" to "I own one".
    */
+  /** The notification centre, reachable from the header bell. */
+  notifications: '/notifications' as Route,
   portfolio: '/portfolio' as Route,
+  /**
+   * Maturity Management — nested under Portfolio.
+   *
+   * A maturity is a question asked of a holding, so it lives inside the route
+   * that owns holdings; the prefix match also keeps Portfolio the active
+   * navigation item.
+   */
+  maturities: '/portfolio/maturities' as Route,
+  /**
+   * Reports & statements — nested under Portfolio for the same reason
+   * maturities are.
+   *
+   * A statement is a **document about a holding**, so it belongs inside the
+   * route that owns holdings; the prefix match also keeps Portfolio the active
+   * navigation item. There is no top-level `/reports`, because a report that is
+   * not about something the investor owns does not exist.
+   */
+  reports: '/portfolio/reports' as Route,
+  /**
+   * One document.
+   *
+   * The id is `kind--reference` (`fd-statement--FD-2026-0001`), built by
+   * `documentId` and read back by `parseDocumentId`. It is in the **path**
+   * because it identifies the document rather than configuring it: the URL must
+   * be resumable and shareable, and an id that names no document the investor
+   * holds resolves to an honest "not available" rather than an empty sheet.
+   */
+  report: (reportId: string) => `/portfolio/reports/${reportId}` as Route,
+  /**
+   * The bank account vault — top-level, not under Portfolio.
+   *
+   * An account belongs to the **customer**, not to the deposits they hold: it
+   * funds a booking today and may serve other products later, so nesting it
+   * under `/portfolio` would say something about it that is not true. Booking
+   * links here to manage accounts; Portfolio links here as a quick action.
+   */
+  /**
+   * The Family Dashboard — top-level, beside Portfolio.
+   *
+   * It spans members rather than belonging to one, so it is not nested under
+   * `/portfolio`: a route that said "this family view is part of your portfolio"
+   * would be describing the wrong relationship.
+   */
+  family: '/family' as Route,
+  /**
+   * Help & support.
+   *
+   * Top-level and reachable from every page, because the moment a customer
+   * needs it is not a moment to go looking. The navigation item was reserved
+   * and disabled from the first release; this is the route it was waiting for.
+   */
+  support: '/support' as Route,
+  /**
+   * Contacting support, optionally about something.
+   *
+   * The context is a **query parameter and a reference**, never a copy: a
+   * deposit's bank reference or an account's opaque vault id, both of which the
+   * screen resolves against the canonical domain. Nothing sensitive goes in the
+   * URL — no PAN, no account number, no amount — and an unresolvable reference
+   * falls back to general support rather than rendering a request about a
+   * deposit that does not exist.
+   */
+  supportNew: (context?: { holding?: string; account?: string }) => {
+    const params = new URLSearchParams();
+    if (context?.holding !== undefined) params.set('holding', context.holding);
+    if (context?.account !== undefined) params.set('account', context.account);
+
+    const query = params.size === 0 ? '' : `?${params.toString()}`;
+    return `/support/new${query}` as Route;
+  },
+  /** One request, by the number the customer quotes. */
+  supportRequest: (requestId: string) => `/support/requests/${requestId}` as Route,
+  bankAccounts: '/bank-accounts' as Route,
+  bankAccountNew: '/bank-accounts/new' as Route,
+  /**
+   * One account.
+   *
+   * The id is opaque and carries **no part of the account number** — a URL that
+   * ended in the digits every screen masks would undo the masking in the
+   * address bar, in history and in any referrer.
+   */
+  bankAccount: (accountId: string) => `/bank-accounts/${accountId}` as Route,
+  /**
+   * The operations console.
+   *
+   * A **separate portal under one namespace**, not a section of the customer
+   * product: it answers "what is happening across the platform", has its own
+   * shell and its own navigation, and nothing in the customer experience links
+   * into it. Every admin route lives under `/admin` so the boundary is visible
+   * in the URL as well as in the code.
+   */
+  /**
+   * Tax Center.
+   *
+   * Top-level rather than under `/portfolio`: it answers a question about a
+   * *period* — what interest belongs to a tax year — rather than about what the
+   * investor owns, and a future product's interest would appear on the same
+   * page without the route saying anything about deposits.
+   */
+  tax: '/tax' as Route,
+  admin: '/admin' as Route,
+  adminCustomers: '/admin/customers' as Route,
+  adminCustomer: (customerId: string) => `/admin/customers/${customerId}` as Route,
+  adminApplications: '/admin/applications' as Route,
+  adminApplication: (applicationId: string) => `/admin/applications/${applicationId}` as Route,
+  adminProducts: '/admin/products' as Route,
+  adminProduct: (productId: string) => `/admin/products/${productId}` as Route,
+  /**
+   * Verification operations.
+   *
+   * The segment is `verification`, not the abbreviation — the platform holds
+   * "KYC" out of every URL, and an operations console is not a reason to make
+   * an exception. The screen and the navigation say the same word.
+   */
+  adminVerification: '/admin/verification' as Route,
+  adminSupport: '/admin/support' as Route,
+  adminAudit: '/admin/audit' as Route,
   goalPlanner: '/goal-planner' as Route,
   /**
    * Multi-goal planning (client source document, Use Case 2).

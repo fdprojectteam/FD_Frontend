@@ -31,7 +31,7 @@ import type { PortfolioHolding } from '@/types/portfolio';
  * Success screen, StrictMode. The bank's reference identifies the deposit, so
  * writing the same one twice is a no-op rather than a duplicate holding.
  */
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 const STORAGE_KEY = `fd:portfolio-holdings:v${STORAGE_VERSION}`;
 
 const bankSchema = z.object({
@@ -56,6 +56,17 @@ const holdingSchema = z.object({
   isCumulative: z.boolean(),
   payoutLabel: z.string(),
   startedAt: z.number().int().nonnegative(),
+  /* Version 2 — the investor's maturity instruction, or `null` if unasked. */
+  maturityInstruction: z
+    .enum(['renew-principal-and-interest', 'renew-principal-only', 'pay-out'])
+    .nullable(),
+  /*
+    The funding account reference (Module 11). Defaulted rather than versioned:
+    a holding written before the vault existed simply has no account to name,
+    and `null` is the honest value for it — bumping the version would have
+    discarded deposits an investor already holds to add one optional field.
+  */
+  fundingAccountId: z.string().min(1).nullable().default(null),
   status: z.enum(['active', 'matured', 'closed']),
 });
 

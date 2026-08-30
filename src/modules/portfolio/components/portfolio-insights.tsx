@@ -1,9 +1,9 @@
 'use client';
 
 import { Card } from '@/components/ui/card';
+import type { PortfolioSummary } from '@/utils/portfolio';
 
 import { AllocationRing } from './allocation-ring';
-import type { PortfolioSummary } from '../utils/portfolio-summary';
 
 /**
  * How the portfolio is spread — by bank, and by how long the money is committed.

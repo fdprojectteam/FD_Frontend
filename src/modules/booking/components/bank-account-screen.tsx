@@ -1,17 +1,20 @@
 'use client';
 
-import { Plus } from 'lucide-react';
+import { ArrowRight, Plus } from 'lucide-react';
+import Link from 'next/link';
 import { useEffect, useId } from 'react';
 
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ROUTES } from '@/constants/routes';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
+import { defaultFundingAccount, isUsableForFunding } from '@/utils/bank-account';
 
 import { BankAccountOption } from './bank-account-option';
 import { BookingStepActions } from './booking-step-actions';
 import { BookingStepShell } from './booking-step-shell';
 import { BookingSummaryRail } from './booking-summary-rail';
 import { ImportantInformation } from './important-information';
-import { SAVED_BANK_ACCOUNTS } from '../fixtures/bank-accounts';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
@@ -21,11 +24,12 @@ import { useBookingStep } from '../hooks/use-booking-step';
  *
  * ## What it decides
  *
- * One thing: which saved account funds this deposit. The id goes to the draft;
- * nothing else about the account is stored, and the account list is a fixture
- * transcribed from the approved artwork — see `fixtures/bank-accounts.ts` for
- * why, and for what the absent partner-bank configuration would otherwise
- * govern.
+ * One thing: which saved account funds this deposit. **The id goes to the
+ * draft, and nothing else** — no bank name, no IFSC, no four digits. The
+ * accounts themselves come from the customer's vault through the platform hook
+ * (Module 11), so this screen displays what the vault owns and Booking holds a
+ * reference to it. An account edited in the vault is edited here, because there
+ * is only one record.
  *
  * ## Only verified accounts may be selected
  *
@@ -34,13 +38,14 @@ import { useBookingStep } from '../hooks/use-booking-step';
  * account cannot be chosen in the first place — a disabled Continue would leave
  * the customer looking at a selection the screen has silently rejected.
  *
- * ## Add New Bank Account is stated, not shipped
+ * ## Adding an account leaves the booking
  *
- * §5C defers the field list to a rules engine that does not exist and §11 to a
- * verification service that does not exist. An entry form here would collect a
- * real account number into a platform with nothing to verify it against. The
- * affordance is drawn as the artwork shows and says plainly that it is not yet
- * available — the same treatment "Save for Later" already carries.
+ * It is a vault action, not a booking step: an account added here belongs to
+ * the customer afterwards, not to this deposit. The affordance therefore links
+ * to the vault's own add flow rather than growing a second entry form inside
+ * Booking — which is exactly the duplication this module was created to remove.
+ * The booking is resumable by its own URL, so leaving and coming back loses
+ * nothing.
  */
 export interface BankAccountScreenProps {
   productId: string;
@@ -50,6 +55,7 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
   const { deposit } = useBookingProduct();
   const { draft, setBankAccountId } = useBookingDraft();
   const { isReady, continueTo } = useBookingStep('bank-account', productId);
+  const { accounts, isLoaded: accountsLoaded } = useBankAccounts();
 
   const groupName = useId();
 
@@ -63,21 +69,20 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
    */
   useEffect(() => {
     if (!isReady) return;
+    if (!accountsLoaded) return;
     if (draft.bankAccountId !== null) return;
 
-    const preferred = SAVED_BANK_ACCOUNTS.find(
-      (account) => account.isPrimary && account.verification === 'verified',
-    );
+    const preferred = defaultFundingAccount(accounts);
     if (preferred) setBankAccountId(preferred.id);
-  }, [isReady, draft.bankAccountId, setBankAccountId]);
+  }, [isReady, accountsLoaded, accounts, draft.bankAccountId, setBankAccountId]);
 
   /*
     Continue is gated on a *verified* account being chosen — the same rule the
     options apply, asked again at the boundary. Two checks of one rule, guarding
     two different threats: a stale draft id and a mis-rendered option.
   */
-  const selected = SAVED_BANK_ACCOUNTS.find((account) => account.id === draft.bankAccountId);
-  const canContinue = selected !== undefined && selected.verification === 'verified';
+  const selected = accounts.find((account) => account.id === draft.bankAccountId);
+  const canContinue = selected !== undefined && isUsableForFunding(selected);
 
   return (
     <BookingStepShell
@@ -100,18 +105,29 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
                 Select Funding &amp; Payout Account
               </legend>
 
-              {SAVED_BANK_ACCOUNTS.map((account) => (
-                <BankAccountOption
-                  key={account.id}
-                  account={account}
-                  name={groupName}
-                  selected={draft.bankAccountId === account.id}
-                  disabled={account.verification !== 'verified'}
-                  onSelect={() => {
-                    setBankAccountId(account.id);
-                  }}
-                />
-              ))}
+              {!accountsLoaded ? (
+                <>
+                  <Skeleton className="h-24 w-full" />
+                  <Skeleton className="h-24 w-full" />
+                </>
+              ) : accounts.length === 0 ? (
+                <p className="text-body text-content-muted">
+                  You have no saved bank accounts yet. Add one to fund this deposit.
+                </p>
+              ) : (
+                accounts.map((account) => (
+                  <BankAccountOption
+                    key={account.id}
+                    account={account}
+                    name={groupName}
+                    selected={draft.bankAccountId === account.id}
+                    disabled={!isUsableForFunding(account)}
+                    onSelect={() => {
+                      setBankAccountId(account.id);
+                    }}
+                  />
+                ))
+              )}
 
               {/*
                 Drawn as the artwork shows, and honest about its state. Not a
@@ -119,18 +135,33 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
                 nothing on a financial screen is worse than one that explains
                 itself.
               */}
-              <div className="rounded-card border-border-default flex items-start gap-3 border border-dashed p-4">
+              <Link
+                href={ROUTES.bankAccountNew}
+                className="focus-ring rounded-card border-border-default hover:border-border-primary/60 group flex items-start gap-3 border border-dashed p-4 transition-colors"
+              >
                 <span className="bg-surface-brand-subtle text-content-brand flex size-9 shrink-0 items-center justify-center rounded-full">
                   <Plus aria-hidden="true" className="size-4" />
                 </span>
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <p className="text-body text-content font-semibold">Add New Bank Account</p>
-                  <p className="text-caption text-content-muted">
-                    Adding an account needs the partner bank&apos;s verification service, which is
-                    not connected yet. Choose one of your verified accounts above.
-                  </p>
-                </div>
-              </div>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-body text-content font-semibold">Add a bank account</span>
+                  <span className="text-caption text-content-muted">
+                    Added accounts live in your bank account vault and can be used for any
+                    investment. Ownership is not verified in this build, so a new account cannot
+                    fund a deposit until it is marked verified.
+                  </span>
+                </span>
+                <ArrowRight
+                  aria-hidden="true"
+                  className="text-content-muted motion-safe:duration-base mt-1 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
+                />
+              </Link>
+
+              <Link
+                href={ROUTES.bankAccounts}
+                className="focus-ring text-caption text-content-brand w-fit rounded-md font-medium"
+              >
+                Manage your bank accounts
+              </Link>
 
               <ImportantInformation
                 notes={[

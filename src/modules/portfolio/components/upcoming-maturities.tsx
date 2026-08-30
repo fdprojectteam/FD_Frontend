@@ -1,9 +1,12 @@
 'use client';
 
-import { Card } from '@/components/ui/card';
-import { formatCurrency } from '@/utils/format';
+import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
-import type { HoldingView } from '../utils/portfolio-summary';
+import { Card } from '@/components/ui/card';
+import { ROUTES } from '@/constants/routes';
+import { formatCurrency } from '@/utils/format';
+import type { HoldingView } from '@/utils/portfolio';
 
 /**
  * When money comes back, soonest first.
@@ -24,7 +27,24 @@ export function UpcomingMaturities({ views }: { views: readonly HoldingView[] })
 
   return (
     <Card variant="outlined" className="flex flex-col gap-4 p-5 md:p-6">
-      <h2 className="text-body-lg text-content font-semibold">Upcoming maturities</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-body-lg text-content font-semibold">Upcoming maturities</h2>
+
+        {/*
+          The dashboard shows the next few; the maturity screen is where the
+          instruction attached to each one lives.
+        */}
+        <Link
+          href={ROUTES.maturities}
+          className="focus-ring text-caption text-content-brand group inline-flex items-center gap-1 rounded-md font-medium"
+        >
+          View all
+          <ArrowRight
+            aria-hidden="true"
+            className="motion-safe:duration-base size-3.5 transition-transform group-hover:translate-x-0.5"
+          />
+        </Link>
+      </div>
 
       <ol className="flex list-none flex-col">
         {views.slice(0, 4).map((view) => {

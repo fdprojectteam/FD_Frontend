@@ -65,11 +65,41 @@ export async function runInvariantSuite() {
     order. The list is still exact, so a fourth writer has to arrive with an
     edit here.
   */
-  check('exactly three modules write a URL, one per concern', routerWriters.sort(), [
+  /*
+    Re-pointed again for Module 11, and the distinction is the point. The three
+    below own **URL state** — a set of parameters that must be written by one
+    place or two screens will disagree about them. The vault's two writers own
+    neither: they are *outcome* navigations, taken once, to a destination built
+    from `ROUTES` — "you added this account, here it is" and "you removed it,
+    here is the list". Both are asserted below to compose no query string at
+    all, which is what keeps them out of the URL-state category rather than a
+    promise that they are.
+  */
+  check('exactly six modules write a URL', routerWriters.sort(), [
+    'src/modules/bank-accounts/components/account-details-screen.tsx',
+    'src/modules/bank-accounts/components/add-account-screen.tsx',
     'src/modules/booking/hooks/use-booking-step.tsx',
     'src/modules/marketplace/hooks/use-compare-url-state.ts',
     'src/modules/marketplace/hooks/use-marketplace-url-state.ts',
+    'src/modules/support/components/contact-support-screen.tsx',
   ]);
+  /*
+    The sixth is Support's, and it is the same *outcome* navigation the vault's
+    two are: "you sent this request, here it is". Asserted, like theirs, to
+    compose no query string of its own — which is what keeps it out of the
+    URL-state category rather than a promise that it is.
+  */
+  check(
+    'and the vault and support navigate only to routes they did not build themselves',
+    [...sources.entries()]
+      .filter(
+        ([file]) =>
+          file.startsWith('src/modules/bank-accounts/') || file.startsWith('src/modules/support/'),
+      )
+      .filter(([, text]) => /router\.push\((?!ROUTES\.)/.test(text))
+      .map(([file]) => file),
+    [],
+  );
   /*
     And the Booking one is the module's only navigator: no screen, section or
     page under `modules/booking` may push a route itself.
@@ -317,10 +347,27 @@ export async function runInvariantSuite() {
     `bookingIdentity` (doc 07 Stage 3). Still an exact number, so the fifteenth
     cast has to arrive with a route behind it and an edit here.
   */
+  /*
+    Nineteen: the seventeen above, plus `reports` and the `report(reportId)`
+    builder that Module 10 added under the portfolio segment. Still an exact
+    number, so the twentieth cast has to arrive with a route behind it.
+  */
+  /*
+    Twenty-two: the nineteen above, plus the bank account vault, its add flow
+    and the account details builder (Module 11). Still an exact number, so the
+    twenty-third cast has to arrive with a route behind it.
+  */
+  /* Twenty-three with the Family Dashboard (Module 12). Still exact. */
+  /* Twenty-six with support, contacting support and one request (Module 13). */
+  /*
+    Thirty-six with the operations console (Module 15): ten admin routes, each
+    under the one `/admin` namespace. Still an exact number.
+  */
+  /* Thirty-seven with the Tax Center (Module 13). Still an exact number. */
   check(
-    'routes.ts asserts exactly fifteen Routes (E4)',
+    'routes.ts asserts exactly thirty-seven Routes (E4)',
     (routes.match(/as Route/g) ?? []).length,
-    15,
+    37,
   );
   /*
     **One booking flow, one route family.** Every booking path is built here and
@@ -3495,8 +3542,15 @@ export async function runInvariantSuite() {
    * view model and is not migrated. This list growing a Marketplace entry is the
    * regression to catch.
    */
+  /*
+    Admin joined as a third consumer (Module 15): the operations console reads
+    the catalogue through this same repository rather than holding one of its
+    own, which is exactly what the master exists to prevent. Marketplace is
+    still the property being protected — a Marketplace entry here is the
+    regression to catch.
+  */
   check(
-    'only Goal-Based FD and Booking consume ProductMaster',
+    'only Goal-Based FD, Booking and Admin consume ProductMaster',
     [
       ...new Set(
         [...sources.entries()]
@@ -3505,7 +3559,7 @@ export async function runInvariantSuite() {
           .map(([file]) => file.split('/').slice(0, 3).join('/')),
       ),
     ].sort(),
-    ['src/modules/booking', 'src/modules/goal-based-fd'],
+    ['src/modules/admin', 'src/modules/booking', 'src/modules/goal-based-fd'],
   );
 
   /* ---- The four architectures this task must leave untouched ---- */
@@ -3740,7 +3794,12 @@ export async function runInvariantSuite() {
   /* ---- Portfolio: the first surface for ownership ---- */
 
   const portfolioScreen = sources.get('src/modules/portfolio/components/portfolio-screen.tsx');
-  const portfolioSummary = sources.get('src/modules/portfolio/utils/portfolio-summary.ts');
+  /*
+    Promoted to the platform tier in Module 12: the Family Dashboard is a second
+    consumer, and a module may not import a sibling. The derivation is unchanged
+    and is still asserted here — by its new path.
+  */
+  const portfolioSummary = sources.get('src/utils/portfolio/portfolio-summary.ts');
   const holdingsStore = sources.get('src/services/portfolio/holdings-store.ts');
   const holdingTypes = sources.get('src/types/portfolio.ts');
 
@@ -3845,10 +3904,20 @@ export async function runInvariantSuite() {
     control that quietly does nothing.
   */
   const quickActions = sources.get('src/modules/portfolio/components/quick-actions.tsx');
+  /*
+    The statement action was the unbuilt one until Module 10 gave it somewhere
+    real to go. What must survive is the *mechanism*: an action either links
+    through ROUTES or is marked unavailable and rendered non-interactively —
+    never a control that quietly does nothing.
+  */
   ok(
-    'unbuilt actions are marked unavailable, not linked',
-    /unavailable: 'Not available yet'/.test(quickActions ?? '') &&
+    'an action either goes somewhere real or is marked unavailable',
+    /action\.unavailable/.test(quickActions ?? '') &&
       /aria-disabled="true"/.test(quickActions ?? ''),
+  );
+  ok(
+    'and the statement action now leads to documents that exist',
+    /ROUTES\.reports/.test(quickActions ?? ''),
   );
   ok(
     'and every linked action goes through ROUTES',
@@ -3890,6 +3959,1268 @@ export async function runInvariantSuite() {
     /ROUTES\.home/.test(
       sources.get('src/modules/portfolio/components/portfolio-empty-state.tsx') ?? '',
     ),
+  );
+
+  /* ---- Tax Center ---- */
+
+  /*
+    Affirmative claims only. An honest screen legitimately contains the words
+    "official", "DigiLocker" and "contacted" — inside the sentences saying no
+    such thing happened — so negated clauses are dropped before a claim is
+    looked for. The probes ask whether the claim is *made*, not whether the
+    vocabulary appears.
+  */
+  const affirmativeClauses = (text) =>
+    text
+      /* Whitespace first: a sentence wrapped across two lines is one clause. */
+      .replace(/\s+/g, ' ')
+      .split(/[.;]/)
+      .filter((clause) => !/\bno\b|\bnot\b|\bnever\b|\bnothing\b/i.test(clause))
+      .join(' | ');
+
+  const taxTypes = sources.get('src/types/tax.ts');
+  const taxYearModel = sources.get('src/utils/tax/tax-year.ts');
+  const taxAllocation = sources.get('src/utils/tax/interest-allocation.ts');
+  const taxSummary = sources.get('src/modules/tax/utils/tax-summary.ts');
+  const taxScreen = sources.get('src/modules/tax/components/tax-center-screen.tsx');
+  const taxRow = sources.get('src/modules/tax/components/tax-deposit-row.tsx');
+
+  const taxFiles = [...sources.entries()].filter(
+    ([file]) => file.includes('/tax') || file.includes('types/tax.ts'),
+  );
+
+  ok('tax has platform-level vocabulary', Boolean(taxTypes));
+  ok('a Tax Year model', Boolean(taxYearModel));
+  ok('a pure allocator', Boolean(taxAllocation));
+  ok('and a screen', Boolean(taxScreen));
+
+  /**
+   * **The allocator is not an interest engine.** It divides the total
+   * `calculateDepositReturns` already produced. A second formula here would
+   * agree with Portfolio until somebody edited one of them.
+   */
+  ok(
+    'the allocator reads the canonical engine',
+    /calculateDepositReturns/.test(taxAllocation ?? '') &&
+      /from '@\/utils\/finance'/.test(taxAllocation ?? ''),
+  );
+  check(
+    'no tax file implements a compounding or interest formula',
+    taxFiles
+      .filter(([, text]) =>
+        /Math\.pow|\*\* periods|annualRate\s*\/\s*100|COMPOUNDS_PER_YEAR/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and none redeclares the canonical calculations',
+    taxFiles
+      .filter(([, text]) =>
+        /export function (calculateDepositReturns|calculateMaturity|calculateSimpleInterest|maturityDate)\b/.test(
+          text,
+        ),
+      )
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **A deposit's tax years must sum to what it earns.** The allocator
+   * subtracts two rounded cumulatives rather than rounding each slice, which is
+   * what makes that exact.
+   */
+  ok(
+    'allocation telescopes rather than rounding each slice',
+    /const before = accruedTo\(/.test(taxAllocation ?? '') &&
+      /const through = accruedTo\(/.test(taxAllocation ?? '') &&
+      /through - before/.test(taxAllocation ?? ''),
+  );
+
+  /**
+   * **Fail closed.** A deposit with no maturity date, no rate or no amount is
+   * reported as unallocatable with a reason — never as a zero that reads like a
+   * measurement.
+   */
+  ok(
+    'an unallocatable deposit is a stated outcome, not a number',
+    /status: 'unavailable'/.test(taxTypes ?? '') && /reason: string/.test(taxTypes ?? ''),
+  );
+  ok('and the row prints the reason', /Tax-year allocation unavailable/.test(taxRow ?? ''));
+
+  /**
+   * **FD interest is not tax.** There is no liability, no rate, no TDS figure
+   * and no taxable-income field anywhere — the type has nowhere to put one.
+   */
+  for (const field of ['taxPayable', 'taxRate', 'tdsAmount', 'taxableIncome', 'netInterest']) {
+    ok(`the tax model has no ${field}`, !new RegExp(`\\b${field}\\b`).test(taxTypes ?? ''));
+  }
+  check(
+    'no tax file computes a liability or a TDS amount',
+    taxFiles
+      .filter(([, text]) =>
+        /tax(Payable|Liability|Due)|tds\s*=|\* *0\.1\b|10\s*%\s*tds|slabRate/i.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the screen states that TDS is not connected',
+    /Bank-reported TDS information isn/.test(taxScreen ?? ''),
+  );
+  ok(
+    'and that the figure is not a tax liability',
+    /not your final tax liability|not a tax liability/i.test(taxScreen ?? ''),
+  );
+
+  /**
+   * **Provenance is beside the figure, not in a footnote.** The number is
+   * platform-derived and straight-line, and the screen says both where the
+   * number is read.
+   */
+  ok('the headline figure is labelled platform-derived', /Platform-derived/.test(taxScreen ?? ''));
+  ok(
+    'and labelled a straight-line approximation',
+    /Straight-line approximation/.test(taxScreen ?? ''),
+  );
+  check(
+    'no tax file claims an official, government or bank-certified calculation',
+    taxFiles
+      .filter(([, text]) =>
+        /official tax|government (verified|calculated)|certified by the bank|filed with|income tax department (has|confirmed)/i.test(
+          affirmativeClauses(text),
+        ),
+      )
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **Tax Year terminology is centralised.** A component that wrote its own
+   * label would drift from the selector beside it.
+   */
+  ok('the label is built in the model', /Tax Year \$\{shortLabel\}/.test(taxYearModel ?? ''));
+  check(
+    'and no component writes a tax-year label itself',
+    taxFiles
+      .filter(([file]) => !file.endsWith('utils/tax/tax-year.ts'))
+      .filter(([, text]) => /Tax Year \d{4}/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **No store, no second copy of anything.** The summary is derived on every
+   * read from canonical holdings.
+   */
+  check(
+    'no tax file writes to storage',
+    taxFiles.filter(([, text]) => /sessionStorage|localStorage/.test(text)).map(([file]) => file),
+    [],
+  );
+  ok('the summary reads holdings through the platform hook', /usePortfolio/.test(taxScreen ?? ''));
+  ok(
+    'and the summary only adds up what the allocator returned',
+    /allocateInterestToPeriod/.test(taxSummary ?? '') &&
+      !/calculateMaturity|calculateSimpleInterest/.test(taxSummary ?? ''),
+  );
+
+  /** **No second document engine.** Tax Center links to Reports; it produces nothing. */
+  check(
+    'no tax file builds documents',
+    taxFiles
+      .filter(([, text]) => /buildReportCatalogue|buildDocumentContent|window\.print/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok('and it links to the existing reports route', /ROUTES\.reports/.test(taxScreen ?? ''));
+  ok(
+    'a bank-issued certificate is listed as unavailable',
+    /Form 16A/.test(taxScreen ?? '') &&
+      /no connection to bank document systems/.test(taxScreen ?? ''),
+  );
+
+  /** **No identity or account detail.** A tax summary needs neither. */
+  check(
+    'no tax file reads identity or account detail',
+    taxFiles
+      .filter(([, text]) =>
+        /\.pan\b|\.aadhaar\b|lastFourDigits|maskAccountNumber|\.ifsc\b/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+
+  /** One constant per URL, as everywhere else. */
+  check(
+    'no tax file writes a URL inline',
+    taxFiles.filter(([, text]) => /href="\/|'\/tax/.test(text)).map(([file]) => file),
+    [],
+  );
+
+  /* ---- Admin Portal ---- */
+
+  const adminTypes = sources.get('src/types/admin.ts');
+  const adminJournal = sources.get('src/services/admin/admin-journal.ts');
+  const adminFixture = sources.get('src/services/admin/admin-fixture.ts');
+  const adminProjection = sources.get('src/modules/admin/utils/admin-projection.ts');
+  const adminPermissions = sources.get('src/modules/admin/utils/permissions.ts');
+  const adminShell = sources.get('src/modules/admin/components/admin-shell.tsx');
+  const adminConsoleHook = sources.get('src/modules/admin/hooks/use-admin-console.tsx');
+  const adminProducts = sources.get('src/modules/admin/components/admin-products-screen.tsx');
+  const adminSupport = sources.get('src/modules/admin/components/admin-support-screen.tsx');
+  const adminKyc = sources.get('src/modules/admin/components/admin-kyc-screen.tsx');
+
+  const adminFiles = [...sources.entries()].filter(
+    ([file]) => file.includes('/admin') || file.includes('(admin)'),
+  );
+
+  ok('the admin portal has platform-level vocabulary', Boolean(adminTypes));
+  ok('one journal', Boolean(adminJournal));
+  ok('and a shell of its own', Boolean(adminShell));
+
+  /**
+   * **Admin introduces no second source of truth.** It reads the canonical
+   * domains through platform seams and owns exactly one store — an append-only
+   * journal of what operators did.
+   */
+  check(
+    'admin declares no store other than its journal',
+    adminFiles
+      .filter(([file]) => !file.endsWith('admin-journal.ts'))
+      .filter(([, text]) => /sessionStorage|localStorage/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and writes to no other domain’s store',
+    adminFiles
+      .filter(([, text]) =>
+        /recordHolding|addAccount\(|createRequest\(|setPrimaryAccount/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the product catalogue is read through the platform repository',
+    /createProductMasterRepository/.test(adminConsoleHook ?? ''),
+  );
+  ok(
+    'and customer figures come from the platform summariser',
+    /summarisePortfolio/.test(adminProjection ?? ''),
+  );
+
+  /**
+   * **Admin performs no financial calculation.** Interest, maturity and totals
+   * belong to the platform's own derivations; a console that recomputed them
+   * could show an operator a figure the customer does not have.
+   */
+  check(
+    'no admin file implements a financial formula',
+    adminFiles
+      .filter(([, text]) =>
+        /Math\.pow|calculateDepositReturns|annualRate\s*[/*]|maturityDate\(/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **The journal is append-only, and its entries are always simulated.** A
+   * caller that could set `isSimulated` would be able to record an event
+   * claiming something left the platform.
+   */
+  ok(
+    'events are appended, never edited',
+    /const next = \[recorded, \.\.\.existing\]/.test(adminJournal ?? '') &&
+      !/events\.map\(/.test(adminJournal ?? ''),
+  );
+  ok(
+    'and every recorded event is simulated',
+    /isSimulated: true/.test(adminJournal ?? '') &&
+      /Omit<AdminAuditEvent, 'id' \| 'at' \| 'isSimulated'>/.test(adminJournal ?? ''),
+  );
+  ok(
+    'the journal is not seeded with actions nobody took',
+    !/demoEvents|seedJournal/.test(adminJournal ?? ''),
+  );
+  ok(
+    'statuses are replayed from events rather than stored beside them',
+    /replayApplicationStatus/.test(adminProjection ?? '') &&
+      /buildProposals/.test(adminProjection ?? ''),
+  );
+
+  /**
+   * **Visibility is not permission to change, and maker is not checker.** A
+   * change one role can both propose and approve is not a control.
+   */
+  ok(
+    'the permission model separates viewing from acting',
+    /'applications.view'/.test(adminTypes ?? '') && /'applications.decide'/.test(adminTypes ?? ''),
+  );
+  ok(
+    'and the interface says so, not only a comment',
+    /PERMISSIONS_ARE_NOT_AUTHORISATION =/.test(adminPermissions ?? '') &&
+      /They are not authorisation/.test(adminPermissions ?? ''),
+  );
+  ok(
+    'and the shell renders that statement rather than restating it',
+    /PERMISSIONS_ARE_NOT_AUTHORISATION/.test(adminShell ?? ''),
+  );
+
+  /**
+   * **No false claim about an external system.** Nothing here reaches a bank, a
+   * registry, a payment rail or a customer, and no screen says otherwise.
+   */
+  /*
+    Affirmative claims only. The verification screen legitimately contains the
+    word "DigiLocker" — in the sentence saying no such check was performed — so
+    the probe looks for the claim being *made*, not for the vocabulary.
+  */
+  check(
+    'no admin file claims a bank, provider or customer was contacted',
+    adminFiles
+      .filter(([, text]) =>
+        /(has been|was) (published|sent) to the bank|(we|platform) contacted the bank|customer (has been|was) (emailed|contacted|notified)|(has been|was) verified by (aadhaar|digilocker)/i.test(
+          affirmativeClauses(text),
+        ),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'an approved product change stops short of publishing',
+    /publishing requires a bank integration|no bank integration/i.test(adminProducts ?? ''),
+  );
+  ok(
+    'and the catalogue is explicitly left unchanged',
+    /catalogue is unchanged|do not alter it/i.test(adminProducts ?? ''),
+  );
+  ok(
+    'verification states no external check was made',
+    /registry or bureau check has been performed/i.test(adminKyc ?? ''),
+  );
+  ok(
+    'and support says nothing is sent to the customer',
+    /No email, message or notification is sent/i.test(adminSupport ?? ''),
+  );
+
+  /**
+   * **Support has one queue.** The console operates the canonical store rather
+   * than keeping its own, so an operator's change is the customer's status.
+   */
+  ok(
+    'admin operates the canonical support store',
+    /setRequestStatus/.test(adminSupport ?? '') &&
+      /from '@\/services\/support'/.test(adminSupport ?? ''),
+  );
+  check(
+    'and declares no support records of its own',
+    adminFiles
+      .filter(([, text]) => /SupportRequest\[\]|supportRequests\s*[:=]\s*\[/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **No identity document reaches the console.** The customer row has no field
+   * for one, and no admin file reads one.
+   */
+  check(
+    'no admin file reads identity or account detail',
+    adminFiles
+      .filter(([, text]) =>
+        /\.pan\b|\.aadhaar\b|lastFourDigits|maskAccountNumber|\.ifsc\b/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'and the demonstration data contains none',
+    !/pan|aadhaar|accountNumber|dateOfBirth/i.test(adminFixture ?? ''),
+  );
+
+  /** The two portals stay separate: nothing customer-facing links into admin. */
+  check(
+    'no customer screen links into the operations console',
+    [...sources.entries()]
+      .filter(([file]) => !file.includes('/admin') && !file.includes('(admin)'))
+      .filter(([file]) => file !== 'src/constants/routes.ts')
+      .filter(([, text]) => /ROUTES\.admin|'\/admin/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and no admin file writes a URL inline',
+    adminFiles.filter(([, text]) => /href="\/|'\/admin/.test(text)).map(([file]) => file),
+    [],
+  );
+
+  /* ---- Customer Support ---- */
+
+  const supportTypes = sources.get('src/types/support.ts');
+  const supportStore = sources.get('src/services/support/support-store.ts');
+  const helpArticles = sources.get('src/services/support/help-articles.ts');
+  const supportSearch = sources.get('src/modules/support/utils/search-help.ts');
+  const supportContext = sources.get('src/modules/support/utils/request-context.ts');
+  const supportHome = sources.get('src/modules/support/components/support-home-screen.tsx');
+  const supportContact = sources.get('src/modules/support/components/contact-support-screen.tsx');
+  const supportDetail = sources.get('src/modules/support/components/request-detail-screen.tsx');
+
+  ok('support has platform-level vocabulary', Boolean(supportTypes));
+  ok('a store of its own interactions', Boolean(supportStore));
+  ok('and a screen', Boolean(supportHome));
+
+  const supportFiles = [...sources.entries()].filter(
+    ([file]) => file.includes('/support') || file.includes('use-support-requests'),
+  );
+
+  /**
+   * **Support owns the interaction, not the money.** A request refers to a
+   * deposit by reference and to an account by id. It never carries a principal,
+   * a rate, a maturity value or four digits of an account number — a copied
+   * figure is one that can disagree with the portfolio, in the place a customer
+   * would most trust it.
+   */
+  ok(
+    'the request type holds references, not figures',
+    /relatedTo: SupportSubject/.test(supportTypes ?? '') &&
+      !/principal|annualRate|maturityValue|lastFourDigits/.test(supportTypes ?? ''),
+  );
+  check(
+    'no support file implements a financial formula',
+    supportFiles
+      .filter(([, text]) =>
+        /Math\.pow|calculateDepositReturns|summarisePortfolio|buildMaturitySchedule|maturityDate\(/.test(
+          text,
+        ),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and none writes to another domain’s store',
+    supportFiles
+      .filter(([, text]) =>
+        /recordHolding|addAccount\(|setPrimaryAccount|markDemoVerified/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'the support store persists no financial value',
+    /principal|annualRate|maturityValue|lastFourDigits|ifsc/i.test(supportStore ?? '')
+      ? ['src/services/support/support-store.ts']
+      : [],
+    [],
+  );
+
+  /**
+   * **Nobody is on the other end, and the type cannot say otherwise.** A message
+   * is the customer's or the platform's; there is no `agent` author to render,
+   * so no screen can imply a person replied.
+   */
+  ok(
+    'a message author is the customer or the platform',
+    /SupportMessageAuthor = 'customer' \| 'platform'/.test(supportTypes ?? ''),
+  );
+  check(
+    'no support file names an agent, a team or a queue',
+    supportFiles
+      .filter(([, text]) =>
+        /our support team (has|is)|an agent is|agent will|your case|queue position|typically replies/i.test(
+          text,
+        ),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and none claims a bank was contacted',
+    supportFiles
+      .filter(([, text]) =>
+        /we (have )?contacted the bank|raised with the bank|filed with/i.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the acknowledgement states that nothing was sent',
+    /No support team, bank or external system was contacted/.test(supportStore ?? ''),
+  );
+  ok(
+    'a created request is always open and always simulated',
+    /status: 'open'/.test(supportStore ?? '') && /isSimulated: true/.test(supportStore ?? ''),
+  );
+
+  /**
+   * **No SLA, no promise of time.** This build has no process behind any of the
+   * statuses, so none of the wording implies one.
+   */
+  ok(
+    'status wording promises no response time',
+    !/within \d+ (hours|days)|business day|we aim to/i.test(supportContext ?? ''),
+  );
+
+  /**
+   * **Search is a search.** No model, no generated answer, and the screen says
+   * so rather than letting the customer assume otherwise.
+   */
+  ok(
+    'search scores deterministic matches',
+    /score/.test(supportSearch ?? '') &&
+      !/fetch\(|openai|assistant|chat/i.test(supportSearch ?? ''),
+  );
+  ok(
+    'and the screen states that no answers are generated',
+    /not an assistant/.test(supportHome ?? ''),
+  );
+  check(
+    'no support screen fakes a conversation with a machine',
+    supportFiles
+      .filter(([, text]) => /typing…|is typing|AI assistant|chatbot|live agent/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **The context comes with the customer.** A deposit or an account arrives as
+   * a reference in the URL and is resolved against the canonical domain — never
+   * copied into the request, and never re-asked.
+   */
+  ok(
+    'context is resolved from the canonical domains',
+    /usePortfolio/.test(supportContact ?? '') && /useBankAccounts/.test(supportContact ?? ''),
+  );
+  ok(
+    'a reference that resolves to nothing is stated',
+    /holding-missing/.test(supportContext ?? '') && /no longer in your/.test(supportContext ?? ''),
+  );
+  ok(
+    'and the contact screen never asks which deposit',
+    !/which (fd|deposit|account)\?/i.test(supportContact ?? ''),
+  );
+
+  /**
+   * **Nothing sensitive reaches the URL or the screen.** The contextual link
+   * carries a bank reference or an opaque account id, and nothing else.
+   */
+  /*
+    Reading the *data*, not mentioning the word: the contact screen tells the
+    customer never to send their PAN, which is the opposite of exposing one. The
+    probe therefore looks for access rather than for vocabulary.
+  */
+  check(
+    'no support file reads identity or account detail',
+    supportFiles
+      .filter(([, text]) =>
+        /identity\??\.|\.pan\b|\.aadhaar\b|lastFourDigits|maskAccountNumber|\.ifsc\b/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the contextual route carries only a reference or an id',
+    /supportNew: \(context\?: \{ holding\?: string; account\?: string \}\)/.test(routes ?? ''),
+  );
+  ok(
+    'and the contact screen warns against sending credentials',
+    /do not include your full bank account number/i.test(supportContact ?? ''),
+  );
+
+  /** Replies are real, so the control exists. Nothing else is offered. */
+  ok('the reply writes to the thread', /reply\(request\.id/.test(supportDetail ?? ''));
+
+  /** Help content describes this product, and states no policy of its own. */
+  ok(
+    'help articles link through ROUTES',
+    /ROUTES\./.test(helpArticles ?? '') && !/href="\//.test(helpArticles ?? ''),
+  );
+  check(
+    'no support file writes a URL inline',
+    supportFiles.filter(([, text]) => /href="\/|'\/support/.test(text)).map(([file]) => file),
+    [],
+  );
+
+  /* ---- Family Dashboard ---- */
+
+  const familyTypes = sources.get('src/types/family.ts');
+  const familyFixture = sources.get('src/services/family/family-fixture.ts');
+  const familyOverview = sources.get('src/modules/family/utils/family-overview.ts');
+  const familyScreen = sources.get('src/modules/family/components/family-screen.tsx');
+  const familyMemberCard = sources.get('src/modules/family/components/family-member-card.tsx');
+  const familyGoalRow = sources.get('src/modules/family/components/family-goal-row.tsx');
+
+  ok('the family has platform-level vocabulary', Boolean(familyTypes));
+  ok('a pure aggregation', Boolean(familyOverview));
+  ok('and a screen', Boolean(familyScreen));
+
+  /**
+   * **The family view is a read model.** It aggregates the portfolio's own
+   * derivations and owns nothing. A family store, a family maturity engine or a
+   * second goal calculator would each make this module authoritative for a
+   * figure another domain already answers.
+   */
+  check(
+    'no family file writes a store',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/family'))
+      .filter(([, text]) => /sessionStorage|localStorage|recordHolding|addAccount\(/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and none implements a financial formula of its own',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/family'))
+      .filter(([, text]) =>
+        /Math\.pow|calculateDepositReturns|annualRate\s*[/*]|maturityDate\(/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the aggregation reads the platform derivations',
+    /from '@\/utils\/portfolio'/.test(familyOverview ?? '') &&
+      /summarisePortfolio/.test(familyOverview ?? '') &&
+      /buildMaturitySchedule/.test(familyOverview ?? ''),
+  );
+  /*
+    Those derivations are platform-level precisely so two modules can share
+    them. A module-local copy is the failure this asserts against.
+  */
+  check(
+    'the portfolio derivations are declared exactly once, at the platform tier',
+    [...sources.entries()]
+      .filter(([, text]) =>
+        /export function (summarisePortfolio|buildMaturitySchedule)\b/.test(text),
+      )
+      .map(([file]) => file)
+      .sort(),
+    ['src/utils/portfolio/maturity-schedule.ts', 'src/utils/portfolio/portfolio-summary.ts'],
+  );
+
+  /**
+   * **Nobody else has signed in, and the product says so.** A member other than
+   * the primary one is demonstration data, marked on the record rather than in
+   * a comment, and the totals that include it report how much.
+   */
+  ok('the member type carries a demo flag', /isDemo: boolean/.test(familyTypes ?? ''));
+  ok(
+    'the overview reports how much of a total is demonstration data',
+    /demoPrincipal/.test(familyOverview ?? '') && /includesDemoData/.test(familyOverview ?? ''),
+  );
+  ok(
+    'and the screen states it beneath the totals',
+    /demonstration data for/.test(familyScreen ?? ''),
+  );
+  ok(
+    'each demonstration member is labelled on its own card',
+    /Demo data|Demonstration member/.test(familyMemberCard ?? ''),
+  );
+  ok(
+    'and the screen never claims a family member has an account',
+    !/signed in as|logged in as/i.test(familyScreen ?? ''),
+  );
+
+  /**
+   * **Family membership is not consent to read identity documents.** The member
+   * type has no field for them, and no family file renders one.
+   */
+  for (const field of ['pan', 'aadhaar', 'dateOfBirth', 'accountNumber', 'lastFourDigits']) {
+    ok(
+      `the family model carries no ${field}`,
+      !new RegExp(`\\b${field}\\b`).test(familyTypes ?? ''),
+    );
+  }
+  ok(
+    'the demonstration family carries no identity data',
+    !/\bpan\b|aadhaar|accountNumber|dateOfBirth/i.test(familyFixture ?? ''),
+  );
+  check(
+    'and no family screen renders identity or account detail',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/family'))
+      .filter(([, text]) => /\bpan\b|aadhaar|lastFourDigits|maskAccountNumber|ifsc/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **A goal reports what can be attributed, and nothing more.** Booking never
+   * records which goal a deposit was opened for, so an unlinked goal reports no
+   * progress rather than zero — zero would read as a measurement.
+   */
+  ok(
+    'progress is null when nothing is linked',
+    /percent: number \| null/.test(familyOverview ?? ''),
+  );
+  ok(
+    'the row says so rather than drawing an empty bar',
+    /No deposits are linked to this goal yet/.test(familyGoalRow ?? ''),
+  );
+  ok(
+    'and the screen states the limitation once',
+    /Booking does not yet record/.test(familyScreen ?? ''),
+  );
+  check(
+    'no family file recomputes an allocation or a recommendation',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/family'))
+      .filter(([, text]) => /allocate\(|rankCandidates|recommend|goalRecommendation/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /** Every destination on the dashboard is a route that exists. */
+  check(
+    'the family screen writes no URL inline',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/family'))
+      .filter(([, text]) => /href="\//.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'and it leads to the domains that own the detail',
+    /ROUTES\.portfolio/.test(familyScreen ?? '') &&
+      /ROUTES\.maturities/.test(familyScreen ?? '') &&
+      /ROUTES\.goalPlanner/.test(familyScreen ?? '') &&
+      /ROUTES\.reports/.test(familyScreen ?? ''),
+  );
+
+  /* ---- Bank Account Management ---- */
+
+  const accountTypes = sources.get('src/types/bank-account.ts');
+  const accountStore = sources.get('src/services/bank-accounts/bank-account-store.ts');
+  const ifscDirectory = sources.get('src/services/bank-accounts/ifsc-directory.ts');
+  const accountUtils = sources.get('src/utils/bank-account.ts');
+  const vaultScreen = sources.get('src/modules/bank-accounts/components/bank-accounts-screen.tsx');
+  const addAccountScreen = sources.get(
+    'src/modules/bank-accounts/components/add-account-screen.tsx',
+  );
+  const accountDetails = sources.get(
+    'src/modules/bank-accounts/components/account-details-screen.tsx',
+  );
+  const accountEntry = sources.get('src/modules/bank-accounts/utils/account-entry.ts');
+  const bookingAccountScreen = sources.get(
+    'src/modules/booking/components/bank-account-screen.tsx',
+  );
+
+  ok('bank accounts have a platform-level vocabulary', Boolean(accountTypes));
+  ok('and a single vault store', Boolean(accountStore));
+  ok('with a screen to manage them', Boolean(vaultScreen));
+
+  /**
+   * **One canonical account domain.** Booking owned a `BankAccount` type and a
+   * hard-coded list of three; both are gone. Anything that needs an account
+   * refers to `ExternalBankAccount` and reads the vault — a second module-owned
+   * account list is the duplication this module exists to remove.
+   */
+  check(
+    'no module declares a bank-account type of its own',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/'))
+      .filter(([, text]) => /(interface|type)\s+BankAccount\b/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and no module ships its own list of accounts',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/'))
+      .filter(([, text]) => /SAVED_BANK_ACCOUNTS|const .*BANK_ACCOUNTS\s*(:|=)/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the demonstration accounts belong to the store',
+    /DEMO_BANK_ACCOUNTS/.test(accountStore ?? ''),
+  );
+
+  /**
+   * **The full account number has nowhere to live.** The canonical type has no
+   * field for it, the store's schema pins the stored value to four digits, and
+   * the only place a whole number exists is the add form's own component state.
+   */
+  ok(
+    'the account type carries four digits and no more',
+    /lastFourDigits: string/.test(accountTypes ?? '') && !/accountNumber/.test(accountTypes ?? ''),
+  );
+  ok(
+    'the stored schema refuses anything longer',
+    /lastFourDigits: z\.string\(\)\.regex\(\/\^\\d\{4\}\$\//.test(accountStore ?? ''),
+  );
+  check(
+    'no screen outside the entry form holds a whole account number',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('bank-account') || file.includes('/bank-accounts/'))
+      .filter(([file]) => !file.endsWith('account-entry.ts'))
+      .filter(([, text]) => /\baccountNumber\b/.test(text))
+      .map(([file]) => file)
+      .filter((file) => !file.endsWith('add-account-screen.tsx')),
+    [],
+  );
+
+  /**
+   * **Masked on screen must mean masked in the URL.** An id built from the last
+   * four digits would put them in the address bar, in history and in any
+   * referrer — masking that leaks is not masking.
+   */
+  ok(
+    'account ids are opaque by construction',
+    /newAccountId/.test(accountStore ?? '') && !/`ba-\$\{[^}]*lastFour/.test(accountStore ?? ''),
+  );
+  ok(
+    'and the demonstration ids carry no digits from the account',
+    !/id: 'ba-demo-\w*\d{4}/.test(accountStore ?? ''),
+  );
+
+  /**
+   * **"Details entered" is not "ownership verified".** Verification is a
+   * discriminated union, so a verified account must name the method that
+   * verified it — and the only method this build has is a simulation, which is
+   * why every screen reads "Demo verified".
+   */
+  ok(
+    'verification is a union with an explicit method',
+    /status: 'verified'; method: BankAccountVerificationMethod/.test(accountTypes ?? ''),
+  );
+  ok(
+    'the only method is the demonstration',
+    /BankAccountVerificationMethod = 'demo'/.test(accountTypes ?? ''),
+  );
+  ok(
+    'an added account is never verified by the store',
+    /verification: \{ status: 'unverified' \}/.test(accountStore ?? ''),
+  );
+  ok(
+    'the shared label says which check ran',
+    /DEMO_VERIFICATION_LABEL = 'Demo verified'/.test(accountUtils ?? ''),
+  );
+  check(
+    'no screen claims a bank verified an account',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('bank-account') || file.includes('/bank-accounts/'))
+      .filter(([, text]) => /verified by (the )?bank|bank[- ]verified/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **The product never asks for a banking credential.** Not a password, not a
+   * PIN, not a net-banking login. The vault says so out loud, and no input on
+   * any account screen asks for one.
+   */
+  check(
+    'no account screen collects a credential',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/bank-accounts/'))
+      .filter(([, text]) => /type="password"|netBanking|upiPin|mpin/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'and the vault states that it never asks',
+    /never ask for your internet banking password/.test(vaultScreen ?? ''),
+  );
+
+  /**
+   * **IFSC is resolved, never guessed.** Inferring the bank from the first four
+   * characters would name one confidently for a mistyped code.
+   */
+  ok('the directory resolves or returns nothing', /return null/.test(ifscDirectory ?? ''));
+  ok(
+    'and the add screen states when it could not identify the bank',
+    /couldn’t be identified/.test(addAccountScreen ?? '') ||
+      /couldn’t be identified/.test(accountEntry ?? ''),
+  );
+  ok(
+    'the customer never types the bank or branch',
+    !/label="Bank name"|label="Branch"/.test(addAccountScreen ?? ''),
+  );
+
+  /**
+   * **Booking refers to an account; it does not copy one.** The draft holds an
+   * id, and the pure application mapping is handed the account rather than
+   * reaching for a store.
+   */
+  ok(
+    'the booking step reads the vault through the platform hook',
+    /useBankAccounts/.test(bookingAccountScreen ?? ''),
+  );
+  ok(
+    'the draft still stores an id and nothing else',
+    /bankAccountId: z\.string\(\)\.min\(1\)\.nullable\(\)/.test(
+      sources.get('src/modules/booking/utils/draft-storage.ts') ?? '',
+    ),
+  );
+  ok(
+    'the application mapping receives the account as a source',
+    /fundingAccount: ExternalBankAccount \| null/.test(
+      sources.get('src/modules/booking/utils/application-mapping.ts') ?? '',
+    ),
+  );
+
+  /**
+   * **A holding references the funding account; it does not embed it.** The
+   * bank name, IFSC and four digits stay in the vault, so a corrected account
+   * is corrected everywhere.
+   */
+  ok(
+    'the holding carries an account id',
+    /fundingAccountId: string \| null/.test(sources.get('src/types/portfolio.ts') ?? ''),
+  );
+  check(
+    'and no portfolio file holds account details',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/portfolio/'))
+      .filter(([, text]) => /lastFourDigits|\bifsc\b/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **Removal is refused for a reason, or allowed.** Both rules are derived
+   * from data the platform actually has — a funded deposit, and the primary
+   * flag — rather than from a policy nobody stated.
+   */
+  ok(
+    'removal is decided by a pure rule',
+    /canRemove/.test(sources.get('src/modules/bank-accounts/utils/account-usage.ts') ?? ''),
+  );
+  ok(
+    'and the screen shows the reason instead of a dead control',
+    /removalBlockedReason/.test(accountDetails ?? ''),
+  );
+
+  /** One constant per URL, as everywhere else. */
+  check(
+    'no component writes the vault URL inline',
+    [...sources.entries()]
+      .filter(([file]) => file !== 'src/constants/routes.ts')
+      .filter(([, text]) => /'\/bank-accounts/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /* ---- Reports & Statements ---- */
+
+  const documentTypes = sources.get('src/types/document.ts');
+  const reportCatalogue = sources.get('src/modules/portfolio/utils/report-catalogue.ts');
+  const reportDocument = sources.get('src/modules/portfolio/utils/report-document.ts');
+  const reportsScreen = sources.get('src/modules/portfolio/components/reports/reports-screen.tsx');
+  const documentScreen = sources.get(
+    'src/modules/portfolio/components/reports/report-document-screen.tsx',
+  );
+  const documentSheet = sources.get('src/modules/portfolio/components/reports/document-sheet.tsx');
+  const documentItem = sources.get(
+    'src/modules/portfolio/components/reports/document-list-item.tsx',
+  );
+
+  ok('documents have a platform-level vocabulary', Boolean(documentTypes));
+  ok('the catalogue is a pure projection', Boolean(reportCatalogue));
+  ok('and there is a centre to read documents in', Boolean(reportsScreen));
+
+  /**
+   * **A report is a read model.** It reads the portfolio's own derivation and
+   * formats it. A report that reached the store directly, or recomputed a
+   * maturity value, would become a second source of financial truth — in the
+   * one place a customer would most trust it.
+   */
+  ok(
+    'the catalogue derives from the portfolio summary and schedule',
+    /PortfolioSummary/.test(reportCatalogue ?? '') &&
+      /MaturitySchedule/.test(reportCatalogue ?? ''),
+  );
+  check(
+    'no report file reads or writes a store',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/portfolio/') && file.includes('report'))
+      .filter(([, text]) => /readHoldings|recordHolding|sessionStorage|localStorage/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  check(
+    'and none implements a financial formula of its own',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/portfolio/') && file.includes('report'))
+      .filter(([, text]) =>
+        /Math\.pow|calculateDepositReturns|annualRate\s*\/|maturityDate\(/.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **A document that does not exist cannot carry the properties of one that
+   * does.** Availability is a discriminated union, so an unavailable document
+   * has no file name and no generated date to render — the type makes the
+   * dishonest state unrepresentable rather than merely discouraged.
+   */
+  ok(
+    'availability is a union, not a flag beside optional metadata',
+    /status: 'available'/.test(documentTypes ?? '') &&
+      /status: 'unavailable'/.test(documentTypes ?? ''),
+  );
+  ok(
+    'and only the available branch has a file name',
+    /status: 'unavailable';[\s\S]{0,200}?reason: string;[\s\S]{0,40}?\}/.test(
+      documentTypes ?? '',
+    ) && !/status: 'unavailable';[\s\S]{0,200}?fileName/.test(documentTypes ?? ''),
+  );
+
+  /**
+   * **The platform never dresses its own document as the bank's.** Provenance
+   * is on the row, on the sheet and in the notes, and one shared reason
+   * explains every absent bank document so no screen can soften it.
+   */
+  ok(
+    'the bank’s document is attributed to the bank',
+    /issuer: 'bank'/.test(reportCatalogue ?? '') &&
+      /BANK_DOCUMENT_REASON/.test(reportCatalogue ?? ''),
+  );
+  ok(
+    'the reason names the missing integration',
+    /no connection to bank document systems/.test(reportCatalogue ?? ''),
+  );
+  ok(
+    'every produced document is marked platform-generated',
+    /origin: 'platform-derived'/.test(reportCatalogue ?? '') &&
+      !/origin: 'bank/.test(reportCatalogue ?? ''),
+  );
+  ok('and the sheet prints that provenance', /not a bank certificate/.test(reportDocument ?? ''));
+  check(
+    'no report screen calls a platform document official',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/reports/') || file.includes('report-'))
+      .filter(([, text]) => /official (bank )?(document|certificate)/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * **No action is offered that the platform cannot perform.** There is no PDF
+   * generator and no document endpoint in this build, so saving is the
+   * browser's own print-to-PDF — and an unavailable document is plain text
+   * rather than a link or a disabled control that suggests one is coming.
+   */
+  ok('saving is the browser’s print dialogue', /window\.print\(\)/.test(documentScreen ?? ''));
+  ok(
+    'and it is described as print or save as PDF, never as a download',
+    /Print or save as PDF/.test(documentScreen ?? '') &&
+      !/Download PDF|downloadPdf|createObjectURL/.test(documentScreen ?? ''),
+  );
+  ok(
+    'the saved file is named after the document',
+    /document\.title = fileName/.test(documentScreen ?? ''),
+  );
+  ok(
+    'an unavailable document is not a link',
+    /if \(!isAvailable\)/.test(documentItem ?? '') && /ROUTES\.report\(/.test(documentItem ?? ''),
+  );
+
+  /**
+   * **The printed page is the document.** Navigation and actions are screen
+   * furniture; a sheet somebody files must not carry the application shell.
+   */
+  ok('actions are hidden from print', /print:hidden/.test(documentScreen ?? ''));
+  ok(
+    'and the sheet itself is the printed surface',
+    /print:border-0|print:p-0/.test(documentSheet ?? ''),
+  );
+
+  /**
+   * **One constant per URL.** Reports are reachable from the portfolio, and the
+   * route strings live in `ROUTES` — a second literal is how two links come to
+   * point at different places.
+   */
+  check(
+    'no component writes the reports URL inline',
+    [...sources.entries()]
+      .filter(([file]) => file !== 'src/constants/routes.ts')
+      .filter(([, text]) => /'\/portfolio\/reports/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'the portfolio offers the way in',
+    /ROUTES\.reports/.test(sources.get('src/modules/portfolio/components/quick-actions.tsx') ?? ''),
+  );
+
+  /* ---- Notifications & Alerts ---- */
+
+  const notificationTypes = sources.get('src/types/notification.ts');
+  const derive = sources.get('src/utils/notifications/derive-notifications.ts');
+  const readStore = sources.get('src/services/notifications/notification-read-store.ts');
+  const notificationsScreen = sources.get(
+    'src/modules/notifications/components/notifications-screen.tsx',
+  );
+  const bell = sources.get('src/components/navigation/notification-bell.tsx');
+
+  ok('notifications are derived by a pure function', Boolean(derive));
+  ok('with platform-level vocabulary', Boolean(notificationTypes));
+  ok('and a centre to read them in', Boolean(notificationsScreen));
+
+  /**
+   * **Notifications copy no financial data.** A notification refers to the
+   * entity it is about; the amount, rate and maturity value stay with the
+   * holding that owns them. A principal copied into a notification is a second
+   * source of truth for a figure, in the place a customer would most trust it.
+   */
+  ok(
+    'the notification type carries a subject reference, not figures',
+    /interface NotificationSubject/.test(notificationTypes ?? '') &&
+      !/principal|annualRate|maturityValue|amount:/.test(notificationTypes ?? ''),
+  );
+  ok('and the derivation formats no currency', !/formatCurrency|formatRate/.test(derive ?? ''));
+
+  /**
+   * **Ids are stable, because read state is keyed by them.** An id built from a
+   * timestamp would make every notification unread again on the next render.
+   */
+  ok(
+    'notification ids are derived from the subject, not the clock',
+    /`maturity-approaching:\$\{holding\.reference\}`/.test(derive ?? '') &&
+      !/id: `[^`]*\$\{now\}/.test(derive ?? ''),
+  );
+
+  /**
+   * **The only state this module owns is what has been read.** Everything else
+   * is a view over holdings and the investor record.
+   */
+  ok(
+    'the store holds ids only, never notification content',
+    /readIds: z\.array\(z\.string\(\)\.min\(1\)\)/.test(readStore ?? '') &&
+      !/title|body|severity/.test(readStore ?? ''),
+  );
+  check(
+    'notifications keep no copy of holdings or identity',
+    [...sources.entries()]
+      .filter(([file]) => file.startsWith('src/modules/notifications/'))
+      .filter(([, text]) => /recordHolding|readHoldings|createInvestorIdentityService/.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /**
+   * ⚠ **Nothing claims a message was sent.** There is no provider, no bank
+   * integration and no delivery. Every notification is marked simulated, and
+   * the centre says so once rather than on every row.
+   */
+  ok('every derived notification is marked simulated', /isSimulated: true/.test(derive ?? ''));
+  ok(
+    'and the centre states that nothing was sent',
+    /No message\s+has been sent to you/.test(notificationsScreen ?? ''),
+  );
+  check(
+    'nothing claims an email, SMS or push went out',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('notification'))
+      .filter(([, text]) => /we (emailed|texted|sent you)|sms sent|push sent/i.test(text))
+      .map(([file]) => file),
+    [],
+  );
+
+  /** The notice window is shared, so no surface warns earlier than another. */
+  ok(
+    'the maturity threshold comes from the platform constant',
+    /MATURING_SOON_MONTHS/.test(derive ?? ''),
+  );
+  check(
+    'and that constant is declared once',
+    [...sources.entries()]
+      .filter(([, text]) => /export const MATURING_SOON_MONTHS/.test(text))
+      .map(([file]) => file),
+    ['src/utils/finance/notice-window.ts'],
+  );
+
+  /** The bell is the only place the shared navigation reads application state. */
+  ok('the bell links to the centre', /ROUTES\.notifications/.test(bell ?? ''));
+  ok(
+    'and the navigation itself stays presentation-only',
+    !/useNotifications/.test(sources.get('src/components/navigation/top-nav.tsx') ?? ''),
+  );
+
+  /* ---- Maturity Management ---- */
+
+  const maturitySchedule = sources.get('src/utils/portfolio/maturity-schedule.ts');
+  const maturityScreen = sources.get(
+    'src/modules/portfolio/components/maturity/maturity-screen.tsx',
+  );
+  const maturityCard = sources.get('src/modules/portfolio/components/maturity/maturity-card.tsx');
+
+  ok('the maturity schedule is a pure derivation', Boolean(maturitySchedule));
+  ok('and has a screen', Boolean(maturityScreen));
+
+  /**
+   * **Maturity reads holdings; it owns no data.** A second store, or a second
+   * calculator, is how "what do I own" and "what happens next" come to disagree
+   * about the same deposit.
+   */
+  ok(
+    'the schedule derives from the portfolio summary',
+    /PortfolioSummary/.test(maturitySchedule ?? '') &&
+      !/readHoldings|recordHolding/.test(maturitySchedule ?? ''),
+  );
+  check(
+    'maturity implements no financial formula of its own',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/portfolio/') && file.includes('maturity'))
+      .filter(([, text]) => /Math\.pow|calculateMaturity\(|annualRate\s*\//.test(text))
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'and the notice window is the portfolio’s own constant, not a second threshold',
+    /MATURING_SOON_MONTHS,?\s*$/m.test(maturitySchedule ?? '') ||
+      /MATURING_SOON_MONTHS/.test(maturitySchedule ?? ''),
+  );
+
+  /**
+   * **A passed date is not a settlement.** The stage is derived from the
+   * calendar, which the platform knows. Whether the bank credited the proceeds
+   * is something no part of this build can observe, so nothing claims it.
+   */
+  ok(
+    'stages are derived from the maturity date',
+    /view\.maturesOn\.getTime\(\) <= now/.test(maturitySchedule ?? ''),
+  );
+  check(
+    'nothing claims proceeds were credited',
+    [...sources.entries()]
+      .filter(([file]) => file.includes('/portfolio/'))
+      .filter(([, text]) =>
+        /credited to your|proceeds have been credited|has been settled/i.test(text),
+      )
+      .map(([file]) => file),
+    [],
+  );
+  ok(
+    'and the outlook defers final handling to the bank',
+    /confirmed by the bank/.test(maturitySchedule ?? ''),
+  );
+
+  /**
+   * **An unrecorded instruction is stated, never defaulted.** Guessing "renew"
+   * would tell an investor their money rolls over when the bank may be paying
+   * it out.
+   */
+  ok('an absent instruction reads as not recorded', /Not recorded/.test(maturityCard ?? ''));
+  ok(
+    'the instruction vocabulary is canonical, not a bank’s own option ids',
+    !/renew-principal-payback-interest|repay-principal-and-interest/.test(maturitySchedule ?? ''),
+  );
+  check(
+    'and the translation from a bank form lives in Booking',
+    [...sources.entries()]
+      .filter(([, text]) => /renew-principal-payback-interest/.test(text))
+      .map(([file]) => file)
+      .sort(),
+    [
+      'src/modules/booking/fixtures/application-templates.ts',
+      'src/modules/booking/utils/maturity-instruction.ts',
+    ],
   );
 
   /* ---- Cross-booking isolation (showstopper 5) ---- */

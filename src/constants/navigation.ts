@@ -45,7 +45,24 @@ export const PRIMARY_NAV: readonly NavItem[] = [
   */
   { label: 'Plan by goal', route: ROUTES.goalPlanner, enabled: true, match: 'prefix' },
   { label: 'Portfolio', route: ROUTES.portfolio, enabled: true, match: 'prefix' },
-  { label: 'Support', enabled: false },
+  /*
+    The account vault is customer-level, not portfolio-level: it funds
+    investments today and may serve other products later, so it sits beside
+    Portfolio rather than inside it.
+  */
+  /*
+    Beside Portfolio, because a customer looking for their tax summary is
+    thinking about their investments — not under it, because the question is
+    about a period rather than about what they hold.
+  */
+  { label: 'Tax', route: ROUTES.tax, enabled: true, match: 'prefix' },
+  { label: 'Family', route: ROUTES.family, enabled: true, match: 'prefix' },
+  { label: 'Bank accounts', route: ROUTES.bankAccounts, enabled: true, match: 'prefix' },
+  /*
+    Reserved and disabled since the first release, and real from Module 13.
+    `prefix` so the item stays current on a request detail page too.
+  */
+  { label: 'Support', route: ROUTES.support, enabled: true, match: 'prefix' },
 ] as const;
 
 /** Mobile bottom bar — approved mobile UI: four icon-only destinations. */
@@ -59,7 +76,7 @@ export const MOBILE_TAB_NAV: readonly NavItem[] = [
     icon: 'portfolio',
   },
   { label: 'Profile', enabled: false, icon: 'profile' },
-  { label: 'Help', enabled: false, icon: 'help' },
+  { label: 'Help', route: ROUTES.support, enabled: true, match: 'prefix', icon: 'help' },
 ] as const;
 
 /** Footer link columns — approved UI. */
@@ -81,8 +98,8 @@ export const FOOTER_NAV: readonly { heading: string; items: readonly NavItem[] }
   {
     heading: 'Support',
     items: [
-      { label: 'Help center', enabled: false },
-      { label: 'Contact', enabled: false },
+      { label: 'Help center', route: ROUTES.support, enabled: true, match: 'prefix' },
+      { label: 'Contact', route: ROUTES.supportNew(), enabled: true },
     ],
   },
 ] as const;

@@ -9,8 +9,7 @@ import { Card } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
 import { formatMaturityDate } from '@/utils/finance';
 import { formatCurrency, formatRate, formatTenure } from '@/utils/format';
-
-import type { HoldingView } from '../utils/portfolio-summary';
+import type { HoldingView } from '@/utils/portfolio';
 
 /**
  * One deposit the investor owns.
@@ -136,7 +135,23 @@ export function FixedDepositHoldingCard({ view }: { view: HoldingView }) {
         </Link>
       </div>
 
-      <p className="text-caption text-content-placeholder tabular-nums">Ref {holding.reference}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-caption text-content-placeholder tabular-nums">
+          Ref {holding.reference}
+        </p>
+
+        {/*
+          Support, carrying this deposit with it (Module 13). The reference is
+          the only thing passed — support resolves the rest from the portfolio,
+          so the customer is never asked which deposit they mean.
+        */}
+        <Link
+          href={ROUTES.supportNew({ holding: holding.reference })}
+          className="focus-ring text-caption text-content-muted hover:text-content rounded-md"
+        >
+          Need help with this FD?
+        </Link>
+      </div>
     </Card>
   );
 }

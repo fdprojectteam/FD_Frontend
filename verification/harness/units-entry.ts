@@ -236,7 +236,47 @@ export {
   DEFAULT_PAYMENT_METHOD,
   PAYMENT_METHODS,
 } from '@/modules/booking/constants/payment-methods';
-export { SAVED_BANK_ACCOUNTS } from '@/modules/booking/fixtures/bank-accounts';
+/* ---- Bank accounts: the canonical vault ---- */
+export {
+  BANK_ACCOUNTS_STORAGE_KEY,
+  DEMO_BANK_ACCOUNTS,
+  addAccount,
+  clearAccounts,
+  findAccount,
+  markDemoVerified,
+  readAccounts,
+  removeAccount,
+  setPrimaryAccount,
+} from '@/services/bank-accounts';
+export {
+  SAMPLE_IFSC_CODES,
+  isWellFormedIfsc,
+  normaliseIfsc,
+  resolveIfsc,
+} from '@/services/bank-accounts';
+export {
+  ACCOUNT_TYPE_LABEL,
+  DEMO_VERIFICATION_LABEL,
+  defaultFundingAccount,
+  describeAccount,
+  isUsableForFunding,
+  maskAccountNumber,
+  primaryAccount,
+  verificationDescription,
+  verificationLabel,
+} from '@/utils/bank-account';
+export {
+  EMPTY_ACCOUNT_ENTRY,
+  isAccountEntryComplete,
+  lastFourOf,
+  toAccountDigits,
+  toNewAccount,
+  validateAccountEntry,
+} from '@/modules/bank-accounts/utils/account-entry';
+export {
+  describeAccountUsage,
+  nameMatchesIdentity,
+} from '@/modules/bank-accounts/utils/account-usage';
 /**
  * The entry-amount contract. Exported so the parser's refusals are assertable
  * directly — it is the one place an amount enters Booking from outside, and the
@@ -288,14 +328,103 @@ export {
 } from '@/modules/goal-based-fd/utils/emergency-allocation';
 
 /* ---- Portfolio: ownership, not intent ---- */
-export {
-  portfolioAttention,
-  summarisePortfolio,
-  toHoldingView,
-} from '@/modules/portfolio/utils/portfolio-summary';
+export { portfolioAttention, summarisePortfolio, toHoldingView } from '@/utils/portfolio';
 export { clearHoldings, readHoldings, recordHolding } from '@/services/portfolio';
 export {
   calculateDepositReturns,
   maturityDate as platformMaturityDate,
   monthsUntil,
 } from '@/utils/finance';
+export {
+  MATURITY_INSTRUCTION_LABEL,
+  buildMaturitySchedule,
+  toMaturityEntry,
+} from '@/utils/portfolio';
+export { toMaturityInstruction } from '@/modules/booking/utils/maturity-instruction';
+export { deriveNotifications, unreadCount } from '@/utils/notifications/derive-notifications';
+export { clearReadIds, markRead, readReadIds } from '@/services/notifications';
+
+/* ---- Reports: a projection of canonical data, never a second source ---- */
+export {
+  BANK_DOCUMENT_REASON,
+  buildReportCatalogue,
+  documentId,
+  documentsForHolding,
+  findDocument,
+  parseDocumentId,
+} from '@/modules/portfolio/utils/report-catalogue';
+export { buildDocumentContent } from '@/modules/portfolio/utils/report-document';
+export { formatCurrency, formatPercentage } from '@/utils';
+
+/* ---- Family: a read model over canonical domains ---- */
+export { buildFamilyOverview, primaryPosition } from '@/modules/family/utils/family-overview';
+export {
+  DEMO_FAMILY_GOALS,
+  DEMO_FAMILY_MEMBERS,
+  demoHoldingsFor,
+  readFamilyComposition,
+} from '@/services/family';
+
+/* ---- Support: the interaction, never the money ---- */
+export {
+  DEMO_ACKNOWLEDGEMENT,
+  HELP_ARTICLES,
+  HELP_CATEGORY_LABEL,
+  clearRequests,
+  createRequest,
+  demoRequests,
+  findRequest,
+  readRequests,
+  replyToRequest,
+} from '@/services/support';
+export { articlesInCategory, searchHelp, searchTerms } from '@/modules/support/utils/search-help';
+export {
+  STATUS_PRESENTATION,
+  describeSubject,
+  requestsNeedingCustomer,
+  resolveSubject,
+} from '@/modules/support/utils/request-context';
+
+/* ---- Admin: an operations read model over one append-only journal ---- */
+export {
+  ADMIN_JOURNAL_KEY,
+  DEMO_ADMINS,
+  SESSION_CUSTOMER_ID,
+  appendEvent,
+  clearJournal,
+  demoApplications,
+  demoCustomers,
+  readAdminRole,
+  readJournal,
+  writeAdminRole,
+} from '@/services/admin';
+export {
+  buildApplicationRows,
+  buildAttention,
+  buildCustomerRows,
+  buildProposals,
+  filterApplications,
+  filterCustomers,
+  isDecidable,
+  pendingProposals,
+  proposalsForProduct,
+} from '@/modules/admin/utils/admin-projection';
+export {
+  PERMISSION_LABEL,
+  ROLE_LABEL,
+  ROLE_PERMISSIONS,
+  can,
+  deniedReason,
+} from '@/modules/admin/utils/permissions';
+export { setRequestStatus } from '@/services/support';
+
+/* ---- Tax: allocation of already-calculated interest, never a second engine ---- */
+export {
+  allocateInterestToPeriod,
+  parseTaxYearId,
+  taxYearFor,
+  taxYearStarting,
+  taxYearsSpanning,
+  totalInterestForHolding,
+} from '@/utils/tax';
+export { buildTaxYearSummary, selectableTaxYears } from '@/modules/tax/utils/tax-summary';

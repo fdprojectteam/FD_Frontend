@@ -6,6 +6,7 @@ import { useEffect, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { useInvestorIdentity } from '@/hooks/use-investor-identity';
 
 import { ApplicationForm } from './application-form';
@@ -63,6 +64,12 @@ export function ApplicationScreen({ productId }: ApplicationScreenProps) {
     useBookingDraft();
   const { isReady, continueTo, goToStep } = useBookingStep('application', productId);
   const { identity } = useInvestorIdentity();
+  /*
+    The account this booking refers to, read from the vault. Booking holds the
+    id; the record belongs to the customer, and the application prints from it.
+  */
+  const { accounts } = useBankAccounts();
+  const fundingAccount = accounts.find((entry) => entry.id === draft.bankAccountId) ?? null;
 
   const library = useMemo(() => createApplicationLibrary(), []);
   const template = useMemo(
@@ -71,8 +78,11 @@ export function ApplicationScreen({ productId }: ApplicationScreenProps) {
   );
 
   const application = useMemo(
-    () => (template === null ? null : resolveApplication(template, { deposit, draft, identity })),
-    [template, deposit, draft, identity],
+    () =>
+      template === null
+        ? null
+        : resolveApplication(template, { deposit, draft, identity, fundingAccount }),
+    [template, deposit, draft, identity, fundingAccount],
   );
 
   /*

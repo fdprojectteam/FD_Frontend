@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { usePortfolio } from '@/hooks/use-portfolio';
 import { formatCurrency } from '@/utils/format';
 
@@ -16,12 +17,12 @@ import { BookingReferenceCard } from './booking-reference-card';
 import { BookingStepShell } from './booking-step-shell';
 import { BookingSummaryRail } from './booking-summary-rail';
 import { ImportantInformation } from './important-information';
-import { SAVED_BANK_ACCOUNTS } from '../fixtures/bank-accounts';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
 import { deriveBookingFigures } from '../utils/booking-figures';
 import { formatMaturityDate } from '../utils/maturity-date';
+import { toMaturityInstruction } from '../utils/maturity-instruction';
 
 /**
  * SuccessScreen — step eight, the terminal outcome (spec 21i).
@@ -67,9 +68,10 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
   const { draft } = useBookingDraft();
   const { isReady } = useBookingStep('success', productId);
   const { record } = usePortfolio();
+  const { accounts } = useBankAccounts();
 
   const confirmation = draft.confirmation;
-  const account = SAVED_BANK_ACCOUNTS.find((entry) => entry.id === draft.bankAccountId);
+  const account = accounts.find((entry) => entry.id === draft.bankAccountId);
 
   /*
     Derived from the moment the deposit was paid for, so the maturity date is
@@ -143,11 +145,24 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
       isCumulative: figures.returns.isCumulative,
       payoutLabel: figures.returns.isCumulative ? 'At maturity' : 'Paid out periodically',
       startedAt: confirmation.paidAt,
+      /*
+        What the investor told the bank to do at maturity, translated out of
+        that bank's own option vocabulary. `null` where the form did not ask —
+        stated as unknown rather than defaulted.
+      */
+      maturityInstruction: toMaturityInstruction(draft.application.answers.maturityInstruction),
+      /*
+        Which account funded it — the id alone. The vault owns the account; this
+        records that this deposit was funded from it.
+      */
+      fundingAccountId: draft.bankAccountId,
       status: 'active',
     });
   }, [
     isReady,
     confirmation,
+    draft.application.answers.maturityInstruction,
+    draft.bankAccountId,
     figures.returns,
     investment.amount,
     investment.tenureMonths,
@@ -231,7 +246,7 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
             {account && draft.investment.amount !== null ? (
               <p className="bg-surface-subtle text-body text-content rounded-lg p-4">
                 Your principal amount of {formatCurrency(draft.investment.amount)} has been debited
-                from your {account.bankName} account ending {account.lastFourDigits}.
+                from your {account.institution.name} account ending {account.lastFourDigits}.
               </p>
             ) : null}
 

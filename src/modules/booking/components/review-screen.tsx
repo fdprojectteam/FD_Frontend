@@ -5,7 +5,9 @@ import { useMemo } from 'react';
 
 import { Card } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { useInvestorIdentity } from '@/hooks/use-investor-identity';
+import { isUsableForFunding, verificationLabel } from '@/utils/bank-account';
 import { formatCurrency, formatRate, formatTenure } from '@/utils/format';
 
 import { BookingStepActions } from './booking-step-actions';
@@ -14,7 +16,6 @@ import { BookingSummaryRail } from './booking-summary-rail';
 import { ImportantInformation } from './important-information';
 import { ReviewSection } from './review-section';
 import { PAYOUT_OPTION_LABELS } from '../constants/payout-options';
-import { SAVED_BANK_ACCOUNTS } from '../fixtures/bank-accounts';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
@@ -63,6 +64,7 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
   const { draft, setDeclarations } = useBookingDraft();
   const { isReady, continueTo, goToStep } = useBookingStep('review', productId);
   const { identity } = useInvestorIdentity();
+  const { accounts } = useBankAccounts();
 
   const { investment, declarations } = draft;
 
@@ -85,7 +87,8 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
     [deposit, investment.amount, investment.tenureMonths, investment.payoutOption],
   );
 
-  const account = SAVED_BANK_ACCOUNTS.find((entry) => entry.id === draft.bankAccountId);
+  /* The vault's record for the account this booking refers to. Never a copy. */
+  const account = accounts.find((entry) => entry.id === draft.bankAccountId);
 
   /*
     The bank's application as one more reviewable domain — composed through the
@@ -97,7 +100,12 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
   const application =
     applicationTemplate === null
       ? null
-      : resolveApplication(applicationTemplate, { deposit, draft, identity });
+      : resolveApplication(applicationTemplate, {
+          deposit,
+          draft,
+          identity,
+          fundingAccount: account ?? null,
+        });
 
   const canContinue =
     declarations.detailsConfirmed && declarations.termsAccepted && figures.returns !== null;
@@ -195,7 +203,7 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
                   goToStep('bank-account');
                 }}
                 fields={[
-                  { label: 'Bank Name', value: account?.bankName ?? notStated },
+                  { label: 'Bank Name', value: account?.institution.name ?? notStated },
                   {
                     label: 'Account Type',
                     value:
@@ -217,10 +225,15 @@ export function ReviewScreen({ productId }: ReviewScreenProps) {
                   { label: 'IFSC Code', value: account?.ifsc ?? notStated },
                 ]}
               >
-                {account?.verification === 'verified' ? (
+                {/*
+                  The vault's own wording, not a second one. It reads "Demo
+                  verified" because a simulated check is what verified it, and
+                  a review screen is the last place to soften that.
+                */}
+                {account !== undefined && isUsableForFunding(account) ? (
                   <p className="text-caption text-success inline-flex items-center gap-1.5">
                     <BadgeCheck aria-hidden="true" className="size-4" />
-                    Verified Account
+                    {verificationLabel(account.verification)}
                   </p>
                 ) : null}
               </ReviewSection>

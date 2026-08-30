@@ -15,3 +15,4 @@ export {
   type DepositReturnsInput,
 } from './deposit-returns';
 export { formatMaturityDate, maturityDate, monthsUntil } from './maturity-date';
+export { MATURING_SOON_MONTHS, MATURITY_DUE_DAYS } from './notice-window';

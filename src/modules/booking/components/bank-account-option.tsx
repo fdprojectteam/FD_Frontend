@@ -4,8 +4,8 @@ import { BadgeCheck, CircleAlert, Clock } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-
-import type { BankAccount, BankAccountVerification } from '../types/bank-account';
+import type { BankAccountVerificationStatus, ExternalBankAccount } from '@/types/bank-account';
+import { ACCOUNT_TYPE_LABEL, verificationLabel } from '@/utils/bank-account';
 
 /**
  * One saved funding account, as a selectable card (spec 21e §5B).
@@ -26,24 +26,28 @@ import type { BankAccount, BankAccountVerification } from '../types/bank-account
  * by the markup. The dots are decorative and the accessible label spells out
  * "ending 4587", because "•• 4587" is read aloud as nothing useful.
  *
+ * ## The account comes from the vault, and so does its wording
+ *
+ * `ExternalBankAccount` is the platform's record — Booking no longer owns a
+ * bank-account type or a list of them. The status wording comes from the shared
+ * `verificationLabel`, so this screen cannot say "Verified" where the vault says
+ * "Demo verified".
+ *
  * Presentation only: it renders an account and reports selection.
  */
 const VERIFICATION_META: Record<
-  BankAccountVerification,
-  { label: string; icon: typeof BadgeCheck; tone: string }
+  BankAccountVerificationStatus,
+  { icon: typeof BadgeCheck; tone: string }
 > = {
-  verified: { label: 'Verified', icon: BadgeCheck, tone: 'text-success' },
-  pending: { label: 'Verification pending', icon: Clock, tone: 'text-content-muted' },
-  failed: { label: 'Verification failed', icon: CircleAlert, tone: 'text-error' },
-};
-
-const ACCOUNT_TYPE_LABEL: Record<BankAccount['accountType'], string> = {
-  savings: 'Savings Account',
-  current: 'Current Account',
+  verified: { icon: BadgeCheck, tone: 'text-success' },
+  'verification-pending': { icon: Clock, tone: 'text-content-muted' },
+  'verification-failed': { icon: CircleAlert, tone: 'text-error' },
+  'needs-attention': { icon: CircleAlert, tone: 'text-warning' },
+  unverified: { icon: CircleAlert, tone: 'text-content-muted' },
 };
 
 export interface BankAccountOptionProps {
-  account: BankAccount;
+  account: ExternalBankAccount;
   name: string;
   selected: boolean;
   /** Spec 21e §8 Rule 3 — an unverified account cannot fund a booking. */
@@ -58,7 +62,7 @@ export function BankAccountOption({
   disabled = false,
   onSelect,
 }: BankAccountOptionProps) {
-  const verification = VERIFICATION_META[account.verification];
+  const verification = VERIFICATION_META[account.verification.status];
   const VerificationIcon = verification.icon;
 
   return (
@@ -82,7 +86,7 @@ export function BankAccountOption({
 
       <span className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-body text-content font-semibold">{account.bankName}</span>
+          <span className="text-body text-content font-semibold">{account.institution.name}</span>
           <span className="text-caption text-content-muted">
             {ACCOUNT_TYPE_LABEL[account.accountType]}
             {' · '}
@@ -109,7 +113,7 @@ export function BankAccountOption({
           )}
         >
           <VerificationIcon aria-hidden="true" className="size-4" />
-          {verification.label}
+          {verificationLabel(account.verification)}
         </span>
       </span>
     </label>
