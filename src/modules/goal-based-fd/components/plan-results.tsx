@@ -95,7 +95,10 @@ export function PlanResults({ result }: { result: MultiGoalPlanResult }) {
           </div>
 
           {entry.legs.length > 0 ? (
-            <ul className="grid list-none gap-4 md:grid-cols-2">
+            <ul
+              /* `grid-cols-1` bounds the track — see the note in `planner-results.tsx`. */
+              className="grid list-none grid-cols-1 gap-4 md:grid-cols-2"
+            >
               {entry.legs.map((leg) => (
                 <li key={`${leg.productId}-${String(leg.amount)}`}>
                   <AllocationLegCard leg={leg} />

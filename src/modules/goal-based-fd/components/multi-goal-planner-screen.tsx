@@ -134,7 +134,7 @@ export function MultiGoalPlannerScreen() {
         decide what to do about it.
       */}
       <Card variant="outlined" className="flex flex-col gap-3 p-5">
-        <dl className="grid gap-3 md:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="flex flex-col">
             <dt className="text-caption text-content-muted">Total you entered</dt>
             <dd className="text-body text-content font-semibold tabular-nums">

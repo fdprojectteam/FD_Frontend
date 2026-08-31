@@ -389,6 +389,107 @@ export async function runJourneySuite() {
       handoff carrying only a productId). What is missing is the DOM proof, and
       shipping a journey that cannot be run would be worse than saying so.
     */
+
+    section('G2 · Emergency fund — ₹1,00,000 in, and where it went (P0.3)');
+
+    /**
+     * ⚠ The regression this journey exists for.
+     *
+     * A customer choosing the emergency-fund goal and entering ₹1,00,000 was
+     * shown a ₹10,000 recommendation. The split is correct and deliberate — the
+     * deposit is 10% of the stated total — but the total was dropped at the
+     * Amount step, so nothing after it could account for the other ₹90,000.
+     *
+     * This drives the real screens to the real recommendation and asserts that
+     * all three figures are present and reconcile. Unlike G1 above it runs to
+     * completion: the environment that truncated that journey no longer does.
+     */
+    await mountPlanner('/goal-planner?goal=emergency');
+
+    const plannerText = () => norm(document.body.textContent);
+
+    /* The goal arrived with the customer, so the investor question is first. */
+    click(buttonStartingWith('No'));
+    await settle();
+
+    ok(
+      'the amount question names the figure as a total for this goal',
+      /Total investment/.test(plannerText()),
+    );
+
+    click(buttonStartingWith('₹1 lakh'));
+    await settle(200);
+
+    /* The split is stated at the moment of entry, with both figures. */
+    ok('the entered total is shown', /₹1,00,000/.test(plannerText()));
+    ok('the derived deposit is shown beside it', /₹10,000/.test(plannerText()));
+    ok('and the rule relating them is named', /10% of your total investment/.test(plannerText()));
+
+    click(buttonByText('Continue'));
+    await settle(200);
+
+    /*
+      The trail is the first screen the old build lost the total on. It must
+      carry both figures and the remainder — this is the assertion that would
+      have failed before the fix.
+    */
+    ok('the trail keeps the entered total', /₹1,00,000/.test(plannerText()));
+    ok('alongside what is being invested', /₹10,000/.test(plannerText()));
+    ok(
+      'and says the rest is not part of this plan',
+      /₹90,000/.test(plannerText()) && /not part of this plan/i.test(plannerText()),
+    );
+
+    click(buttonStartingWith('1 year'));
+    await settle(200);
+
+    click(buttonByText('Skip this'));
+
+    /*
+      The engine resolves through React Query, so poll rather than assume.
+
+      ⚠ Poll on **"We found"**, not on "fit your plan". The loading state reads
+      "Finding FDs that fit your plan…", so the looser pattern matched the
+      spinner and every assertion after it ran against a page that had not
+      rendered a recommendation yet — passing three of them by accident. A
+      progress message that contains the success message is exactly the trap a
+      substring poll falls into.
+    */
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (/We found/.test(plannerText())) break;
+      await settle(200);
+    }
+
+    ok('the recommendation arrives', /We found \d+ FDs? that fit your plan/.test(plannerText()));
+
+    /*
+      And the money flow is still on screen beside it — the last point at which
+      both figures are visible, because everything below prices the deposit.
+    */
+    ok('the results still show what was entered', /You entered/.test(plannerText()));
+    ok('what went into the deposit', /Into this fixed deposit/.test(plannerText()));
+    ok('and what did not', /Not part of this plan/.test(plannerText()));
+    ok(
+      'the three figures are all present together',
+      /₹1,00,000/.test(plannerText()) &&
+        /₹10,000/.test(plannerText()) &&
+        /₹90,000/.test(plannerText()),
+    );
+
+    /*
+      The booking handoff carries the **deposit**, not the total. That is
+      correct — ₹10,000 is what is being invested — and it is the reason the
+      breakdown above has to exist rather than being optional.
+    */
+    const handoffLinks = $$('a')
+      .map((node) => node.getAttribute('href') ?? '')
+      .filter((href) => href.startsWith('/booking/') || href.startsWith('/marketplace/'));
+
+    ok('a destination is offered for the recommendation', handoffLinks.length > 0);
+    ok(
+      'and no handoff carries the entered total',
+      handoffLinks.every((href) => !href.includes('100000')),
+    );
   }
 
   /* ---------------------------------------------------------------- */

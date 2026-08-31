@@ -52,7 +52,7 @@ export function SearchBar({ values, onSubmit }: SearchBarProps) {
       role="search"
       aria-label="Search fixed deposits"
       onSubmit={handleSubmit}
-      className="border-border-default bg-surface-card rounded-card shadow-elevation-1 grid gap-4 border p-6 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end"
+      className="border-border-default bg-surface-card rounded-card shadow-elevation-1 grid grid-cols-1 gap-4 border p-6 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end"
     >
       <div className="flex flex-col gap-2">
         <label htmlFor="home-search-query" className="text-caption text-content-muted font-medium">

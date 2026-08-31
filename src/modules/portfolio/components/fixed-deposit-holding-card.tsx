@@ -1,12 +1,13 @@
 'use client';
 
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 import { BankBadge } from '@/components/business/bank-badge';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
+import { HOLDING_SOURCE_LABEL } from '@/services/portfolio';
 import { formatMaturityDate } from '@/utils/finance';
 import { formatCurrency, formatRate, formatTenure } from '@/utils/format';
 import type { HoldingView } from '@/utils/portfolio';
@@ -36,7 +37,13 @@ const STATUS_LABEL: Record<HoldingView['holding']['status'], string> = {
   closed: 'Closed',
 };
 
-export function FixedDepositHoldingCard({ view }: { view: HoldingView }) {
+export interface FixedDepositHoldingCardProps {
+  view: HoldingView;
+  onEdit?: (reference: string) => void;
+  onDelete?: (reference: string) => void;
+}
+
+export function FixedDepositHoldingCard({ view, onEdit, onDelete }: FixedDepositHoldingCardProps) {
   const { holding, maturesOn, monthsRemaining, maturityValue, progressPercent } = view;
 
   const maturingSoon =
@@ -57,6 +64,9 @@ export function FixedDepositHoldingCard({ view }: { view: HoldingView }) {
 
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <Badge size="sm">{STATUS_LABEL[holding.status]}</Badge>
+          <Badge size="sm" variant="neutral">
+            {HOLDING_SOURCE_LABEL[holding.source]}
+          </Badge>
           {maturingSoon ? (
             <span className="text-caption text-content-brand font-medium">Maturing soon</span>
           ) : null}
@@ -123,21 +133,27 @@ export function FixedDepositHoldingCard({ view }: { view: HoldingView }) {
           </span>
         </div>
 
-        <Link
-          href={ROUTES.product(holding.productId)}
-          className="focus-ring text-body text-content-brand group inline-flex items-center gap-1 rounded-md font-medium"
-        >
-          View deposit
-          <ArrowRight
-            aria-hidden="true"
-            className="motion-safe:duration-base size-4 transition-transform group-hover:translate-x-0.5"
-          />
-        </Link>
+        {holding.source === 'platform-booked' ? (
+          <Link
+            href={ROUTES.product(holding.productId)}
+            className="focus-ring text-body text-content-brand group inline-flex items-center gap-1 rounded-md font-medium"
+          >
+            View deposit
+            <ArrowRight
+              aria-hidden="true"
+              className="motion-safe:duration-base size-4 transition-transform group-hover:translate-x-0.5"
+            />
+          </Link>
+        ) : (
+          <span className="text-caption text-content-muted">Customer-provided terms</span>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-caption text-content-placeholder tabular-nums">
-          Ref {holding.reference}
+          {holding.externalReference
+            ? `Your ref ${holding.externalReference}`
+            : `Ref ${holding.reference}`}
         </p>
 
         {/*
@@ -152,6 +168,27 @@ export function FixedDepositHoldingCard({ view }: { view: HoldingView }) {
           Need help with this FD?
         </Link>
       </div>
+
+      {holding.source === 'platform-booked' ? (
+        <p className="text-caption text-content-muted">Booked here · Terms are read-only.</p>
+      ) : (
+        <div className="border-border-default flex flex-wrap gap-3 border-t pt-4">
+          <button
+            type="button"
+            onClick={() => onEdit?.(holding.reference)}
+            className="focus-ring text-caption text-content-brand inline-flex items-center gap-1 rounded-md font-medium"
+          >
+            <Pencil aria-hidden="true" className="size-3.5" /> Edit details
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete?.(holding.reference)}
+            className="focus-ring text-caption text-error inline-flex items-center gap-1 rounded-md font-medium"
+          >
+            <Trash2 aria-hidden="true" className="size-3.5" /> Remove from portfolio
+          </button>
+        </div>
+      )}
     </Card>
   );
 }

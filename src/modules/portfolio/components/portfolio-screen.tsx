@@ -7,6 +7,7 @@ import { usePortfolio } from '@/hooks/use-portfolio';
 import { summarisePortfolio } from '@/utils/portfolio';
 
 import { FixedDepositHoldingCard } from './fixed-deposit-holding-card';
+import { EditHoldingDialog, RemoveHoldingDialog } from './holding-management-dialogs';
 import { PortfolioEmptyState } from './portfolio-empty-state';
 import { PortfolioHeader } from './portfolio-header';
 import { PortfolioInsights } from './portfolio-insights';
@@ -50,8 +51,10 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 export function PortfolioScreen() {
-  const { holdings, isLoaded, reload } = usePortfolio();
+  const { holdings, isLoaded, reload, remove, update } = usePortfolio();
   const [sort, setSort] = useState<SortKey>('maturity');
+  const [editingReference, setEditingReference] = useState<string | null>(null);
+  const [removingReference, setRemovingReference] = useState<string | null>(null);
 
   /*
     The clock is read once per derivation, so every figure on the screen — the
@@ -82,6 +85,10 @@ export function PortfolioScreen() {
       return a.maturesOn.getTime() - b.maturesOn.getTime();
     });
   }, [summary.holdings, sort]);
+
+  const editingHolding = holdings.find((holding) => holding.reference === editingReference) ?? null;
+  const removingHolding =
+    holdings.find((holding) => holding.reference === removingReference) ?? null;
 
   if (!isLoaded) {
     return (
@@ -146,7 +153,11 @@ export function PortfolioScreen() {
           <ul className="grid list-none grid-cols-1 gap-4 xl:grid-cols-2">
             {sorted.map((view) => (
               <li key={view.holding.reference}>
-                <FixedDepositHoldingCard view={view} />
+                <FixedDepositHoldingCard
+                  view={view}
+                  onEdit={setEditingReference}
+                  onDelete={setRemovingReference}
+                />
               </li>
             ))}
           </ul>
@@ -161,6 +172,21 @@ export function PortfolioScreen() {
       <PortfolioInsights summary={summary} />
 
       <PortfolioTrustNotice />
+
+      <EditHoldingDialog
+        holding={editingHolding}
+        onOpenChange={(open) => {
+          if (!open) setEditingReference(null);
+        }}
+        onSave={update}
+      />
+      <RemoveHoldingDialog
+        holding={removingHolding}
+        onOpenChange={(open) => {
+          if (!open) setRemovingReference(null);
+        }}
+        onConfirm={remove}
+      />
     </div>
   );
 }

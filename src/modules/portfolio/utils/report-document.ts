@@ -6,6 +6,7 @@ import type {
   DocumentTable,
 } from '@/types/document';
 import type { InvestorIdentity } from '@/types/investor';
+import { HOLDING_SOURCE_LABEL, HOLDING_SOURCE_PROVENANCE } from '@/types/portfolio';
 import { formatCurrency, formatPercentage, formatTenure } from '@/utils';
 import { formatMaturityDate } from '@/utils/finance';
 import {
@@ -140,6 +141,11 @@ function depositSection(entry: MaturityEntry): DocumentSection {
       { label: 'Bank', value: holding.bank.name },
       { label: 'Product', value: holding.productName },
       { label: 'Reference', value: holding.reference },
+      {
+        label: 'Source',
+        value: HOLDING_SOURCE_LABEL[holding.source],
+        hint: HOLDING_SOURCE_PROVENANCE[holding.source],
+      },
       { label: 'Status', value: STAGE_LABEL[entry.stage] },
     ],
   };

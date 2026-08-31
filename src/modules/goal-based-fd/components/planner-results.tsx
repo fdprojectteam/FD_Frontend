@@ -1,3 +1,4 @@
+import { AllocationBreakdown } from './allocation-breakdown';
 import { BestFitCard } from './best-fit-card';
 import { CompactRecommendationCard } from './compact-recommendation-card';
 import { GOAL_LABELS } from '../constants/goals';
@@ -15,9 +16,18 @@ import type { GoalRecommendationResult } from '../types/recommendation';
 export function PlannerResults({
   result,
   goalType,
+  totalAmount,
 }: {
   result: GoalRecommendationResult;
   goalType: GoalType;
+  /**
+   * What the customer entered, when the deposit is a share of it.
+   *
+   * Only the emergency fund passes one. It is shown, never used: every figure
+   * in `result` is priced on `recommendation.principal` and none of them moves
+   * because this is present.
+   */
+  totalAmount?: number;
 }) {
   const [best, ...others] = result.recommendations;
   const limitations = result.warnings.filter((warning) => warning.kind === 'limitation');
@@ -59,6 +69,23 @@ export function PlannerResults({
         </h2>
       </div>
 
+      {/*
+        The money flow, immediately above the answer it explains.
+
+        This is the last point at which the customer can still see both figures
+        together: everything below prices the deposit, and the booking handoff
+        carries the deposit alone. Putting it after the recommendation, or
+        behind a disclosure, would mean the number they are about to act on is
+        read before the reason it differs from the one they typed.
+      */}
+      {totalAmount === undefined ? null : (
+        <AllocationBreakdown
+          totalAmount={totalAmount}
+          investedAmount={best.principal}
+          className="border-border-default rounded-card motion-safe:animate-reveal flex flex-col border p-4"
+        />
+      )}
+
       <BestFitCard recommendation={best} />
 
       {others.length > 0 ? (
@@ -69,8 +96,28 @@ export function PlannerResults({
             reading order rather than as one block. The cap lives in the CSS —
             the sixth card and beyond share the fifth delay, which is what keeps
             a long list inside the sequence budget.
+
+            ## ⚠ `grid-cols-1` is not redundant — it is the 390px overflow fix
+
+            This was `grid … md:grid-cols-2` with **no base template**, so below
+            `md` the cards went into an *implicit* column sized by
+            `grid-auto-columns: auto`. An `auto` track's maximum is
+            **max-content**, and it grows past its container to reach it.
+            `CompactRecommendationCard` puts the product name in a `truncate`
+            heading — and `truncate` means `white-space: nowrap`, whose
+            max-content is the *whole untruncated string*. So a long name like
+            "Suryoday Small Finance Bank Fixed Deposit" sized the track to about
+            420px inside a 358px column, and the page scrolled sideways. The
+            `min-w-0` already on the card's inner div fixes the *minimum* and
+            does nothing about this.
+
+            Tailwind's `grid-cols-1` is `repeat(1, minmax(0, 1fr))`. The `1fr`
+            maximum is bounded by the container, so the track can no longer
+            chase max-content, and the heading truncates as it was always meant
+            to. Same fix, same reason, wherever a grid here omits its base
+            template.
           */}
-          <ul className="ds-stagger grid list-none gap-4 md:grid-cols-2">
+          <ul className="ds-stagger grid list-none grid-cols-1 gap-4 md:grid-cols-2">
             {others.map((recommendation) => (
               <li key={recommendation.productId} className="motion-safe:animate-reveal">
                 <CompactRecommendationCard recommendation={recommendation} />

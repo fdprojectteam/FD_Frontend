@@ -194,14 +194,24 @@ export function documentsForHolding(entry: MaturityEntry, now: number): Document
       fileName: `fd-statement-${bankSlug}-${slug(holding.reference)}-${day}`,
       now,
     }),
-    available({
-      kind: 'booking-confirmation',
-      title: 'Booking confirmation',
-      description: 'The platform’s record of this booking, with its reference.',
-      subject,
-      fileName: `booking-confirmation-${bankSlug}-${slug(holding.reference)}-${day}`,
-      now,
-    }),
+    holding.source === 'platform-booked'
+      ? available({
+          kind: 'booking-confirmation',
+          title: 'Booking confirmation',
+          description: 'The platform’s record of this booking, with its reference.',
+          subject,
+          fileName: `booking-confirmation-${bankSlug}-${slug(holding.reference)}-${day}`,
+          now,
+        })
+      : unavailable({
+          kind: 'booking-confirmation',
+          title: 'Platform booking confirmation',
+          description: 'A booking confirmation is available only for FDs booked in this platform.',
+          subject,
+          issuer: 'platform',
+          reason:
+            'This FD was not booked through this platform, so no platform booking confirmation exists.',
+        }),
   ];
 
   /*

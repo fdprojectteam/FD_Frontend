@@ -122,6 +122,10 @@ export const ROUTES = {
   /** The notification centre, reachable from the header bell. */
   notifications: '/notifications' as Route,
   portfolio: '/portfolio' as Route,
+  /** Bring a deposit held elsewhere into the same canonical portfolio. */
+  portfolioAddFd: '/portfolio/add-fd' as Route,
+  /** The real POC manual-entry route; no FD terms are placed in the URL. */
+  portfolioAddFdManual: '/portfolio/add-fd/manual' as Route,
   /**
    * Maturity Management — nested under Portfolio.
    *

@@ -79,6 +79,8 @@ function demoHolding(
 ): PortfolioHolding {
   return {
     reference,
+    source: 'platform-booked',
+    externalReference: null,
     productType: 'fixed-deposit',
     productId: `fd-${bankId}`,
     productName: `${bankName} Fixed Deposit`,

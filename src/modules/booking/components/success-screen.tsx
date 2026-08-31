@@ -135,6 +135,8 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
 
     record({
       reference: confirmation.reference,
+      source: 'platform-booked',
+      externalReference: null,
       productType: 'fixed-deposit',
       productId: deposit.productId,
       productName: deposit.productName,
@@ -262,7 +264,8 @@ export function SuccessScreen({ productId }: SuccessScreenProps) {
           <Card variant="outlined" className="flex flex-col gap-4 p-5 md:p-6">
             <h2 className="text-body-lg text-content font-semibold">What&apos;s Next?</h2>
 
-            <ol className="text-body text-content-muted grid list-none gap-4 md:grid-cols-4">
+            {/* `grid-cols-1` bounds the track — see the note in `planner-results.tsx`. */}
+            <ol className="text-body text-content-muted grid list-none grid-cols-1 gap-4 md:grid-cols-4">
               {[
                 ['1. Confirmation Email', 'You will receive an email with FD details.'],
                 [

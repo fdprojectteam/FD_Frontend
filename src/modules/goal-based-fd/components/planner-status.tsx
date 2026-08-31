@@ -37,8 +37,8 @@ export function PlannerStatus() {
         {[
           'Understanding your goal',
           'Finding suitable deposits',
-          'Comparing banks',
-          'Checking deposit-insurance cover',
+          'Comparing banks’ published terms',
+          'Explaining why each option fits',
         ].map((stage) => (
           <li key={stage} className="motion-safe:animate-reveal flex items-center gap-2">
             <span aria-hidden="true" className="bg-surface-brand size-1.5 shrink-0 rounded-full" />

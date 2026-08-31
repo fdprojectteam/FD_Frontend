@@ -1,10 +1,7 @@
-import type { BankDto } from '@/modules/marketplace/types';
+import type { Bank } from '@/types/finance';
 
-/**
- * Bank fixtures (M2.1) — the partner banks shown in the approved UI.
- * Deterministic: no randomness, so screenshots and tests stay stable.
- */
-export const banks: BankDto[] = [
+/** Fixture data served by the mock bank API. Consumers use the shared bank query. */
+export const banks: readonly Bank[] = [
   {
     id: 'idfc-first',
     name: 'IDFC FIRST Bank',
@@ -77,15 +74,6 @@ export const banks: BankDto[] = [
     rating: null,
     category: 'small-finance',
   },
-  /*
-    DBS Bank India Limited — added when the client supplied the DBS
-    Fixed/Recurring Deposit form (TDA_AOF/001/July25). The bank's own name for
-    the entity on that form is "DBS Bank India Limited"; the short display name
-    matches how the rest of this catalogue names universal banks.
-
-    No logo asset was supplied, so `logoUrl` is null and the monogram fallback
-    applies — the same treatment every other bank without a licensed logo gets.
-  */
   {
     id: 'dbs',
     name: 'DBS Bank India',
@@ -106,24 +94,12 @@ export const banks: BankDto[] = [
   },
 ];
 
-/*
-  ⚠️ Sample data, from the client source document — Use Case 2 names **Equitas
-  Small Finance Bank** and **AU Small Finance Bank**; Use Case 3 adds **Suryoday
-  Small Finance Bank**. The document requires the recommendation to disclose that
-  they are Small Finance Banks.
-
-  Only what the document states is taken: the names and the fact that they are
-  SFBs. Ratings are `null` because the document publishes none and a rating is
-  not something to guess. `category` is disclosure metadata and carries no rule —
-  nothing caps, limits or ranks by it, because §11.diversification remains
-  undefined by the client.
-*/
 export const SMALL_FINANCE_BANK_IDS: readonly string[] = [
   'equitas',
   'au-small-finance',
   'suryoday',
-] as const;
+];
 
-export function findBank(id: string): BankDto | undefined {
+export function findBank(id: string): Bank | undefined {
   return banks.find((bank) => bank.id === id);
 }

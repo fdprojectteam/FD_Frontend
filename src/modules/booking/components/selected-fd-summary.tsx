@@ -1,4 +1,4 @@
-import { CalendarDays, IndianRupee, Lock, Percent, ShieldCheck, Star } from 'lucide-react';
+import { CalendarDays, IndianRupee, RefreshCw, Star, Undo2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { BankBadge } from '@/components/business/bank-badge';
@@ -31,12 +31,11 @@ import { formatSelectedTenure } from '../utils/investment-summary';
  * `InterestRateDisplay` for the rate, `Badge` for the partner flag, `Card` for
  * the surface. The only bespoke markup is layout.
  */
-const HIGHLIGHT_ICONS: Record<DepositHighlightId, typeof Percent> = {
-  'guaranteed-returns': Percent,
-  'secure-investment': Lock,
+const HIGHLIGHT_ICONS: Record<DepositHighlightId, typeof CalendarDays> = {
   'flexible-tenure': CalendarDays,
   'payout-options': IndianRupee,
-  'regulated-bank': ShieldCheck,
+  'premature-withdrawal': Undo2,
+  'auto-renewal': RefreshCw,
 };
 
 export interface SelectedFdSummaryProps {
@@ -117,9 +116,16 @@ export function SelectedFdSummary({ deposit, importantInformation }: SelectedFdS
               {formatCurrency(terms.minInvestment)}
             </span>
           </Figure>
-          <Figure label="Bank Rating">
+          {/*
+            The rating carried a green shield-with-a-tick. A rating is an
+            outside agency's opinion that this platform has not obtained — the
+            value comes from the same fixture as everything else here — so the
+            mark said "verified by us" about a figure nobody verified. Neutral
+            mark, and the label names the source.
+          */}
+          <Figure label="Bank rating (catalogue)">
             <span className="text-body-lg text-content inline-flex items-center gap-1.5 font-semibold">
-              <ShieldCheck aria-hidden="true" className="text-success size-4" />
+              <Star aria-hidden="true" className="text-content-muted size-4" />
               {bank.rating ?? 'Not rated'}
             </span>
           </Figure>
@@ -138,7 +144,7 @@ export function SelectedFdSummary({ deposit, importantInformation }: SelectedFdS
             actually fits. Below that, two columns keep the labels readable
             instead of stacking five one-word columns.
           */}
-          <ul className="grid list-none grid-cols-2 gap-y-5 md:grid-cols-5">
+          <ul className="grid list-none grid-cols-2 gap-y-5 md:grid-cols-4">
             {(deposit.demoTerms?.includes('highlights') === true ? [] : deposit.highlights).map(
               (highlight) => {
                 const Icon = HIGHLIGHT_ICONS[highlight.id];

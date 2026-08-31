@@ -5,11 +5,13 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ROUTES } from '@/constants/routes';
 import { usePortfolio } from '@/hooks/use-portfolio';
+import { HOLDING_SOURCE_LABEL } from '@/services/portfolio';
 import { formatCurrency } from '@/utils';
 import { formatMaturityDate } from '@/utils/finance';
 import { buildMaturitySchedule } from '@/utils/portfolio';
@@ -162,6 +164,9 @@ export function ReportsScreen() {
                   <span className="text-caption text-content-muted break-words">
                     {holding.productName} · {holding.reference}
                   </span>
+                  <Badge size="sm" variant="neutral">
+                    {HOLDING_SOURCE_LABEL[holding.source]}
+                  </Badge>
                 </div>
 
                 <span className="text-caption text-content-muted">

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
 
+import { DataProvenanceNote } from '@/components/business/data-provenance';
+import { SafetyNote } from '@/components/business/safety-note';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isBookableProduct } from '@/constants/booking';
@@ -187,6 +189,28 @@ export function ProductDetailScreen({ productId }: ProductDetailScreenProps) {
                 <PendingSection label="key-info" className="h-24 w-full" />
               )}
             </DetailSection>
+
+            {product ? (
+              <section
+                aria-labelledby="product-source-title"
+                className="border-border-default bg-surface-subtle rounded-card flex flex-col gap-2 border p-4"
+              >
+                <h2 id="product-source-title" className="text-body text-content font-semibold">
+                  About these figures
+                </h2>
+                {/*
+                  This section already said the right thing in its own words.
+                  It now says it in the platform's — `DataProvenanceNote` is the
+                  single wording used on Home and at Booking too, so a customer
+                  moving between the three screens meets one statement rather
+                  than three that nearly agree.
+                */}
+                <DataProvenanceNote />
+                <SafetyNote />
+              </section>
+            ) : (
+              <PendingSection label="product-source" className="h-28 w-full" />
+            )}
 
             {product && calculatorSupported ? (
               <InvestmentCalculator

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { readHoldings, recordHolding } from '@/services/portfolio';
+import { readHoldings, recordHolding, removeHolding, updateHolding } from '@/services/portfolio';
 import type { PortfolioHolding } from '@/types/portfolio';
 
 /**
@@ -29,6 +29,8 @@ export interface PortfolioState {
   isLoaded: boolean;
   /** Records a confirmed deposit. Idempotent on the bank's reference. */
   record: (holding: PortfolioHolding) => void;
+  update: (holding: PortfolioHolding) => void;
+  remove: (reference: string) => void;
   /**
    * Re-reads the store.
    *
@@ -51,9 +53,17 @@ export function usePortfolio(): PortfolioState {
     setHoldings(recordHolding(holding));
   }, []);
 
+  const update = useCallback((holding: PortfolioHolding) => {
+    setHoldings(updateHolding(holding));
+  }, []);
+
+  const remove = useCallback((reference: string) => {
+    setHoldings(removeHolding(reference));
+  }, []);
+
   const reload = useCallback(() => {
     setHoldings(readHoldings());
   }, []);
 
-  return { holdings, isLoaded, record, reload };
+  return { holdings, isLoaded, record, update, remove, reload };
 }

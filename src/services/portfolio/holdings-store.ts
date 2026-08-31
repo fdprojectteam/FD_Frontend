@@ -31,8 +31,9 @@ import type { PortfolioHolding } from '@/types/portfolio';
  * Success screen, StrictMode. The bank's reference identifies the deposit, so
  * writing the same one twice is a no-op rather than a duplicate holding.
  */
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 const STORAGE_KEY = `fd:portfolio-holdings:v${STORAGE_VERSION}`;
+const LEGACY_STORAGE_KEY = 'fd:portfolio-holdings:v2';
 
 const bankSchema = z.object({
   id: z.string().min(1),
@@ -46,6 +47,10 @@ const bankSchema = z.object({
 
 const holdingSchema = z.object({
   reference: z.string().min(1),
+  source: z
+    .enum(['platform-booked', 'connected', 'imported', 'manually-added'])
+    .default('platform-booked'),
+  externalReference: z.string().min(1).nullable().default(null),
   productType: z.literal('fixed-deposit'),
   productId: z.string().min(1),
   productName: z.string().min(1),
@@ -75,6 +80,13 @@ const payloadSchema = z.object({
   holdings: z.array(holdingSchema),
 });
 
+/* Version 2 had no source metadata. Every record written by that store was a
+   confirmed platform booking, so migration can state that fact without guesswork. */
+const legacyPayloadSchema = z.object({
+  version: z.literal(2),
+  holdings: z.array(holdingSchema.omit({ source: true, externalReference: true })),
+});
+
 /** Storage access, guarded — see `draft-storage.ts` for why this can throw. */
 function safeStorage(): Storage | null {
   try {
@@ -96,17 +108,56 @@ export function readHoldings(): PortfolioHolding[] {
   } catch {
     return [];
   }
-  if (!raw) return [];
+  if (raw) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
 
-  let parsed: unknown;
+    const result = payloadSchema.safeParse(parsed);
+    return result.success ? result.data.holdings : [];
+  }
+
+  /* A successful migration copies the legacy payload forward. The older key is
+     intentionally left untouched, so a blocked write cannot erase holdings. */
+  let legacyRaw: string | null;
   try {
-    parsed = JSON.parse(raw);
+    legacyRaw = storage.getItem(LEGACY_STORAGE_KEY);
+  } catch {
+    return [];
+  }
+  if (!legacyRaw) return [];
+
+  let legacyParsed: unknown;
+  try {
+    legacyParsed = JSON.parse(legacyRaw);
   } catch {
     return [];
   }
 
-  const result = payloadSchema.safeParse(parsed);
-  return result.success ? result.data.holdings : [];
+  const legacy = legacyPayloadSchema.safeParse(legacyParsed);
+  if (!legacy.success) return [];
+
+  const migrated = legacy.data.holdings.map((holding) => ({
+    ...holding,
+    source: 'platform-booked' as const,
+    externalReference: null,
+  }));
+  writeHoldings(migrated);
+  return migrated;
+}
+
+function writeHoldings(holdings: readonly PortfolioHolding[]): void {
+  const storage = safeStorage();
+  if (!storage) return;
+
+  try {
+    storage.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, holdings }));
+  } catch {
+    /* Quota or policy. The caller still receives its calculated state. */
+  }
 }
 
 /**
@@ -122,15 +173,32 @@ export function recordHolding(holding: PortfolioHolding): PortfolioHolding[] {
 
   const next = [...existing, holding];
 
-  const storage = safeStorage();
-  if (storage) {
-    try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, holdings: next }));
-    } catch {
-      /* Quota or policy. The list is still correct for this render. */
-    }
-  }
+  writeHoldings(next);
 
+  return next;
+}
+
+/** Updates only customer-managed sources. Platform bookings remain read-only. */
+export function updateHolding(holding: PortfolioHolding): PortfolioHolding[] {
+  const existing = readHoldings();
+  const index = existing.findIndex((entry) => entry.reference === holding.reference);
+  const current = index < 0 ? undefined : existing[index];
+  if (!current || current.source === 'platform-booked') return existing;
+
+  const next = [...existing];
+  next[index] = holding;
+  writeHoldings(next);
+  return next;
+}
+
+/** Removes only customer-managed sources. Platform bookings are never deleted here. */
+export function removeHolding(reference: string): PortfolioHolding[] {
+  const existing = readHoldings();
+  const found = existing.find((entry) => entry.reference === reference);
+  if (!found || found.source === 'platform-booked') return existing;
+
+  const next = existing.filter((entry) => entry.reference !== reference);
+  writeHoldings(next);
   return next;
 }
 
@@ -141,9 +209,11 @@ export function clearHoldings(): void {
 
   try {
     storage.removeItem(STORAGE_KEY);
+    storage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
     /* Already unreachable. */
   }
 }
 
 export const HOLDINGS_STORAGE_KEY = STORAGE_KEY;
+export const LEGACY_HOLDINGS_STORAGE_KEY = LEGACY_STORAGE_KEY;

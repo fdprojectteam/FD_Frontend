@@ -27,7 +27,36 @@ export interface PlannerAnswers {
   goalType?: GoalType;
   /** Absent means the question has not been answered; `false` is a real answer. */
   isSeniorCitizen?: boolean;
+  /**
+   * **What goes into the deposit** — the figure the engine prices and the
+   * booking carries. For every goal but one it is exactly what the customer
+   * typed.
+   */
   principal?: number;
+  /**
+   * ⚠ **What the customer typed, when that is not what gets invested.**
+   *
+   * The emergency fund is the one goal whose deposit is a share of a larger
+   * sum: the customer states a total, `calculateEmergencyFundAmount` takes 10%
+   * of it, and that 10% is the deposit. Someone entering ₹1,00,000 is planning
+   * a ₹10,000 deposit.
+   *
+   * That is intended, and the Amount step explains it. What was wrong is that
+   * the total **stopped there** — only `principal` survived the step, so the
+   * trail, the recommendation and the booking all showed ₹10,000 with no record
+   * that ₹1,00,000 had ever been entered. A customer looking at the result had
+   * no way to answer *"I entered ₹1,00,000. Where did the rest go?"*, and the
+   * answer is not a hard one: it is not in this plan.
+   *
+   * So the total is carried alongside. `undefined` when there is no distinction
+   * to draw — which is every goal except this one, and this one before the
+   * customer has entered anything.
+   *
+   * **It is not an engine input.** `GoalInput` still receives `principal` and
+   * nothing else, so no rate, maturity or ranking changes by a rupee. This
+   * exists to be shown.
+   */
+  totalAmount?: number;
   horizonMonths?: number;
   /**
    * The maturity the customer is aiming for, when they named one.
@@ -50,7 +79,11 @@ export interface PlannerFlow {
   goal: GoalInput | null;
   chooseGoal: (goalType: GoalType) => void;
   setInvestor: (isSeniorCitizen: boolean) => void;
-  setPrincipal: (principal: number) => void;
+  /**
+   * `totalAmount` is the sum the customer entered, supplied only when the
+   * deposit is a share of it. Omitted means the two are the same figure.
+   */
+  setPrincipal: (principal: number, totalAmount?: number) => void;
   setHorizon: (horizonMonths: number) => void;
   /** `undefined` is the customer declining to set one, which is a valid answer. */
   setTarget: (targetAmount: number | undefined) => void;
@@ -98,8 +131,14 @@ export function usePlannerFlow(initialGoal?: GoalType): PlannerFlow {
     setStage('amount');
   }, []);
 
-  const setPrincipal = useCallback((principal: number) => {
-    setAnswers((current) => ({ ...current, principal }));
+  /*
+    Both figures are written together, and `totalAmount` is cleared when none is
+    given. Merging it in only when present would leave a stale total behind
+    after the customer changed goal — a ₹1,00,000 total sitting under an
+    education deposit it never applied to.
+  */
+  const setPrincipal = useCallback((principal: number, totalAmount?: number) => {
+    setAnswers((current) => ({ ...current, principal, totalAmount }));
     setStage('horizon');
   }, []);
 

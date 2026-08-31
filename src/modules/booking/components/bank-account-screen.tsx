@@ -177,13 +177,22 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
         <div className="flex flex-col gap-6">
           <BookingSummaryRail deposit={deposit} investment={draft.investment} />
 
+          {/*
+            ⚠ Was "Your Security is Our Priority · 256-bit SSL encryption for
+            all transactions · Your bank details are secure and protected". The
+            first names a standard nothing here implements; the second is an
+            assurance with no mechanism behind it. Only the third — that no
+            banking password is stored — was true, and it is true for the
+            stronger reason that none is ever asked for. That is what the list
+            now says, alongside what the platform actually holds.
+          */}
           <ImportantInformation
             notes={[
-              '256-bit SSL encryption for all transactions',
-              'Your bank details are secure and protected',
-              'We never store your banking passwords',
+              'You are never asked for a net-banking password, PIN or OTP.',
+              'Only the last four digits of an account are kept. The full number is never stored.',
+              'The account is a reference for this booking. No debit is attempted.',
             ]}
-            title="Your Security is Our Priority"
+            title="What this platform holds"
             variant="checklist"
             headingLevel={2}
           />

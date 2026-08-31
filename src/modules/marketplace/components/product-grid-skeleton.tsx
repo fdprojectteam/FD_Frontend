@@ -12,7 +12,7 @@ export interface ProductGridSkeletonProps {
 
 export function ProductGridSkeleton({ count = 6 }: ProductGridSkeletonProps) {
   return (
-    <div role="status" aria-live="polite" className="grid gap-6 md:grid-cols-3">
+    <div role="status" aria-live="polite" className="grid grid-cols-1 gap-6 md:grid-cols-3">
       <span className="sr-only">Loading products…</span>
       {Array.from({ length: count }, (_, index) => (
         <Card key={index} className="flex flex-col">

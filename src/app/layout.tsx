@@ -18,7 +18,9 @@ const inter = localFont({
 
 export const metadata: Metadata = {
   title: 'FD Investment Platform',
-  description: "Discover, compare, and invest in Fixed Deposits from India's most trusted banks.",
+  /* "India's most trusted banks" ranked banks by a trust the platform has not measured. */
+  description:
+    'Compare Fixed Deposits from Indian banks on rate, tenure and estimated maturity, and plan a deposit around your goal.',
 };
 
 export default function RootLayout({

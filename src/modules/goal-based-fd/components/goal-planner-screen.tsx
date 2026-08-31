@@ -98,7 +98,7 @@ export function GoalPlannerScreen() {
           className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-purple-300/10 blur-3xl"
         />
 
-        <div className="relative grid items-center gap-8 p-6 sm:p-8 md:grid-cols-[1fr_280px] md:p-10 lg:grid-cols-[1fr_340px]">
+        <div className="relative grid grid-cols-1 items-center gap-8 p-6 sm:p-8 md:grid-cols-[1fr_280px] md:p-10 lg:grid-cols-[1fr_340px]">
           {/* Left content */}
           <div className="flex max-w-2xl flex-col gap-4">
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700">
@@ -248,7 +248,14 @@ export function GoalPlannerScreen() {
               goalType={flow.answers.goalType}
               hint={STEP_HINTS.amount}
               lowestMinimum={lowestMinimum}
-              initialValue={flow.answers.principal}
+              /*
+                The step's own field is the **total** for the goal that derives
+                its deposit, so reopening it must be seeded with the total. Sent
+                `principal` it would have put ₹10,000 into the total field and
+                derived ₹1,000 from it — the customer's amount shrinking by a
+                factor of ten each time they pressed Change.
+              */
+              initialValue={flow.answers.totalAmount ?? flow.answers.principal}
               onSubmit={flow.setPrincipal}
             />
           ) : null}
@@ -283,7 +290,11 @@ export function GoalPlannerScreen() {
       {showResults && isFetching ? <PlannerStatus /> : null}
 
       {showResults && !isFetching && result && goalType !== undefined ? (
-        <PlannerResults result={result} goalType={goalType} />
+        <PlannerResults
+          result={result}
+          goalType={goalType}
+          totalAmount={flow.answers.totalAmount}
+        />
       ) : null}
     </div>
   );

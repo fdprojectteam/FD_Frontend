@@ -511,7 +511,14 @@ export function buildProductDetails(summary: ProductSummaryDto): ProductDetailsD
     terms: [
       'Rates are subject to change until the deposit is booked.',
       'Premature withdrawal may attract a penalty on the applicable rate.',
-      'Deposits are insured up to ₹5,00,000 by DICGC.',
+      /*
+        Was "Deposits are insured up to ₹5,00,000 by DICGC." — a flat statement
+        about this deposit at this bank, which the catalogue does not model and
+        this platform has not checked. `SafetyNote` is the platform's single
+        wording on coverage; this term now points at the same conditionality
+        rather than asserting a figure beside a product.
+      */
+      'Deposit insurance is subject to DICGC rules and the bank’s own conditions. Confirm coverage with the bank.',
     ],
   };
 }

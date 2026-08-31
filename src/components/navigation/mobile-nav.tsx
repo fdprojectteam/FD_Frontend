@@ -50,7 +50,7 @@ export function MobileNavPanel({ pathname }: { pathname: string }) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((current) => !current)}
-        className="focus-ring text-content-muted hover:bg-surface-muted duration-fast inline-flex size-10 items-center justify-center rounded-full transition ease-out md:hidden"
+        className="focus-ring text-content-muted hover:bg-surface-muted duration-fast inline-flex size-10 items-center justify-center rounded-full transition ease-out xl:hidden"
       >
         {open ? (
           <X aria-hidden="true" className="size-5" />
@@ -62,7 +62,7 @@ export function MobileNavPanel({ pathname }: { pathname: string }) {
       {open && (
         <div
           id={panelId}
-          className="border-border-default bg-surface-card animate-expand-down absolute inset-x-0 top-16 overflow-hidden border-b md:hidden"
+          className="border-border-default bg-surface-card animate-expand-down absolute inset-x-0 top-16 overflow-hidden border-b xl:hidden"
         >
           <nav aria-label="Mobile" className="container-page py-4">
             <ul className="flex flex-col">
@@ -112,7 +112,7 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="bg-surface-card border-border-default fixed inset-x-0 bottom-0 z-(--ds-z-sticky) border-t md:hidden"
+      className="bg-surface-card border-border-default fixed inset-x-0 bottom-0 z-(--ds-z-sticky) border-t xl:hidden"
     >
       <ul className="flex h-16 items-stretch">
         {MOBILE_TAB_NAV.map((item) => {

@@ -48,6 +48,25 @@ export type HoldingStatus =
   /** Closed before maturity. */
   | 'closed';
 
+/** Where the platform received the recorded FD information. This is not verification. */
+export type HoldingSource = 'platform-booked' | 'connected' | 'imported' | 'manually-added';
+
+/** Customer-facing origin labels. They deliberately make no verification claim. */
+export const HOLDING_SOURCE_LABEL: Readonly<Record<HoldingSource, string>> = {
+  'platform-booked': 'Booked here',
+  connected: 'Connected',
+  imported: 'Imported',
+  'manually-added': 'Self-added',
+};
+
+/** The evidence available for a source in this POC, stated without overclaiming. */
+export const HOLDING_SOURCE_PROVENANCE: Readonly<Record<HoldingSource, string>> = {
+  'platform-booked': 'Platform transaction record',
+  connected: 'Source data received',
+  imported: 'Document provided',
+  'manually-added': 'Customer provided',
+};
+
 /**
  * The product family a holding belongs to.
  *
@@ -83,8 +102,18 @@ export type MaturityInstruction =
   | 'pay-out';
 
 export interface PortfolioHolding {
-  /** The bank's reference for this deposit — the investor's own identifier. */
+  /** Stable, opaque identity for this holding inside the platform. */
   reference: string;
+  /**
+   * Where this holding was supplied from. It answers provenance only; it does
+   * not imply that a bank independently verified the terms.
+   */
+  source: HoldingSource;
+  /**
+   * An optional reference the customer supplied for an FD held elsewhere.
+   * Kept out of routes; `reference` remains the stable platform identity.
+   */
+  externalReference: string | null;
   productType: HoldingProductType;
   /** The catalogue product this was booked from. Never substituted. */
   productId: string;

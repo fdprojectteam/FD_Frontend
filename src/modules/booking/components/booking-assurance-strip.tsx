@@ -1,4 +1,4 @@
-import { BadgeCheck, Headphones, ShieldCheck } from 'lucide-react';
+import { FlaskConical, KeyRound, ListChecks } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 
@@ -16,14 +16,22 @@ import type { BookingAssurance, BookingAssuranceId } from '../types/booking';
  * platform type for one screen's copy, and would put "24x7 Support" in the same
  * vocabulary as a bank's credit rating.
  *
+ * ## The icons carry as much of the claim as the words
+ *
+ * A shield and a green tick say *verified* whatever the label beside them says,
+ * which is how three unsupported reassurances read as credible for as long as
+ * they did. The marks now describe the statement rather than decorating it: a
+ * checklist for terms shown, a key for the credential never asked for, and a
+ * flask for the part of this build that is a demonstration.
+ *
  * Presentation-only: no state, no data access, no calculation. Icons are
  * resolved from ids here rather than carried in the data, so the payload stays
  * serialisable when it comes from the API.
  */
-const ICONS: Record<BookingAssuranceId, typeof ShieldCheck> = {
-  'bank-grade-security': ShieldCheck,
-  'safe-and-secure': BadgeCheck,
-  support: Headphones,
+const ICONS: Record<BookingAssuranceId, typeof ListChecks> = {
+  'terms-first': ListChecks,
+  'no-credentials': KeyRound,
+  demonstration: FlaskConical,
 };
 
 export interface BookingAssuranceStripProps {

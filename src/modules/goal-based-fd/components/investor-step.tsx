@@ -54,7 +54,7 @@ export function InvestorStep({ value, hint, onChange }: InvestorStepProps) {
         <span className="text-body text-content-muted font-normal">{hint}</span>
       </legend>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {OPTIONS.map((option) => {
           const selected = value === option.value;
 

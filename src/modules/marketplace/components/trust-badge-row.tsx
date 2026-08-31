@@ -42,9 +42,22 @@ export function TrustBadgeRow({ indicators }: TrustBadgeRowProps) {
   if (indicators.length === 0) return null;
 
   return (
-    <>
+    /*
+      The badges, and immediately beneath them where they came from.
+
+      Without that line the row reads as three things the platform established.
+      With it, it reads as three things the catalogue records — which is what
+      they are, and is still useful to a customer comparing deposits. The line
+      sits *under* the badges rather than in a tooltip because a qualifier the
+      reader has to go looking for is not a qualifier.
+    */
+    <div className="flex flex-col gap-2">
       <TrustIndicatorList indicators={indicators} className="hidden md:flex" />
       <TrustIndicatorList indicators={toMobileIndicators(indicators)} className="flex md:hidden" />
-    </>
+      <p className="text-caption text-content-muted">
+        Recorded in the demonstration catalogue. This platform has not verified them with the bank,
+        the RBI or DICGC.
+      </p>
+    </div>
   );
 }

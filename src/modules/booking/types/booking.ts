@@ -80,12 +80,16 @@ export interface BookingPhase {
  * mapping id → glyph lives in the component that renders it, the same pattern
  * `TrustIndicatorItem` and `MobileTabBar` already use.
  */
+/**
+ * ⚠ **`guaranteed-returns`, `secure-investment` and `regulated-bank` were
+ * removed, not renamed.** Each was a claim about the bank or the money rather
+ * than a property of the deposit: nothing in this build establishes that a
+ * return is guaranteed, that an investment is secure, or that a partner bank's
+ * licence has been checked. What remains describes the product's own published
+ * terms, which the catalogue does carry.
+ */
 export type DepositHighlightId =
-  | 'guaranteed-returns'
-  | 'secure-investment'
-  | 'flexible-tenure'
-  | 'payout-options'
-  | 'regulated-bank';
+  'flexible-tenure' | 'payout-options' | 'premature-withdrawal' | 'auto-renewal';
 
 export interface DepositHighlight {
   id: DepositHighlightId;
@@ -279,7 +283,20 @@ export interface BookingOverview {
   nextStep: string;
 }
 
-export type BookingAssuranceId = 'bank-grade-security' | 'safe-and-secure' | 'support';
+/**
+ * What the platform undertakes to do, at the point the customer is committing.
+ *
+ * ⚠ **`bank-grade-security`, `safe-and-secure` and `support` were removed.**
+ * They read "Bank Grade Security · 256-bit encryption", "100% Safe & Secure ·
+ * RBI Regulated Platform" and "24x7 Support · Always here to help". No
+ * encryption standard has been implemented or audited here, this platform is
+ * not RBI regulated, and no support line is staffed. Three reassurances at the
+ * exact moment a customer decides to trust a screen, none of them true.
+ *
+ * The replacements are properties of the flow the customer is standing in, and
+ * each is verifiable by continuing through it.
+ */
+export type BookingAssuranceId = 'terms-first' | 'no-credentials' | 'demonstration';
 
 export interface BookingAssurance {
   id: BookingAssuranceId;

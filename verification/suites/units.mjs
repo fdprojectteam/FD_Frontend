@@ -6561,6 +6561,55 @@ export async function runBookingJourneySuite(M) {
     /short-term|within reach/i.test(M.EMERGENCY_FUND_EXPLANATION),
   );
 
+  section('Planner · the money the customer entered is accounted for (P0.3)');
+
+  /**
+   * ⚠ **The defect this covers.** A customer choosing the emergency-fund goal
+   * and entering ₹1,00,000 was shown a ₹10,000 recommendation. The arithmetic
+   * was right — the deposit is a share of the total, by policy — but the total
+   * was discarded the moment the Amount step submitted, so no screen after it
+   * could say where the other ₹90,000 had gone.
+   *
+   * The three figures must always reconcile exactly. Asserted here rather than
+   * left to the components, because "entered = invested + remainder" is an
+   * arithmetic guarantee about somebody's savings, and a component test would
+   * only prove that today's markup happens to render it.
+   */
+  for (const total of [10_000, 25_000, 50_000, 100_000, 500_000, 1_000_000]) {
+    const invested = M.calculateEmergencyFundAmount(total);
+    const remainder = total - invested;
+
+    check(`${String(total)}: entered = invested + remainder`, invested + remainder, total);
+    ok(`${String(total)}: the deposit is the smaller figure`, invested < total);
+    ok(`${String(total)}: nothing is unaccounted for`, remainder > 0);
+    ok(
+      `${String(total)}: both figures are whole rupees`,
+      Number.isInteger(invested) && Number.isInteger(remainder),
+    );
+  }
+
+  /*
+    The documented example, exactly. ₹1,00,000 in, ₹10,000 into the deposit,
+    ₹90,000 left over — the figures a reviewer will check first.
+  */
+  check('₹1,00,000 puts ₹10,000 into the deposit', M.calculateEmergencyFundAmount(100_000), 10_000);
+  check(
+    'and leaves ₹90,000 outside this plan',
+    100_000 - M.calculateEmergencyFundAmount(100_000),
+    90_000,
+  );
+
+  /*
+    **Only the emergency fund splits.** Every other goal invests what was typed,
+    and a second figure appearing under one of them would be the planner
+    inventing a reserve nobody asked for.
+  */
+  ok(
+    'the split applies to one goal, and the module says which',
+    /emergency/i.test(M.EMERGENCY_FUND_EXPLANATION) ||
+      /total investment/i.test(M.EMERGENCY_FUND_BASIS),
+  );
+
   section('Portfolio · a holding is ownership, not intent');
 
   const bank = (id, name) => ({
@@ -6575,6 +6624,8 @@ export async function runBookingJourneySuite(M) {
   const START = new Date('2025-08-20T00:00:00Z').getTime();
   const holding = (over = {}) => ({
     reference: 'REF-1',
+    source: 'platform-booked',
+    externalReference: null,
     productType: 'fixed-deposit',
     productId: 'fd-008',
     productName: 'AU Small Finance Bank Fixed Deposit',
@@ -6687,6 +6738,104 @@ export async function runBookingJourneySuite(M) {
   );
   check('a closed deposit is not counted', withClosed.activeCount, 1);
   check('nor does it inflate the total', withClosed.totalPrincipal, 500_000);
+
+  section('Portfolio · existing FDs normalize into the same holding model');
+
+  const manualInput = {
+    id: 'manual-001',
+    source: 'manually-added',
+    bank: bank('hdfc', 'HDFC Bank'),
+    productName: 'HDFC Bank Fixed Deposit',
+    principal: 250_000,
+    annualRate: 7,
+    tenureMonths: 24,
+    isCumulative: true,
+    payoutLabel: 'At maturity',
+    startedAt: START,
+    maturityInstruction: null,
+    externalReference: 'CUSTOMER-REF-1',
+  };
+  const selfAdded = M.normalizeExternalHolding(manualInput);
+  check(
+    'manual input becomes the canonical fixed-deposit shape',
+    selfAdded.productType,
+    'fixed-deposit',
+  );
+  check('and records its source separately from verification', selfAdded.source, 'manually-added');
+  check(
+    'with the honest customer-facing label',
+    M.HOLDING_SOURCE_LABEL[selfAdded.source],
+    'Self-added',
+  );
+  check(
+    'and customer-provided provenance',
+    M.HOLDING_SOURCE_PROVENANCE[selfAdded.source],
+    'Customer provided',
+  );
+  check(
+    'the supplied reference is retained outside the platform identity',
+    selfAdded.externalReference,
+    'CUSTOMER-REF-1',
+  );
+  ok(
+    'the platform identity is opaque instead',
+    selfAdded.reference.startsWith('external:manually-added:'),
+  );
+  const unified = M.summarisePortfolio([holding(), selfAdded], START);
+  check('platform and self-added holdings share portfolio totals', unified.totalPrincipal, 750_000);
+  check(
+    'and share the maturity schedule',
+    M.buildMaturitySchedule(unified, START).upcoming.length,
+    2,
+  );
+  check(
+    'and share tax allocation',
+    M.totalInterestForHolding(selfAdded),
+    M.calculateDepositReturns({
+      principal: selfAdded.principal,
+      annualRate: selfAdded.annualRate,
+      tenureMonths: selfAdded.tenureMonths,
+      isCumulative: selfAdded.isCumulative,
+    }).totalInterest,
+  );
+  const duplicate = M.findPotentialDuplicate(
+    M.normalizeExternalHolding({ ...manualInput, id: 'manual-002' }),
+    [selfAdded],
+  );
+  check(
+    'duplicate detection is deterministic and does not merge',
+    duplicate?.reference,
+    selfAdded.reference,
+  );
+  check(
+    'materially different terms are not declared a duplicate',
+    M.findPotentialDuplicate(
+      M.normalizeExternalHolding({
+        ...manualInput,
+        id: 'manual-003',
+        principal: 260_000,
+        externalReference: 'CUSTOMER-REF-2',
+      }),
+      [selfAdded],
+    ),
+    undefined,
+  );
+  const connectedDemo = M.normalizeExternalHolding(
+    M.CONNECTED_HOLDING_PROVIDER.createDemoInput(bank('dbs', 'DBS Bank India'), 'connected-001'),
+  );
+  const importedDemo = M.normalizeExternalHolding(
+    M.IMPORTED_HOLDING_PROVIDER.createDemoInput(bank('icici', 'ICICI Bank'), 'imported-001'),
+  );
+  check(
+    'the connected demo is explicitly connected source data',
+    connectedDemo.source,
+    'connected',
+  );
+  check(
+    'the imported demo is explicitly document-provided source data',
+    importedDemo.source,
+    'imported',
+  );
 
   section('Portfolio · insights are data-driven, never decorative');
 
@@ -8163,6 +8312,20 @@ export async function runBookingJourneySuite(M) {
     repStatement.availability.fileName === 'fd-statement-hdfc-bank-fd-2026-0001-2026-08-27',
   );
 
+  const repExternal = catalogueFor([selfAdded]);
+  const externalBookingRecord = repExternal.catalogue.byHolding[0].documents.find(
+    (entry) => entry.kind === 'booking-confirmation',
+  );
+  check(
+    'an FD added elsewhere does not invent a platform booking confirmation',
+    externalBookingRecord.availability.status,
+    'unavailable',
+  );
+  ok(
+    'and the report explains why',
+    /not booked through this platform/.test(externalBookingRecord.availability.reason),
+  );
+
   /* ---- A term published in days has no maturity to advise on ---- */
   const repUndated = catalogueFor([
     holding({ reference: 'FD-DAYS', tenureMonths: 0, startedAt: repStart }),
@@ -8243,6 +8406,16 @@ export async function runBookingJourneySuite(M) {
     'the maturity date is the one the portfolio derived',
     repValues.includes(M.formatMaturityDate(repView.maturesOn)),
   );
+
+  const sourceField = M.buildDocumentContent({
+    descriptor: M.findDocument(repExternal.catalogue, `fd-statement--${selfAdded.reference}`),
+    summary: repExternal.summary,
+    schedule: repExternal.schedule,
+    identity: null,
+  })
+    .sections.flatMap((sectionEntry) => sectionEntry.fields)
+    .find((field) => field.label === 'Source');
+  check('a statement prints the holding source', sourceField.value, 'Self-added');
   ok(
     'the rate is stated as recorded, not rounded',
     repValues.includes(`${M.formatPercentage(repHolding.annualRate)} per annum`),
@@ -8351,6 +8524,19 @@ export async function runBookingJourneySuite(M) {
     id: 'REF-A',
   });
   ok('and carries no financial figure', !/\d{4,}/.test(bookingOnes[0].body));
+
+  const externalAdded = notify([selfAdded]).find(
+    (entry) => entry.subject.id === selfAdded.reference,
+  );
+  check(
+    'an existing FD has its own source-aware notification id',
+    externalAdded?.id,
+    `holding-added:${selfAdded.reference}`,
+  );
+  ok(
+    'and it does not claim the bank confirmed a booking',
+    !/confirmed|open/i.test(externalAdded?.title ?? ''),
+  );
 
   /* Maturity: outside the window, inside it, and past it. */
   const far = notify([holding({ reference: 'FAR', tenureMonths: 120, startedAt: NOW_N })]);
@@ -8629,13 +8815,49 @@ export async function runBookingJourneySuite(M) {
   /* Refresh: the store is the source, so a re-read returns the same portfolio. */
   check('a refresh preserves the portfolio', M.readHoldings().length, 2);
 
-  /* A malformed entry is dropped rather than rendered as a deposit that exists. */
+  const storedExternal = M.normalizeExternalHolding({ ...manualInput, id: 'stored-manual' });
+  M.recordHolding(storedExternal);
+  check('a self-added FD shares the same store', M.readHoldings().length, 3);
+  M.updateHolding({ ...storedExternal, principal: 275_000 });
+  check(
+    'a customer-managed holding can be edited',
+    M.readHoldings().find((entry) => entry.reference === storedExternal.reference)?.principal,
+    275_000,
+  );
+  M.removeHolding(storedExternal.reference);
+  check('a customer-managed holding can be removed', M.readHoldings().length, 2);
+  M.removeHolding('REF-A');
+  check('a platform booking stays read-only to removal', M.readHoldings().length, 2);
+  M.updateHolding({ ...holding({ reference: 'REF-A' }), principal: 1 });
+  check(
+    'and read-only to edits',
+    M.readHoldings().find((entry) => entry.reference === 'REF-A')?.principal,
+    500_000,
+  );
+
+  M.clearHoldings();
+  const legacyHolding = holding({ reference: 'LEGACY' });
+  delete legacyHolding.source;
+  delete legacyHolding.externalReference;
   holdingsStore.set(
     'fd:portfolio-holdings:v2',
+    JSON.stringify({ version: 2, holdings: [legacyHolding] }),
+  );
+  check('a v2 platform booking migrates without loss', M.readHoldings().length, 1);
+  check(
+    'and receives the known platform-booked source',
+    M.readHoldings()[0]?.source,
+    'platform-booked',
+  );
+  M.clearHoldings();
+
+  /* A malformed entry is dropped rather than rendered as a deposit that exists. */
+  holdingsStore.set(
+    'fd:portfolio-holdings:v3',
     JSON.stringify({ version: 1, holdings: [{ reference: 'X' }] }),
   );
   check('a malformed holding is refused', M.readHoldings(), []);
-  holdingsStore.set('fd:portfolio-holdings:v2', '{not json');
+  holdingsStore.set('fd:portfolio-holdings:v3', '{not json');
   check('and so is unreadable storage', M.readHoldings(), []);
 
   delete globalThis.window;

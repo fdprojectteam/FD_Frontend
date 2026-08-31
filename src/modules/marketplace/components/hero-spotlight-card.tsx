@@ -23,7 +23,7 @@ export function HeroSpotlightCard({ product }: HeroSpotlightCardProps) {
   return (
     <div className="bg-surface-brand text-content-on-brand rounded-card hidden flex-col gap-6 p-8 md:flex">
       <div className="flex flex-col gap-2">
-        <span className="text-caption opacity-70">Highest rate available today</span>
+        <span className="text-caption opacity-70">Highest rate in this demo catalogue</span>
         <span className="text-h1 font-bold tabular-nums">{formatRate(product.interestRate)}</span>
         <span className="text-body">
           {product.bank.name} · {formatProductTenure(product)}
@@ -32,7 +32,7 @@ export function HeroSpotlightCard({ product }: HeroSpotlightCardProps) {
 
       <div className="flex flex-col gap-1 border-t border-current/20 pt-6">
         <span className="text-caption opacity-70">
-          {`${formatCurrency(REFERENCE_AMOUNT)} grows to`}
+          {`${formatCurrency(REFERENCE_AMOUNT)} estimated at maturity`}
         </span>
         <span className="text-h2 font-bold tabular-nums">
           {formatCurrency(product.estimatedReturns.maturityValue)}

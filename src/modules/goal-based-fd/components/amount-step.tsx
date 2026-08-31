@@ -50,7 +50,12 @@ export interface AmountStepProps {
   /** The smallest minimum investment across the loaded catalogue, when known. */
   lowestMinimum?: number;
   initialValue?: number;
-  onSubmit: (principal: number) => void;
+  /**
+   * `totalAmount` is the figure the customer entered, passed only when the
+   * deposit is a share of it — the emergency fund. Every other goal invests the
+   * amount typed, so there is no second number to carry.
+   */
+  onSubmit: (principal: number, totalAmount?: number) => void;
 }
 
 /** Digits only — the field is money, and a stray character is a silent NaN later. */
@@ -108,7 +113,12 @@ export function AmountStep({
         event.preventDefault();
 
         if (canContinue) {
-          onSubmit(investedAmount);
+          /*
+            The total travels with the deposit whenever the two differ. Sending
+            only `investedAmount` is what made ₹1,00,000 become ₹10,000 with no
+            explanation anywhere after this screen.
+          */
+          onSubmit(investedAmount, derivesAllocation ? amount : undefined);
         }
       }}
     >
@@ -237,7 +247,8 @@ export function AmountStep({
           <p className="text-content-muted mt-1 text-xs">Or enter any amount above.</p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        {/* `grid-cols-1` bounds the track — see the note in `planner-results.tsx`. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {QUICK_AMOUNTS.map((quick) => {
             const selected = amount === quick.value;
 

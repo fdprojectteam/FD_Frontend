@@ -9,7 +9,7 @@ import { TopNav } from '@/components/navigation/top-nav';
  *
  * Layout notes:
  * - Skip link is the first focusable element (Document 05 §19).
- * - `pb-16 md:pb-0` reserves the fixed mobile tab bar's height (64px =
+ * - `pb-16 xl:pb-0` reserves the fixed compact tab bar's height (64px =
  *   --ds-space-16) so content is never obscured.
  * - `scroll-mt-16` on <main> keeps anchored content clear of the sticky
  *   header when jumping to in-page targets.
@@ -26,7 +26,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
       <TopNav />
 
-      <main id="main-content" className="flex-1 scroll-mt-16 pb-16 md:pb-0">
+      <main id="main-content" className="flex-1 scroll-mt-16 pb-16 xl:pb-0">
         {children}
       </main>
 

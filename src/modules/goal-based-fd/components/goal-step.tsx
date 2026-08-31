@@ -74,7 +74,7 @@ export function GoalStep({ value, hint, onChange }: GoalStepProps) {
       </div>
 
       {/* Goal cards */}
-      <div className="grid gap-5 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         {GOAL_TYPES.map((goalType) => {
           const selected = value === goalType;
 

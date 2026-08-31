@@ -363,11 +363,11 @@ export async function runInvariantSuite() {
     Thirty-six with the operations console (Module 15): ten admin routes, each
     under the one `/admin` namespace. Still an exact number.
   */
-  /* Thirty-seven with the Tax Center (Module 13). Still an exact number. */
+  /* Thirty-nine with the two existing-FD portfolio routes. Still an exact number. */
   check(
-    'routes.ts asserts exactly thirty-seven Routes (E4)',
+    'routes.ts asserts exactly thirty-nine Routes (E4)',
     (routes.match(/as Route/g) ?? []).length,
-    37,
+    39,
   );
   /*
     **One booking flow, one route family.** Every booking path is built here and
@@ -6820,6 +6820,81 @@ export async function runInvariantSuite() {
     'the goal columns keep a comfortable touch target',
     /min-h-16|min-h-\[\d+px\]/.test(entryList ?? ''),
   );
+
+  section('Invariants · Narrow viewports (P0.2)');
+
+  /**
+   * ⚠ **A responsive grid always declares its base column template.**
+   *
+   * This is the defect that put the Goal Planner's recommendation alternatives
+   * at roughly 422px inside a 390px viewport, and the Home listing at more than
+   * a 320px screen could hold.
+   *
+   * `grid md:grid-cols-2` looks complete and is not. Below `md` there is no
+   * template at all, so items land in an **implicit** column sized by
+   * `grid-auto-columns: auto` — and an `auto` track's maximum is `max-content`,
+   * which it will grow past its container to reach. Any descendant with
+   * `white-space: nowrap` therefore sets the width of the whole page: Tailwind's
+   * `truncate` sets exactly that property, and so do `Badge` and `Chip`. A card
+   * whose product name truncates on screen was still reporting its untruncated
+   * width to the track above it.
+   *
+   * `grid-cols-1` is `repeat(1, minmax(0, 1fr))`. The `1fr` maximum is bounded
+   * by the container, which is the whole fix — and it is why `min-w-0` on the
+   * card's own children, which was already there, never helped: that bounds the
+   * minimum, and this was the maximum.
+   *
+   * The rule is enforced statically because the failure is invisible at desktop
+   * width and there is no headless browser in this project to catch it.
+   */
+  const RESPONSIVE_COLUMNS = /\b(?:md|lg|xl|sm|min-\[\d+px\]):grid-cols-/;
+  /*
+    Anchored on start-or-whitespace, **not** `\b`. `\b` also matches after the
+    colon in `md:grid-cols-2`, so the first version of this check treated every
+    responsive class as its own base template and passed on the very files it
+    was written to catch. A check that cannot fail is worse than no check.
+  */
+  const BASE_COLUMNS = /(?:^|\s)grid-cols-(?:\d|\[)/;
+
+  const gridOffenders = [...sources.entries()].flatMap(([file, text]) =>
+    [...(text ?? '').matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)]
+      .map((match) => match[1] ?? match[2] ?? '')
+      .filter((value) => /(?:^|\s)grid(?:\s|$)/.test(value))
+      .filter((value) => RESPONSIVE_COLUMNS.test(value) && !BASE_COLUMNS.test(value))
+      /*
+        One deliberate exception: a row that is a horizontal scroller below the
+        breakpoint and a grid above it has no base template *because it is not a
+        grid there*. `FeaturedBanks` is the only one, and it declares itself with
+        `md:grid`.
+      */
+      .filter((value) => !/\bmd:grid(?![\w-])/.test(value))
+      .map((value) => `${file}: ${value}`),
+  );
+
+  check('every responsive grid declares a base column template', gridOffenders, []);
+
+  /**
+   * **No fixed width sits in the sort row.** The Home overflow's other half: a
+   * `w-48` select inside a `justify-between` heading row that could not wrap.
+   * The control may be a fixed width from `md`, where the row has the space —
+   * never below it.
+   */
+  const sortControl = sources.get('src/modules/marketplace/components/sort-control.tsx');
+  ok(
+    'the sort control has no unconditional fixed width',
+    !/className="[^"]*(?:^|\s)w-\d+(?:\s|")/.test(sortControl ?? ''),
+  );
+  ok(
+    'and can shrink below the breakpoint',
+    /w-full/.test(sortControl ?? '') && /min-w-0/.test(sortControl ?? ''),
+  );
+
+  const sectionHeading = sources.get('src/modules/marketplace/components/section-heading.tsx');
+  ok(
+    'the section heading row wraps rather than overflowing',
+    /flex-wrap/.test(sectionHeading ?? ''),
+  );
+  ok('and its title can shrink', /min-w-0/.test(sectionHeading ?? ''));
 }
 
 /** Directory walk that tolerates the directory being absent. */

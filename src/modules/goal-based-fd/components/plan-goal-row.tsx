@@ -48,7 +48,7 @@ export function PlanGoalRow({ draft, canRemove, onChange, onRemove }: PlanGoalRo
 
   return (
     <li className="border-border-default rounded-card bg-surface-card flex flex-col gap-4 border p-4 md:p-5">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <label className="flex flex-col gap-1.5">
           <span className="text-caption text-content-muted">Goal</span>
           <Select

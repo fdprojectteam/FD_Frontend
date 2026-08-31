@@ -73,6 +73,8 @@ export function demoHoldingsFor(memberId: string, now: number): PortfolioHolding
   return [
     {
       reference: 'FD-DEMO-SPOUSE-01',
+      source: 'platform-booked',
+      externalReference: null,
       productType: 'fixed-deposit',
       productId: 'fd-004',
       productName: 'State Bank of India Fixed Deposit',

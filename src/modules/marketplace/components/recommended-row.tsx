@@ -29,8 +29,8 @@ export function RecommendedRow({ entries, isLoading = false }: RecommendedRowPro
   if (isLoading) {
     return (
       <section aria-labelledby="home-recommended-title" className="flex flex-col gap-6">
-        <SectionHeading id="home-recommended-title" title="Recommended for you" />
-        <div role="status" aria-live="polite" className="grid gap-4 md:grid-cols-3">
+        <SectionHeading id="home-recommended-title" title="Explore by what matters to you" />
+        <div role="status" aria-live="polite" className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <span className="sr-only">Loading recommendations…</span>
           {[0, 1, 2].map((index) => (
             <Skeleton key={index} className="h-24 w-full" />
@@ -44,8 +44,8 @@ export function RecommendedRow({ entries, isLoading = false }: RecommendedRowPro
 
   return (
     <section aria-labelledby="home-recommended-title" className="flex flex-col gap-6">
-      <SectionHeading id="home-recommended-title" title="Recommended for you" />
-      <ul className="grid list-none gap-4 md:grid-cols-3">
+      <SectionHeading id="home-recommended-title" title="Explore by what matters to you" />
+      <ul className="grid list-none grid-cols-1 gap-4 md:grid-cols-3">
         {entries.map((entry) => (
           <li key={entry.category.id}>
             <CategoryCard category={entry.category} bankName={entry.bankName} rate={entry.rate} />

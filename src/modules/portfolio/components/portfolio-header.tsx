@@ -1,6 +1,10 @@
 'use client';
 
-import { RotateCw } from 'lucide-react';
+import { Plus, RotateCw } from 'lucide-react';
+import Link from 'next/link';
+
+import { Button } from '@/components/ui/button';
+import { ROUTES } from '@/constants/routes';
 
 /**
  * The page's title block, and a quiet statement of when the figures were made.
@@ -42,16 +46,24 @@ export function PortfolioHeader({ generatedAt, onRefresh }: PortfolioHeaderProps
         </p>
       </div>
 
-      <div className="text-caption text-content-muted flex items-center gap-2">
-        <span className="tabular-nums">Last updated · {formatStamp(generatedAt)}</span>
-        <button
-          type="button"
-          onClick={onRefresh}
-          aria-label="Refresh portfolio"
-          className="focus-ring hover:text-content rounded-md p-1 transition-colors"
-        >
-          <RotateCw aria-hidden="true" className="size-3.5" />
-        </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button asChild size="sm" variant="secondary">
+          <Link href={ROUTES.portfolioAddFd}>
+            <Plus aria-hidden="true" className="size-4" />
+            Add existing FD
+          </Link>
+        </Button>
+        <div className="text-caption text-content-muted flex items-center gap-2">
+          <span className="tabular-nums">Last updated · {formatStamp(generatedAt)}</span>
+          <button
+            type="button"
+            onClick={onRefresh}
+            aria-label="Refresh portfolio"
+            className="focus-ring hover:text-content rounded-md p-1 transition-colors"
+          >
+            <RotateCw aria-hidden="true" className="size-3.5" />
+          </button>
+        </div>
       </div>
     </header>
   );

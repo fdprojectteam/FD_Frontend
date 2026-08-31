@@ -33,17 +33,22 @@ export function PortfolioEmptyState() {
       <div className="flex max-w-lg flex-col gap-3">
         <h1 className="text-h1 text-content">Your FD portfolio is empty</h1>
         <p className="text-body-lg text-content-muted">
-          Explore and invest in fixed deposits to see your investments, maturity dates and returns
-          here.
+          Already have FDs elsewhere? Bring them here to manage every fixed deposit, maturity date
+          and expected return in one place.
         </p>
       </div>
 
-      <Button asChild size="lg">
-        <Link href={ROUTES.home}>
-          Explore FDs
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </Link>
-      </Button>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Button asChild size="lg">
+          <Link href={ROUTES.portfolioAddFd}>Bring my FDs</Link>
+        </Button>
+        <Button asChild size="lg" variant="secondary">
+          <Link href={ROUTES.home}>
+            Explore FDs
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+        </Button>
+      </div>
     </section>
   );
 }

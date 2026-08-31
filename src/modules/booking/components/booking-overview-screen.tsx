@@ -4,7 +4,7 @@ import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo } from 'react';
 
-import { SafetyNote } from '@/components/business';
+import { DataProvenanceNote, SafetyNote } from '@/components/business';
 import { Card } from '@/components/ui/card';
 import { Stepper } from '@/components/ui/stepper';
 import { ROUTES } from '@/constants/routes';
@@ -228,10 +228,20 @@ export function BookingOverviewScreen({
               the drift is invisible until someone reads both screens.
 
               It sits below the deposit rather than in the assurance strip
-              because the strip states platform assurances — encryption, support
-              — and this states a condition on the product itself.
+              because the strip states what the platform undertakes to do, and
+              this states a condition on the product itself.
             */}
-            <SafetyNote className="border-border-default rounded-card border p-4" />
+            <div className="border-border-default rounded-card flex flex-col gap-3 border p-4">
+              <SafetyNote />
+              {/*
+                And where the figures above came from. The two notes are
+                adjacent because they answer the same question a customer asks
+                at this moment — *what am I actually relying on here?* — and
+                splitting them across the page would let one be read without
+                the other.
+              */}
+              <DataProvenanceNote tone="booking" />
+            </div>
           </div>
 
           <div className="flex flex-col gap-6">

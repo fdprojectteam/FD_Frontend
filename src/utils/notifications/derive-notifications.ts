@@ -1,6 +1,6 @@
 import { ROUTES } from '@/constants/routes';
 import type { AppNotification } from '@/types/notification';
-import type { PortfolioHolding } from '@/types/portfolio';
+import { HOLDING_SOURCE_LABEL, type PortfolioHolding } from '@/types/portfolio';
 import {
   MATURING_SOON_MONTHS,
   MATURITY_DUE_DAYS,
@@ -157,18 +157,32 @@ export function deriveNotifications(
 ): AppNotification[] {
   const active = holdings.filter((holding) => holding.status === 'active');
 
-  const bookings: AppNotification[] = active.map((holding) => ({
-    id: `booking-confirmed:${holding.reference}`,
-    category: 'booking',
-    severity: 'success',
-    title: `${holding.bank.name} deposit confirmed`,
-    /* No amount: the portfolio owns that figure and this refers to it instead. */
-    body: 'Your fixed deposit is open. You can see it in your portfolio.',
-    occurredAt: holding.startedAt,
-    subject: { kind: 'holding', id: holding.reference },
-    action: { label: 'View portfolio', href: ROUTES.portfolio },
-    isSimulated: true,
-  }));
+  const bookings: AppNotification[] = active.map((holding) =>
+    holding.source === 'platform-booked'
+      ? {
+          id: `booking-confirmed:${holding.reference}`,
+          category: 'booking',
+          severity: 'success',
+          title: `${holding.bank.name} deposit confirmed`,
+          /* No amount: the portfolio owns that figure and this refers to it instead. */
+          body: 'Your fixed deposit is open. You can see it in your portfolio.',
+          occurredAt: holding.startedAt,
+          subject: { kind: 'holding', id: holding.reference },
+          action: { label: 'View portfolio', href: ROUTES.portfolio },
+          isSimulated: true,
+        }
+      : {
+          id: `holding-added:${holding.reference}`,
+          category: 'booking',
+          severity: 'success',
+          title: `${holding.bank.name} FD added to your portfolio`,
+          body: `${HOLDING_SOURCE_LABEL[holding.source]} information is now organized with your other FDs.`,
+          occurredAt: holding.startedAt,
+          subject: { kind: 'holding', id: holding.reference },
+          action: { label: 'View portfolio', href: ROUTES.portfolio },
+          isSimulated: true,
+        },
+  );
 
   const maturities = active.flatMap((holding) => maturityNotifications(holding, now));
 

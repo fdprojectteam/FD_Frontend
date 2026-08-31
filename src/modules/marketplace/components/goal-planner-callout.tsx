@@ -58,7 +58,7 @@ export function GoalPlannerCallout() {
       {/* -----------------------------------------------------------
           HERO
       ------------------------------------------------------------ */}
-      <div className="relative grid items-center gap-6 p-6 sm:p-8 md:grid-cols-[260px_1fr] md:gap-10 md:p-10 lg:grid-cols-[300px_1fr]">
+      <div className="relative grid grid-cols-1 items-center gap-6 p-6 sm:p-8 md:grid-cols-[260px_1fr] md:gap-10 md:p-10 lg:grid-cols-[300px_1fr]">
         {/* Illustration */}
         <div className="flex items-center justify-center md:justify-start">
           <Image
@@ -75,7 +75,7 @@ export function GoalPlannerCallout() {
         <div className="flex max-w-2xl flex-col gap-3">
           <div className="text-content-brand inline-flex w-fit items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold">
             <Sparkles aria-hidden="true" className="size-3.5" />
-            Personalised FD recommendations
+            Goal-led FD recommendations
           </div>
 
           <h2 id="home-goal-planner-title" className="text-h2 text-content">
@@ -87,16 +87,32 @@ export function GoalPlannerCallout() {
             you — not just the interest rate.
           </p>
 
-          {/* Trust/value statement */}
-          <div className="text-content-muted mt-2 flex items-center gap-2 text-sm">
-            <span className="bg-surface-brand size-1.5 rounded-full" />
+          {/*
+            What the planner takes and what it gives back.
+
+            ⚠ This row did not wrap. Eight inline items ending in a six-word
+            phrase have a min-content width well past the ~272px a 320px
+            viewport leaves inside this card's padding, so at that width the row
+            ran past the card edge — clipped by the section's `overflow-hidden`
+            rather than visibly broken, which is why it survived so long. It
+            wraps now, and the leading dot is pinned to the first line so the
+            row still reads as one statement.
+          */}
+          <div className="text-content-muted mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <span aria-hidden="true" className="bg-surface-brand size-1.5 shrink-0 rounded-full" />
             Goal
-            <span className="text-content-muted">+</span>
+            <span aria-hidden="true" className="text-content-muted">
+              +
+            </span>
             Amount
-            <span className="text-content-muted">+</span>
+            <span aria-hidden="true" className="text-content-muted">
+              +
+            </span>
             Timeline
-            <span className="text-content-muted">→</span>
-            <span className="text-content font-medium">Personalised FD options</span>
+            <span aria-hidden="true" className="text-content-muted">
+              →
+            </span>
+            <span className="text-content font-medium">FD options explained for your goal</span>
           </div>
         </div>
       </div>

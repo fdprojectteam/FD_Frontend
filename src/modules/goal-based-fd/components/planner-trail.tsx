@@ -8,6 +8,7 @@ import { formatCurrency, formatTenure } from '@/utils';
 import { GOAL_LABELS } from '../constants/goals';
 import { GOAL_ICONS } from '../constants/presentation';
 import type { PlannerAnswers, PlannerStage } from '../hooks/use-planner-flow';
+import { EMERGENCY_FUND_BASIS } from '../utils/emergency-allocation';
 
 /**
  * The answers so far, as a trail rather than a discarded form.
@@ -33,6 +34,8 @@ interface TrailRow {
   key: 'goal' | 'investor' | 'amount' | 'horizon' | 'target';
   label: string;
   value: string;
+  /** A second line, for an answer that needs one. */
+  note?: string;
 }
 
 export function PlannerTrail({ answers, stage, onEdit }: PlannerTrailProps) {
@@ -49,8 +52,28 @@ export function PlannerTrail({ answers, stage, onEdit }: PlannerTrailProps) {
       value: answers.isSeniorCitizen ? 'Senior citizen' : 'Standard rates',
     });
   }
+  /*
+    ⚠ The amount row used to show the invested figure alone. For the emergency
+    fund that is a share of what the customer typed, so the trail said "Amount
+    ₹10,000" to someone who had just entered ₹1,00,000 — the number changed
+    between one screen and the next with nothing on the page to account for it.
+
+    Both figures now appear, and the note names the rule that relates them. The
+    row still leads with the amount that is being invested, because that is what
+    the rest of the plan is about.
+  */
   if (answers.principal !== undefined && stage !== 'amount') {
-    rows.push({ key: 'amount', label: 'Amount', value: formatCurrency(answers.principal) });
+    const total = answers.totalAmount;
+    const isShare = total !== undefined && total > answers.principal;
+
+    rows.push({
+      key: 'amount',
+      label: isShare ? 'Investing' : 'Amount',
+      value: formatCurrency(answers.principal),
+      note: isShare
+        ? `${EMERGENCY_FUND_BASIS}. You entered ${formatCurrency(total)}; the remaining ${formatCurrency(total - answers.principal)} is not part of this plan.`
+        : undefined,
+    });
   }
   if (answers.horizonMonths !== undefined && stage !== 'horizon') {
     rows.push({ key: 'horizon', label: 'When', value: formatTenure(answers.horizonMonths) });
@@ -104,8 +127,16 @@ export function PlannerTrail({ answers, stage, onEdit }: PlannerTrailProps) {
           </span>
 
           <span className="text-caption text-content-muted w-16 shrink-0">{row.label}</span>
-          <span className="text-body text-content min-w-0 flex-1 truncate font-medium">
-            {row.value}
+
+          {/*
+            The value stays on one line and truncates, as it always did. A note
+            wraps beneath it rather than competing for that line — the amount is
+            what the row is for, and the explanation is what makes it safe to
+            read.
+          */}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-body text-content truncate font-medium">{row.value}</span>
+            {row.note ? <span className="text-caption text-content-muted">{row.note}</span> : null}
           </span>
 
           <button

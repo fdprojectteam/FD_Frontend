@@ -37,7 +37,7 @@ export function TopNav() {
           </Link>
         </div>
 
-        <nav aria-label="Main" className="hidden md:block">
+        <nav aria-label="Main" className="hidden xl:block">
           <ul className="flex items-center gap-8">
             {PRIMARY_NAV.map((item) => {
               const active = isNavItemActive(item, pathname);

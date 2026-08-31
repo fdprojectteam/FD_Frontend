@@ -1,9 +1,8 @@
 'use client';
 
-import { Building2, CreditCard, Landmark, ShieldCheck, Smartphone } from 'lucide-react';
+import { Building2, CreditCard, KeyRound, Landmark, Smartphone } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { RadioCardGroup } from '@/components/ui/radio-card-group';
 import { ROUTES } from '@/constants/routes';
@@ -103,9 +102,9 @@ export function PaymentScreen({ productId }: PaymentScreenProps) {
       isReady={isReady}
       description={
         <>
-          Complete your payment securely. Your FD will be created only after successful payment
+          Choose how you would pay. Your FD is created only after payment and bank
           <br />
-          and bank confirmation.
+          confirmation — neither of which happens in this build.
         </>
       }
     >
@@ -119,15 +118,27 @@ export function PaymentScreen({ productId }: PaymentScreenProps) {
               </p>
             </div>
 
+            {/*
+              ⚠ Was "Secure Payment · All payments are encrypted and secure ·
+              [256-bit SSL]" behind a green shield. Three assertions about a
+              payment path that does not exist — the badge in particular named a
+              cipher strength as though someone had configured one. The screen
+              two paragraphs below already says no gateway is connected, so the
+              page was contradicting itself: a customer reading top to bottom met
+              "256-bit SSL" first and the truth second.
+
+              What stands here now is the same reassurance a real payment screen
+              owes, reduced to what holds: nothing is collected, so nothing can
+              leak.
+            */}
             <div className="border-border-default rounded-card flex items-center gap-3 border p-4">
-              <ShieldCheck aria-hidden="true" className="text-content-brand size-5 shrink-0" />
+              <KeyRound aria-hidden="true" className="text-content-brand size-5 shrink-0" />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <p className="text-body text-content font-semibold">Secure Payment</p>
+                <p className="text-body text-content font-semibold">No payment details collected</p>
                 <p className="text-caption text-content-muted">
-                  All payments are encrypted and secure
+                  No card, UPI or net-banking credential is asked for or stored.
                 </p>
               </div>
-              <Badge size="sm">256-bit SSL</Badge>
             </div>
 
             {/*
@@ -157,11 +168,17 @@ export function PaymentScreen({ productId }: PaymentScreenProps) {
               onChange={setPaymentMethod}
             />
 
+            {/*
+              ⚠ "In case of payment failure, the amount will be refunded within
+              3-5 working days" was a service-level promise about a refund
+              process that does not exist, on a screen that takes no payment.
+              The other two notes describe how an FD booking works and are kept.
+            */}
             <ImportantInformation
               notes={[
                 'Payment must be made from the selected bank account.',
-                'In case of payment failure, the amount will be refunded within 3-5 working days.',
-                'Your FD will be created only after successful payment confirmation.',
+                'Your FD is created only after the bank confirms the payment.',
+                'Refunds on a failed payment are handled by the bank under its own terms.',
               ]}
             />
           </Card>
@@ -170,13 +187,23 @@ export function PaymentScreen({ productId }: PaymentScreenProps) {
         <div className="flex flex-col gap-6">
           <BookingSummaryRail deposit={deposit} investment={draft.investment} />
 
+          {/*
+            ⚠ Was "Your money is safe with us · RBI regulated partners ·
+            Encrypted transactions · Our support team is here to help" — three
+            claims on the one screen where a customer is deciding to part with
+            money, and not one of them holds: no partner licence has been
+            checked, no transaction is encrypted because no transaction occurs,
+            and no support team exists. Replaced with what this step genuinely
+            does, which a customer is better served by knowing here than
+            discovering afterwards.
+          */}
           <ImportantInformation
             notes={[
-              'RBI regulated partners',
-              'Encrypted transactions',
-              'Our support team is here to help you with any questions.',
+              'No payment is taken. This step records your choice of method and moves the booking on.',
+              'You are never asked for a card number, UPI PIN or net-banking password.',
+              'The deposit is not created with the bank. Nothing here is sent to one.',
             ]}
-            title="Your money is safe with us"
+            title="What happens at this step"
             variant="checklist"
             headingLevel={2}
           />

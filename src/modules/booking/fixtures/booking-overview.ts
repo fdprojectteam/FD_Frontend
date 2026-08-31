@@ -51,7 +51,8 @@ export const BOOKING_OVERVIEW_FIXTURE: BookingOverview = {
   deposit: {
     productId: 'fd-002',
     productName: 'HDFC Bank Fixed Deposit',
-    tagline: 'Secure • Trusted • Guaranteed Returns',
+    /* Was "Secure • Trusted • Guaranteed Returns" — three claims, none established. */
+    tagline: 'Fixed rate • Fixed term • Terms confirmed by the bank',
     bank: {
       id: 'hdfc',
       name: 'HDFC Bank',
@@ -61,14 +62,20 @@ export const BOOKING_OVERVIEW_FIXTURE: BookingOverview = {
       rating: 'AAA',
     },
     isPreferredPartner: true,
+    /*
+      Was: "Earn assured returns … Your investment is 100% secure and backed by
+      the bank's strong financials and legacy of trust." Assured, 100% secure
+      and a judgement about the bank's financials — none of which this platform
+      has any basis for. What replaces it describes how a fixed deposit works,
+      which is what a customer on this screen actually needs.
+    */
     about:
-      'Earn assured returns with HDFC Bank Fixed Deposits. Your investment is 100% secure and backed by the bank’s strong financials and legacy of trust.',
+      'A fixed deposit holds your money for an agreed term at a rate agreed up front. The rate does not change during the term, and the amount you receive at maturity is set by that rate, the term and how interest is paid out.',
     highlights: [
-      { id: 'guaranteed-returns', label: 'Guaranteed Returns' },
-      { id: 'secure-investment', label: 'Secure Investment' },
-      { id: 'flexible-tenure', label: 'Flexible Tenure Options' },
-      { id: 'payout-options', label: 'Regular Interest Payout Options' },
-      { id: 'regulated-bank', label: 'RBI Regulated Partner Bank' },
+      { id: 'flexible-tenure', label: 'Choice of tenure' },
+      { id: 'payout-options', label: 'Interest paid out or compounded' },
+      { id: 'premature-withdrawal', label: 'Premature withdrawal, with terms' },
+      { id: 'auto-renewal', label: 'Auto-renewal available' },
     ],
     terms: {
       interestRate: 7.25,
@@ -114,14 +121,26 @@ export const BOOKING_OVERVIEW_FIXTURE: BookingOverview = {
       autoRenewal: true,
     },
   },
+  /*
+    Three things this build genuinely does. See `BookingAssuranceId` for what
+    was here before and why none of it survived.
+  */
   assurances: [
     {
-      id: 'bank-grade-security',
-      title: 'Bank Grade Security',
-      description: '256-bit encryption',
+      id: 'terms-first',
+      title: 'Terms before you confirm',
+      description: 'Rate, term and payout on the review step',
     },
-    { id: 'safe-and-secure', title: '100% Safe & Secure', description: 'RBI Regulated Platform' },
-    { id: 'support', title: '24x7 Support', description: 'Always here to help' },
+    {
+      id: 'no-credentials',
+      title: 'No banking credentials',
+      description: 'You are never asked for a password or PIN',
+    },
+    {
+      id: 'demonstration',
+      title: 'Demonstration build',
+      description: 'No money moves and nothing reaches a bank',
+    },
   ],
   importantInformation: [
     'Interest rates and terms are provided by the partner bank and are subject to change.',

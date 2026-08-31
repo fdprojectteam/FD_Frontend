@@ -1,7 +1,8 @@
-import { ArrowRight, ShieldCheck, Star } from 'lucide-react';
+import { ArrowRight, Calculator, FileCheck2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { DataProvenanceNote } from '@/components/business';
 import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/constants/routes';
 
@@ -32,9 +33,17 @@ import type { ProductSummary } from '../types/product';
  * icon is composed here exactly as Button composes `rightIcon`.
  */
 const TRUST_LINE: { id: string; label: string; icon: ReactNode }[] = [
-  { id: 'rbi', label: 'RBI regulated', icon: <ShieldCheck className="size-4" /> },
-  { id: 'dicgc', label: '₹5L DICGC insured', icon: <ShieldCheck className="size-4" /> },
-  { id: 'partners', label: '50+ partner banks', icon: <Star className="size-4" /> },
+  { id: 'terms', label: 'Terms shown before booking', icon: <FileCheck2 className="size-4" /> },
+  {
+    id: 'estimate',
+    label: 'Maturity estimate for your amount',
+    icon: <Calculator className="size-4" />,
+  },
+  {
+    id: 'conditions',
+    label: 'Conditions explained clearly',
+    icon: <ShieldCheck className="size-4" />,
+  },
 ];
 
 export interface HomeHeroProps {
@@ -45,7 +54,7 @@ export function HomeHero({ spotlightProduct }: HomeHeroProps) {
   return (
     <section
       aria-labelledby="home-hero-title"
-      className="grid gap-8 md:grid-cols-2 md:items-center"
+      className="grid grid-cols-1 gap-8 md:grid-cols-2 md:items-center"
     >
       <div className="flex flex-col gap-6">
         <span className="text-caption text-content-brand font-semibold tracking-wide uppercase">
@@ -53,12 +62,12 @@ export function HomeHero({ spotlightProduct }: HomeHeroProps) {
         </span>
 
         <h1 id="home-hero-title" className="text-h1 text-content max-w-xl">
-          Grow your savings with India&apos;s most trusted banks
+          Grow your savings with Indian fixed-deposit choices made clear
         </h1>
 
         <p className="text-body-lg text-content-muted max-w-xl">
-          Compare Fixed Deposits from 50+ RBI-regulated banks — transparent rates, no hidden terms,
-          and a planner that matches deposits to your goal.
+          Compare rates, tenure and estimated maturity in one place. Then use a goal-led plan to
+          understand which deposit may fit your timeline — not just which rate looks highest.
         </p>
 
         <div className="flex flex-wrap items-center gap-4">
@@ -85,6 +94,13 @@ export function HomeHero({ spotlightProduct }: HomeHeroProps) {
             </li>
           ))}
         </ul>
+
+        {/*
+          The same sentence Product Details and Booking use, not a fourth
+          version of it. This one was already honest; making it the shared
+          component is what stops the four from drifting apart later.
+        */}
+        <DataProvenanceNote className="max-w-xl" />
       </div>
 
       {spotlightProduct ? <HeroSpotlightCard product={spotlightProduct} /> : null}

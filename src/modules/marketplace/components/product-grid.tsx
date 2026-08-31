@@ -24,7 +24,7 @@ export function ProductGrid({
   compareDisabled = false,
 }: ProductGridProps) {
   return (
-    <ul className="grid list-none gap-6 md:grid-cols-3">
+    <ul className="grid list-none grid-cols-1 gap-6 md:grid-cols-3">
       {products.map((product) => (
         <li key={product.id}>
           <FDProductCard

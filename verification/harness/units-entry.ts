@@ -331,7 +331,19 @@ export {
 
 /* ---- Portfolio: ownership, not intent ---- */
 export { portfolioAttention, summarisePortfolio, toHoldingView } from '@/utils/portfolio';
-export { clearHoldings, readHoldings, recordHolding } from '@/services/portfolio';
+export {
+  clearHoldings,
+  readHoldings,
+  recordHolding,
+  removeHolding,
+  updateHolding,
+  findPotentialDuplicate,
+  normalizeExternalHolding,
+  HOLDING_SOURCE_LABEL,
+  HOLDING_SOURCE_PROVENANCE,
+  CONNECTED_HOLDING_PROVIDER,
+  IMPORTED_HOLDING_PROVIDER,
+} from '@/services/portfolio';
 export {
   calculateDepositReturns,
   maturityDate as platformMaturityDate,

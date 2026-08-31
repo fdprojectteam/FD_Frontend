@@ -104,14 +104,24 @@ export const FDProductCard = forwardRef<HTMLElement, FDProductCardProps>(
               </div>
             </dl>
 
-            <div className="bg-surface-muted flex flex-col gap-1 rounded-md p-4">
-              <span className="text-caption text-content-muted">
-                {`Estimated returns on ${formatCurrency(REFERENCE_AMOUNT)}`}
-              </span>
-              <span className="text-body-lg text-content font-medium tabular-nums">
-                {formatCurrency(product.estimatedReturns.maturityValue)}
-              </span>
+            <div className="bg-surface-muted grid grid-cols-2 gap-3 rounded-md p-4">
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="text-caption text-content-muted">You invest</span>
+                <span className="text-body text-content font-medium tabular-nums">
+                  {formatCurrency(REFERENCE_AMOUNT)}
+                </span>
+              </div>
+              <div className="border-border-default flex min-w-0 flex-col gap-1 border-l pl-3">
+                <span className="text-caption text-content-muted">Estimated at maturity</span>
+                <span className="text-body text-content font-semibold tabular-nums">
+                  {formatCurrency(product.estimatedReturns.maturityValue)}
+                </span>
+              </div>
             </div>
+
+            <p className="text-caption text-content-muted">
+              {`${formatCurrency(product.estimatedReturns.interestEarned)} estimated interest over ${formatProductTenure(product)}`}
+            </p>
 
             {product.benefits.length > 0 ? (
               <BenefitChipList benefits={product.benefits} max={BENEFITS_ON_CARD} />

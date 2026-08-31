@@ -25,7 +25,7 @@ export function FeaturedBanks({ banks, isLoading = false }: FeaturedBanksProps) 
     return (
       <section aria-labelledby="home-banks-title" className="flex flex-col gap-6">
         <SectionHeading id="home-banks-title" title="Featured banks" />
-        <div role="status" aria-live="polite" className="grid gap-4 md:grid-cols-5">
+        <div role="status" aria-live="polite" className="grid grid-cols-1 gap-4 md:grid-cols-5">
           <span className="sr-only">Loading partner banks…</span>
           {[0, 1, 2, 3, 4].map((index) => (
             <Skeleton key={index} className="h-20 w-full" />
