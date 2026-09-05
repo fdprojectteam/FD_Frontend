@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, Check, Sparkles } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -9,70 +9,16 @@ import { cn } from '@/lib/utils';
 
 import { GOAL_ENTRIES } from '../constants/goal-entry';
 
-/**
- * The three goal columns, and the only client code in the Goal Selection
- * section.
- *
- * ## Why this was split out
- *
- * Selecting a goal has to be acknowledged *where it was made*. As a plain link
- * the customer clicked and the next thing that happened was a different page —
- * nothing said the product had understood, which is the first question the
- * journey has to answer.
- *
- * Acknowledging it needs one piece of state, and state needs a client
- * component. Only the list moved: the heading, the supporting copy and the
- * footer link stay server-rendered.
- *
- * ## What selection does
- *
- * The chosen column fills with the brand surface and its illustration inverts —
- * the same device the approved hero card uses, so the confirmation is written
- * in the product's own visual language rather than a borrowed one. The other
- * two recede to `opacity-muted`: **the choice is narrowed, not erased.**
- *
- * ## Navigation is never blocked by it
- *
- * The `<Link>` navigates on its own schedule and the state change happens
- * alongside. If the route resolves in 40ms the customer gets it in 40ms, and
- * the confirmation is simply the last thing they saw rather than a toll they
- * paid. It is transient by design — it is not a state anyone returns to.
- *
- * ## Home stays the decision surface
- *
- * Each column carries the goal, what it means in the customer's terms, and an
- * illustration of the shape of that goal. Nobody has to navigate to find out
- * what the three options are; navigation happens only once a choice is made,
- * and it carries that choice with it through `?goal=`.
- *
- * ## Touch
- *
- * Tailwind v4 scopes its `hover` variant behind `@media (hover: hover)`, so a
- * tapped column cannot stay lit after the customer has left the page. `active:`
- * supplies the press feedback touch needs instead.
- */
 export function GoalEntryList() {
   const [chosenId, setChosenId] = useState<string | null>(null);
 
   return (
-    <div className="px-5 pb-6 md:px-8 md:pb-8">
-      {/* Section heading */}
-      <div className="mb-5 md:mb-6">
-        <div className="flex items-center gap-2">
-          <span className="bg-surface-brand-subtle text-content-brand flex size-7 items-center justify-center rounded-lg">
-            <Sparkles aria-hidden="true" className="size-3.5" />
-          </span>
+    <div className="w-full min-w-0">
+      {/* =========================================================
+          GOAL CARDS
+      ========================================================== */}
 
-          <h3 className="text-h3 text-content">Choose your financial goal</h3>
-        </div>
-
-        <p className="text-body text-content-muted mt-2">
-          Your goal helps us understand what matters most when comparing FDs.
-        </p>
-      </div>
-
-      {/* Goal cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:gap-5 md:grid-cols-4 md:gap-4 lg:gap-5">
         {GOAL_ENTRIES.map((goal) => {
           const chosen = chosenId === goal.id;
           const dimmed = chosenId !== null && !chosen;
@@ -82,72 +28,161 @@ export function GoalEntryList() {
               key={goal.id}
               href={goal.href}
               onClick={() => setChosenId(goal.id)}
+              aria-label={`Explore ${goal.label}`}
+              aria-current={chosen ? 'true' : undefined}
               className={cn(
-                'group relative flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-3xl border p-6',
-                'bg-white/95 shadow-sm',
+                /* =====================================================
+                   BASE
+                ====================================================== */
+
+                `group relative flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-[22px] border p-4 sm:min-h-[390px] sm:p-5 lg:rounded-[24px] lg:p-6`,
+
+                'bg-white',
+
                 'transition-all duration-300 ease-out',
-                'hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(91,63,208,0.12)]',
-                'focus-visible:ring-2 focus-visible:ring-purple-500/40 focus-visible:outline-none',
-                chosen
-                  ? 'border-purple-300 bg-purple-50/70 shadow-[0_12px_35px_rgba(91,63,208,0.14)]'
-                  : 'border-gray-200/80 hover:border-purple-200',
-                dimmed && 'opacity-50',
+
+                /* =====================================================
+                   NORMAL STATE
+                ====================================================== */
+
+                !chosen && ['border-slate-200', 'shadow-[0_8px_30px_rgba(15,23,42,0.04)]'],
+
+                /* =====================================================
+                   HOVER
+                ====================================================== */
+
+                !chosen && [
+                  'hover:-translate-y-1',
+                  'hover:border-purple-200',
+                  'hover:shadow-[0_18px_45px_rgba(91,33,182,0.10)]',
+                ],
+
+                /* =====================================================
+                   SELECTED
+                ====================================================== */
+
+                chosen && [
+                  'border-purple-500',
+                  'bg-gradient-to-b',
+                  'from-purple-50/90',
+                  'via-white',
+                  'to-white',
+                  'shadow-[0_18px_45px_rgba(91,33,182,0.16)]',
+                ],
+
+                /* =====================================================
+                   FOCUS
+                ====================================================== */
+
+                `focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:outline-none`,
+
+                /* =====================================================
+                   DIMMED
+                ====================================================== */
+
+                dimmed && 'opacity-45',
               )}
             >
-              {/* Soft decorative glow */}
+              {/* =====================================================
+                  CARD BACKGROUND GLOW
+              ====================================================== */}
+
               <span
                 aria-hidden="true"
                 className={cn(
-                  'pointer-events-none absolute -top-16 -right-16 size-40 rounded-full bg-purple-300/10 blur-3xl',
-                  'transition-opacity duration-500',
+                  `pointer-events-none absolute -top-16 -right-16 size-40 rounded-full bg-purple-300/20 blur-3xl transition-opacity duration-500`,
                   chosen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
                 )}
               />
 
-              {/* Selected indicator */}
+              {/* Bottom glow */}
+
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -bottom-20 left-1/2 size-36 -translate-x-1/2 rounded-full bg-violet-200/20 opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100"
+              />
+
+              {/* =====================================================
+                  SELECTED CHECK
+              ====================================================== */}
+
               {chosen && (
-                <span className="absolute top-5 right-5 z-10 flex size-7 items-center justify-center rounded-full bg-purple-600 text-white shadow-md">
-                  <Check aria-hidden="true" className="size-4" />
+                <span className="absolute top-4 right-4 z-20 flex size-7 shrink-0 items-center justify-center rounded-full bg-purple-600 text-white shadow-[0_6px_16px_rgba(91,33,182,0.30)] sm:top-5 sm:right-5">
+                  <Check aria-hidden="true" className="size-4" strokeWidth={3} />
                 </span>
               )}
 
-              {/* Illustration */}
+              {/* =====================================================
+                  ILLUSTRATION
+              ====================================================== */}
+
               <span
                 className={cn(
-                  'relative flex size-28 shrink-0 items-center justify-center rounded-3xl',
-                  'transition-all duration-300',
-                  'group-hover:scale-[1.03]',
-                  chosen ? 'bg-purple-100 shadow-md' : 'bg-purple-50 shadow-sm',
+                  `relative flex size-[108px] shrink-0 items-center justify-center self-center rounded-full transition-all duration-500 ease-out group-hover:scale-[1.04] sm:size-[120px] lg:size-[132px]`,
+
+                  chosen
+                    ? `bg-gradient-to-br from-purple-100 via-violet-50 to-white shadow-[0_10px_30px_rgba(124,58,237,0.14)]`
+                    : `bg-gradient-to-br from-purple-50 via-violet-50/60 to-white shadow-[0_8px_24px_rgba(91,33,182,0.06)]`,
                 )}
               >
-                <GoalMark kind={goal.id} selected={chosen} className="size-20" />
+                {/* Illustration inner glow */}
+
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-2.5 rounded-full bg-white/60 sm:inset-3"
+                />
+
+                <GoalMark
+                  kind={goal.id}
+                  selected={chosen}
+                  className="relative z-10 size-[76px] transition-transform duration-500 group-hover:scale-105 sm:size-[88px] lg:size-[96px]"
+                />
               </span>
 
-              {/* Content */}
-              <span className="relative mt-6 flex min-w-0 flex-1 flex-col">
-                {/* Goal title */}
-                <span className="text-[20px] leading-7 font-semibold tracking-[-0.02em] text-gray-950">
+              {/* =====================================================
+                  CONTENT
+              ====================================================== */}
+
+              <span className="relative mt-5 flex min-w-0 flex-1 flex-col sm:mt-6">
+                {/* ===================================================
+                    TITLE
+                ==================================================== */}
+
+                <span
+                  className={cn(
+                    `min-w-0 text-[17px] leading-6 font-bold tracking-[-0.02em] transition-colors duration-300 sm:text-[19px] sm:leading-7`,
+                    chosen ? 'text-purple-700' : 'text-slate-950',
+                  )}
+                >
                   {goal.label}
                 </span>
 
-                {/* Description */}
-                <span className="mt-2 max-w-[280px] text-[14px] leading-6 font-normal text-gray-500">
+                {/* ===================================================
+                    DESCRIPTION
+                ==================================================== */}
+
+                <span className="mt-2 min-w-0 text-[13px] leading-5 font-normal text-slate-500 sm:text-[14px] sm:leading-6">
                   {goal.description}
                 </span>
 
-                {/* Focus */}
-                <span className="mt-6">
-                  <span className="block text-[10px] font-bold tracking-[0.12em] text-gray-400 uppercase">
+                {/* ===================================================
+                    PRIORITIES
+                ==================================================== */}
+
+                <span className="mt-4 min-w-0 sm:mt-5">
+                  <span className="block text-[9px] font-bold tracking-[0.14em] text-slate-400 uppercase sm:text-[10px]">
                     We&apos;ll prioritise
                   </span>
 
-                  <span className="mt-2 flex flex-wrap gap-2">
+                  <span className="mt-2 flex min-w-0 flex-wrap gap-1.5 sm:gap-2">
                     {goal.focus.split(' • ').map((item) => (
                       <span
                         key={item}
                         className={cn(
-                          'rounded-full px-3 py-1.5 text-[11px] font-medium',
-                          chosen ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600',
+                          `max-w-full rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors duration-300 sm:px-3 sm:py-1.5 sm:text-[11px]`,
+                          chosen
+                            ? `border-purple-100 bg-purple-100/80 text-purple-700`
+                            : `border-slate-100 bg-slate-100 text-slate-600`,
                         )}
                       >
                         {item}
@@ -156,16 +191,28 @@ export function GoalEntryList() {
                   </span>
                 </span>
 
-                {/* CTA */}
-                <span className="mt-auto flex items-center gap-2 pt-7 text-[14px] font-semibold text-purple-700">
-                  <span className="group-hover:var(--ds-purple-700) transition-colors">
+                {/* ===================================================
+                    CTA
+                ==================================================== */}
+
+                <span className="relative mt-auto flex min-w-0 items-center justify-between gap-2 pt-6 text-[13px] font-semibold text-purple-700 sm:pt-7 sm:text-[14px]">
+                  <span className="min-w-0 truncate transition-transform duration-300 group-hover:translate-x-0.5">
                     Explore this goal
                   </span>
 
-                  <ArrowRight
-                    aria-hidden="true"
-                    className="size-4 transition-transform duration-300 group-hover:translate-x-1"
-                  />
+                  <span
+                    className={cn(
+                      `flex size-8 shrink-0 items-center justify-center rounded-full transition-all duration-300`,
+                      chosen
+                        ? `bg-purple-600 text-white shadow-[0_6px_16px_rgba(91,33,182,0.25)]`
+                        : `bg-purple-50 text-purple-600 group-hover:bg-purple-100`,
+                    )}
+                  >
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="size-4 transition-transform duration-300 group-hover:translate-x-0.5"
+                    />
+                  </span>
                 </span>
               </span>
             </Link>

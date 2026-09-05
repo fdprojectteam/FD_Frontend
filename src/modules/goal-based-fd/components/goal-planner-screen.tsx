@@ -24,46 +24,36 @@ import { useGoalRecommendations, useProductCatalogue } from '../hooks/use-goal-r
 import { parseGoalParam, usePlannerFlow } from '../hooks/use-planner-flow';
 
 /**
- * The goal planner — one question at a time, never asked twice.
+ * Goal Planner Screen
  *
- * ## The intro screen is gone, deliberately
- *
- * It showed a headline, the same three goal labels and descriptions the Home
- * section had just shown, and a "Let's start" button. So the goal vocabulary
- * appeared **three times before the customer answered anything**, and one of
- * those screens existed only to be dismissed. Its heading now sits above the
- * first real question; nothing informative was lost and a screen and a click
- * were removed.
- *
- * ## Intent arrives with the customer
- *
- * `?goal=education` means the first question is already answered. The goal step
- * is not rendered, and the acknowledgement states what was understood so the
- * customer can see their choice was carried rather than dropped. An
- * unrecognised value falls through to the ordinary question — a URL is user
- * input and must not be able to select something on their behalf.
- *
- * ## Composition only
- *
- * Every rule, rate and figure comes from the engine. This file owns which
- * question is on screen and nothing else.
+ * Responsive layout:
+ * - Mobile: single-column layout with compact spacing
+ * - Small screens: larger typography and illustration
+ * - Medium+: two-column hero
+ * - Stepper is horizontally scrollable when required
+ * - Existing planner flow and business logic are unchanged
  */
 export function GoalPlannerScreen() {
   const searchParams = useSearchParams();
+
   const initialGoal = parseGoalParam(searchParams.get('goal'));
 
   const flow = usePlannerFlow(initialGoal);
+
   const catalogue = useProductCatalogue();
+
   const { data: result, isFetching } = useGoalRecommendations(flow.goal);
 
   /*
-    The honest version of "deposits start from ₹X": the smallest minimum across
-    the catalogue actually loaded. Absent until it loads, rather than a number
-    typed into the copy that goes stale the day a bank moves one.
-  */
+   * The honest version of "deposits start from ₹X":
+   * the smallest minimum across the catalogue actually loaded.
+   */
   const lowestMinimum = useMemo(() => {
     const products = catalogue.data ?? [];
-    if (products.length === 0) return undefined;
+
+    if (products.length === 0) {
+      return undefined;
+    }
 
     return products.reduce(
       (lowest, product) => Math.min(lowest, product.minInvestment),
@@ -72,59 +62,93 @@ export function GoalPlannerScreen() {
   }, [catalogue.data]);
 
   const { goalType } = flow.answers;
+
   const showResults = flow.stage === 'results';
+
   const currentStepId = showResults ? 'target' : flow.stage;
 
   return (
-    <div className="container-detail flex flex-col gap-8 py-8 md:py-12">
+    <div className="container-detail flex flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-8 md:gap-8 md:px-0 md:py-12">
+      {/* =========================================================
+          BACK TO MARKETPLACE
+      ========================================================== */}
+
       <Link
         href={ROUTES.home}
-        className="focus-ring text-body text-content-muted hover:text-content inline-flex w-fit items-center gap-1 rounded-md font-medium"
+        className="focus-ring text-content-muted hover:text-content inline-flex w-fit items-center gap-1 rounded-md text-sm font-medium transition-colors sm:text-base"
       >
         <ChevronLeft aria-hidden="true" className="size-4" />
         Back to Marketplace
       </Link>
 
-      {/*
-        The intro's heading, kept — it is the one thing on that screen that told
-        the customer where they were. It sits above the first question instead of
-        on a screen of its own.
-      */}
+      {/* =========================================================
+          HERO
+      ========================================================== */}
 
       <header className="border-border-default bg-surface-card shadow-elevation-1 hover:shadow-elevation-2 relative overflow-hidden rounded-3xl border transition-shadow duration-300">
-        {/* Soft background glow */}
+        {/* -------------------------------------------------------
+            Decorative background glow
+        -------------------------------------------------------- */}
+
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-purple-300/10 blur-3xl"
+          className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-purple-300/10 blur-3xl sm:size-80"
         />
 
-        <div className="relative grid grid-cols-1 items-center gap-8 p-6 sm:p-8 md:grid-cols-[1fr_280px] md:p-10 lg:grid-cols-[1fr_340px]">
-          {/* Left content */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-20 left-1/4 size-48 rounded-full bg-violet-200/10 blur-3xl sm:size-64"
+        />
+
+        {/* -------------------------------------------------------
+            Hero content
+        -------------------------------------------------------- */}
+
+        <div className="relative grid grid-cols-1 items-center gap-6 p-5 sm:gap-8 sm:p-8 md:grid-cols-[1fr_280px] md:p-10 lg:grid-cols-[1fr_340px]">
+          {/* =====================================================
+              LEFT CONTENT
+          ====================================================== */}
+
           <div className="flex max-w-2xl flex-col gap-4">
+            {/* ---------------------------------------------------
+                Badge
+            ---------------------------------------------------- */}
+
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700">
-              <span className="size-1.5 rounded-full bg-purple-600" />
-              Personalised FD planning
+              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-purple-600" />
+              Smart FD planning
             </div>
 
-            <div className="flex flex-col gap-2">
-              <h1 className="text-h1 text-content max-w-xl">Find the FD that fits your goal</h1>
+            {/* ---------------------------------------------------
+                Heading + description
+            ---------------------------------------------------- */}
 
-              <p className="text-body-lg text-content-muted max-w-xl">
+            <div className="flex flex-col gap-2">
+              <h1 className="text-content max-w-xl text-3xl leading-tight font-bold tracking-tight sm:text-4xl md:text-5xl">
+                Find the FD that fits your goal
+              </h1>
+
+              <p className="text-content-muted max-w-xl text-sm leading-6 sm:text-base sm:leading-7 md:text-lg">
                 Tell us what you&apos;re planning for, how much you want to invest, and when
                 you&apos;ll need it. We&apos;ll narrow down the options for you.
               </p>
             </div>
 
-            {/* AI recommendation explanation */}
-            <div className="mt-2 flex max-w-xl items-start gap-3 rounded-2xl border border-purple-100 bg-purple-50/60 p-4">
-              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
+            {/* ---------------------------------------------------
+                AI recommendation explanation
+            ---------------------------------------------------- */}
+
+            <div className="mt-1 flex max-w-xl items-start gap-3 rounded-2xl border border-purple-100 bg-purple-50/60 p-3 sm:mt-2 sm:p-4">
+              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-700 sm:size-9">
                 ✦
               </div>
 
-              <div>
-                <p className="text-sm font-semibold text-gray-900">How your recommendation works</p>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-gray-900 sm:text-sm">
+                  How your recommendation works
+                </p>
 
-                <p className="mt-1 text-sm leading-5 text-gray-600">
+                <p className="mt-1 text-xs leading-5 text-gray-600 sm:text-sm">
                   Our recommendation engine considers your goal, investment amount, timeline,
                   liquidity needs and FD terms — so you can compare options based on what actually
                   matters to you.
@@ -132,12 +156,15 @@ export function GoalPlannerScreen() {
               </div>
             </div>
 
-            {/* Planning signals */}
-            <div className="flex flex-wrap gap-2 pt-1">
+            {/* ---------------------------------------------------
+                Planning signals
+            ---------------------------------------------------- */}
+
+            <div className="flex flex-wrap gap-1.5 pt-1 sm:gap-2">
               {['Your goal', 'Investment amount', 'Timeline', 'FD suitability'].map((item) => (
                 <span
                   key={item}
-                  className="bg-surface-subtle text-content-muted rounded-full px-3 py-1.5 text-xs font-medium"
+                  className="bg-surface-subtle text-content-muted rounded-full px-2.5 py-1.5 text-[11px] font-medium sm:px-3 sm:text-xs"
                 >
                   {item}
                 </span>
@@ -145,92 +172,92 @@ export function GoalPlannerScreen() {
             </div>
           </div>
 
-          {/* Right illustration */}
+          {/* =====================================================
+              RIGHT ILLUSTRATION
+          ====================================================== */}
+
           <div className="flex justify-center md:justify-end">
-            <div className="motion-safe:animate-reveal relative flex items-center justify-center rounded-3xl bg-purple-50/70 p-5 shadow-sm">
+            <div className="motion-safe:animate-reveal relative flex w-full max-w-[260px] items-center justify-center rounded-3xl bg-purple-50/70 p-4 shadow-sm sm:max-w-[300px] sm:p-5 md:max-w-none">
               <Image
                 src="/goal-based-icon.png"
                 alt=""
                 width={340}
                 height={280}
                 priority
-                className="h-auto w-56 object-contain sm:w-64 md:w-72 lg:w-80"
+                className="h-auto w-48 object-contain sm:w-56 md:w-72 lg:w-80"
               />
             </div>
           </div>
         </div>
       </header>
 
-      {/*
-        The multi-goal path, as a quiet link rather than a second call to
-        action. Someone with one goal is already in the right place; this is for
-        the customer who arrives and realises they have three.
-      */}
+      {/* =========================================================
+          MULTI-GOAL LINK
+      ========================================================== */}
+
       <Link
         href={ROUTES.goalPlannerPlan}
-        className="focus-ring text-body text-content-muted hover:text-content-brand duration-fast inline-flex w-fit items-center gap-1.5 rounded-md font-medium transition ease-out"
+        className="focus-ring text-content-muted hover:text-content-brand inline-flex w-fit items-center gap-1.5 rounded-md text-sm font-medium transition duration-200 ease-out sm:text-base"
       >
         Planning for more than one goal?
         <ArrowRight aria-hidden="true" className="size-4" />
       </Link>
 
-      <Stepper
-        steps={[...PLANNER_STEPS]}
-        currentStepId={currentStepId}
-        label="Goal planner progress"
-        onStepClick={(stepId) => {
-          if (stepId === 'goal') {
-            flow.editStep('goal');
-          }
+      {/* =========================================================
+          STEPPER
+      ========================================================== */}
 
-          if (stepId === 'amount' && flow.answers.goalType !== undefined) {
-            flow.editStep('amount');
-          }
+      <div className="w-full [scrollbar-width:none] overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div className="min-w-max">
+          <Stepper
+            steps={[...PLANNER_STEPS]}
+            currentStepId={currentStepId}
+            label="Goal planner progress"
+            onStepClick={(stepId) => {
+              if (stepId === 'goal') {
+                flow.editStep('goal');
+              }
 
-          if (stepId === 'horizon' && flow.answers.principal !== undefined) {
-            flow.editStep('horizon');
-          }
-        }}
-      />
+              if (stepId === 'amount' && flow.answers.goalType !== undefined) {
+                flow.editStep('amount');
+              }
 
-      <PlannerTrail answers={flow.answers} stage={flow.stage} onEdit={flow.editStep} />
+              if (stepId === 'horizon' && flow.answers.principal !== undefined) {
+                flow.editStep('horizon');
+              }
+            }}
+          />
+        </div>
+      </div>
 
-      {/*
-        The acknowledgement. It restates the rule that will actually run for this
-        goal (`GOAL_TENURE_PREFERENCE`), so the platform is telling the customer
-        what it is about to do rather than flattering them.
-      */}
+      {/* =========================================================
+          PLANNER TRAIL
+      ========================================================== */}
+
+      <div className="w-full min-w-0">
+        <PlannerTrail answers={flow.answers} stage={flow.stage} onEdit={flow.editStep} />
+      </div>
+
+      {/* =========================================================
+          ACKNOWLEDGEMENT
+      ========================================================== */}
+
       {goalType !== undefined && flow.stage !== 'goal' ? (
-        <p key={goalType} className="text-body-lg text-content motion-safe:animate-reveal">
+        <p
+          key={goalType}
+          className="text-content motion-safe:animate-reveal text-base leading-7 sm:text-lg"
+        >
           <span className="font-semibold">{GOAL_LABELS[goalType]} — got it.</span>{' '}
           <span className="text-content-muted">{acknowledgementFor(goalType)}</span>
         </p>
       ) : null}
 
-      {/*
-        One container for whatever is currently being asked or answered.
+      {/* =========================================================
+          CURRENT PLANNER STEP
+      ========================================================== */}
 
-        ## Why the height is animated
-
-        Each stage is a different height, and a container that snaps makes the
-        planner read as a sequence of separate pages — which is exactly what it
-        is not. Animating the height is what makes one question becoming the next
-        read as a continuing conversation. `AutoHeight` owns only that property;
-        the enter animation belongs to the step, and neither knows about the
-        other.
-
-        ## Why the key is the stage
-
-        Remounting on stage change is what lets each step run its own entrance.
-        Without it React would reuse the element and the new question would
-        simply appear in place, with nothing to distinguish "the next question"
-        from "the same question, different words".
-
-        Nothing here changes `usePlannerFlow`: the stage machine is unchanged and
-        holds no animation state.
-      */}
       <AutoHeight>
-        <div key={flow.stage} className="motion-safe:animate-reveal">
+        <div key={flow.stage} className="motion-safe:animate-reveal w-full min-w-0">
           {flow.stage === 'goal' ? (
             <GoalStep value={goalType} hint={STEP_HINTS.goal} onChange={flow.chooseGoal} />
           ) : null}
@@ -248,13 +275,6 @@ export function GoalPlannerScreen() {
               goalType={flow.answers.goalType}
               hint={STEP_HINTS.amount}
               lowestMinimum={lowestMinimum}
-              /*
-                The step's own field is the **total** for the goal that derives
-                its deposit, so reopening it must be seeded with the total. Sent
-                `principal` it would have put ₹10,000 into the total field and
-                derived ₹1,000 from it — the customer's amount shrinking by a
-                factor of ten each time they pressed Change.
-              */
               initialValue={flow.answers.totalAmount ?? flow.answers.principal}
               onSubmit={flow.setPrincipal}
             />
@@ -278,23 +298,28 @@ export function GoalPlannerScreen() {
         </div>
       </AutoHeight>
 
-      {/*
-        Status and results sit **outside** the height container, deliberately.
+      {/* =========================================================
+          STATUS
+      ========================================================== */}
 
-        Animating the height of a tall results section would mean transitioning
-        hundreds of pixels of layout for no gain — and the transition that
-        matters here already happens: with the last question answered the
-        container above empties and collapses, which is the question settling
-        away. The recommendation then reveals in its own right.
-      */}
-      {showResults && isFetching ? <PlannerStatus /> : null}
+      {showResults && isFetching ? (
+        <div className="w-full min-w-0">
+          <PlannerStatus />
+        </div>
+      ) : null}
+
+      {/* =========================================================
+          RESULTS
+      ========================================================== */}
 
       {showResults && !isFetching && result && goalType !== undefined ? (
-        <PlannerResults
-          result={result}
-          goalType={goalType}
-          totalAmount={flow.answers.totalAmount}
-        />
+        <div className="w-full min-w-0">
+          <PlannerResults
+            result={result}
+            goalType={goalType}
+            totalAmount={flow.answers.totalAmount}
+          />
+        </div>
       ) : null}
     </div>
   );
