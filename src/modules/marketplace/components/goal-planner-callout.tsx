@@ -75,16 +75,16 @@ export function GoalPlannerCallout() {
         <div className="flex max-w-2xl flex-col gap-3">
           <div className="text-content-brand inline-flex w-fit items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold">
             <Sparkles aria-hidden="true" className="size-3.5" />
-            Goal-led FD recommendations
+            SMART FD PLANNING
           </div>
 
           <h2 id="home-goal-planner-title" className="text-h2 text-content">
-            What are you planning for?
+            What are you saving for?
           </h2>
 
           <p className="text-body-lg text-content-muted max-w-xl">
-            Tell us your goal and timeline. We&apos;ll compare FD options based on what matters to
-            you — not just the interest rate.
+            Enter your goal, amount and timeline. We’ll recommend FD options that fit your need,
+            explain the maturity value, and show why the plan may suit you.
           </p>
 
           {/*
@@ -112,7 +112,7 @@ export function GoalPlannerCallout() {
             <span aria-hidden="true" className="text-content-muted">
               →
             </span>
-            <span className="text-content font-medium">FD options explained for your goal</span>
+            <span className="text-content font-medium">FD options explained clearly</span>
           </div>
         </div>
       </div>
@@ -138,7 +138,7 @@ export function GoalPlannerCallout() {
 
           <Button variant="outline" size="md" asChild>
             <Link href={ROUTES.goalPlanner}>
-              Find my FD
+              Start with my goal
               <ArrowRight aria-hidden="true" className="size-4" />
             </Link>
           </Button>

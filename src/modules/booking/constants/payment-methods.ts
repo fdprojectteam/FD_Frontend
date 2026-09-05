@@ -49,12 +49,12 @@ export const PAYMENT_METHODS: readonly PaymentMethod[] = [
     description: 'Pay using your debit card',
     settlement: 'Instant',
   },
-  {
-    id: 'credit-card',
-    title: 'Credit Card',
-    description: 'Pay using your credit card',
-    settlement: '1-2 Business Days',
-  },
+  // {
+  //   id: 'credit-card',
+  //   title: 'Credit Card',
+  //   description: 'Pay using your credit card',
+  //   settlement: '1-2 Business Days',
+  // },
   {
     id: 'neft-rtgs',
     title: 'NEFT / RTGS',

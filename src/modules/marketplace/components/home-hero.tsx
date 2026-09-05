@@ -58,29 +58,29 @@ export function HomeHero({ spotlightProduct }: HomeHeroProps) {
     >
       <div className="flex flex-col gap-6">
         <span className="text-caption text-content-brand font-semibold tracking-wide uppercase">
-          Fixed deposits, simplified
+          SMART FIXED DEPOSITS, BUILT AROUND YOUR GOALS
         </span>
 
         <h1 id="home-hero-title" className="text-h1 text-content max-w-xl">
-          Grow your savings with Indian fixed-deposit choices made clear
+          Don’t just find an FD. Find the right FD for your goal.
         </h1>
 
         <p className="text-body-lg text-content-muted max-w-xl">
-          Compare rates, tenure and estimated maturity in one place. Then use a goal-led plan to
-          understand which deposit may fit your timeline — not just which rate looks highest.
+          Compare deposit options across banks, understand estimated maturity value and safety
+          factors, and get a goal-led recommendation based on your amount, timeline and purpose.
         </p>
 
         <div className="flex flex-wrap items-center gap-4">
           <Button size="lg" asChild>
             <Link href={ROUTES.goalPlanner}>
-              Find my FD
+              Start with my goal
               <span aria-hidden="true" className="inline-flex shrink-0">
                 <ArrowRight className="size-4" />
               </span>
             </Link>
           </Button>
           <Button size="lg" variant="secondary" asChild>
-            <a href="#products">Browse all FDs</a>
+            <a href="#products">Compare FD options</a>
           </Button>
         </div>
 

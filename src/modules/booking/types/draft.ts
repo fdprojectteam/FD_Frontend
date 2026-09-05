@@ -55,7 +55,7 @@ export interface InvestmentConfiguration {
  * Platform vocabulary, like `PayoutOptionId` — the ids a partner bank
  * configuration would narrow, once one exists.
  */
-export type PaymentMethodId = 'net-banking' | 'upi' | 'debit-card' | 'credit-card' | 'neft-rtgs';
+export type PaymentMethodId = 'net-banking' | 'upi' | 'debit-card' | 'neft-rtgs';
 
 /**
  * The declarations Review & Confirm requires (spec 21f §5F, §8 Rule 3).

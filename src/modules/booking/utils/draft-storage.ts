@@ -82,7 +82,7 @@ const paymentMethodSchema = z.enum([
   'net-banking',
   'upi',
   'debit-card',
-  'credit-card',
+  // 'credit-card',
   'neft-rtgs',
 ]);
 

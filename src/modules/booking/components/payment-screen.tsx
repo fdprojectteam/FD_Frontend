@@ -51,7 +51,7 @@ const METHOD_ICONS: Record<PaymentMethodId, ReactNode> = {
   'net-banking': <Landmark aria-hidden="true" className="size-5" />,
   upi: <Smartphone aria-hidden="true" className="size-5" />,
   'debit-card': <CreditCard aria-hidden="true" className="size-5" />,
-  'credit-card': <CreditCard aria-hidden="true" className="size-5" />,
+  // 'credit-card': <CreditCard aria-hidden="true" className="size-5" />,
   'neft-rtgs': <Building2 aria-hidden="true" className="size-5" />,
 };
 
