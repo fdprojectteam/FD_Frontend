@@ -67,6 +67,7 @@ export type ProductInterestType = 'cumulative' | 'non-cumulative';
 
 /** When interest is paid. Mirrors the values the product API already serves. */
 export type ProductPayoutType = 'at-maturity' | 'monthly' | 'quarterly';
+export type CompoundingFrequency = 'monthly' | 'quarterly' | 'annual';
 
 /**
  * The commercial terms specific to a Fixed Deposit.
@@ -143,6 +144,8 @@ export interface FixedDepositTerms {
   seniorCitizenDelta?: number;
   interestType: ProductInterestType;
   payout: ProductPayoutType;
+  /** Published cadence for cumulative deposits; legacy records document quarterly. */
+  compoundingFrequency?: CompoundingFrequency;
 }
 
 /** Fields every product carries, whatever its type. */
@@ -151,6 +154,14 @@ export interface ProductMasterBase {
   name: string;
   bank: Bank;
   minInvestment: number;
+  /** Demonstration records are never represented as verified bank offerings. */
+  dataStatus?: 'verified-live' | 'illustrative';
+  /** Provenance for a verified rate and its published tenure band. */
+  rateSource?: {
+    url: string;
+    effectiveFrom: string;
+    tenureLabel: string;
+  };
 }
 
 /**

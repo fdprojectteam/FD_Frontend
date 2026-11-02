@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/button';
+
 import { AllocationBreakdown } from './allocation-breakdown';
 import { BestFitCard } from './best-fit-card';
 import { CompactRecommendationCard } from './compact-recommendation-card';
@@ -17,17 +19,16 @@ export function PlannerResults({
   result,
   goalType,
   totalAmount,
+  onEditPlan,
 }: {
   result: GoalRecommendationResult;
   goalType: GoalType;
   /**
-   * What the customer entered, when the deposit is a share of it.
-   *
-   * Only the emergency fund passes one. It is shown, never used: every figure
-   * in `result` is priced on `recommendation.principal` and none of them moves
-   * because this is present.
+   * What the customer made available when they explicitly selected a smaller
+   * FD principal. It is shown, never used for pricing.
    */
   totalAmount?: number;
+  onEditPlan: () => void;
 }) {
   const [best, ...others] = result.recommendations;
   const limitations = result.warnings.filter((warning) => warning.kind === 'limitation');
@@ -46,6 +47,9 @@ export function PlannerResults({
         <p className="text-body text-content-muted">
           Try a different amount or a different time frame.
         </p>
+        <Button type="button" variant="secondary" className="w-fit" onClick={onEditPlan}>
+          Edit plan
+        </Button>
       </section>
     );
   }
@@ -70,13 +74,9 @@ export function PlannerResults({
       </div>
 
       {/*
-        The money flow, immediately above the answer it explains.
-
-        This is the last point at which the customer can still see both figures
-        together: everything below prices the deposit, and the booking handoff
-        carries the deposit alone. Putting it after the recommendation, or
-        behind a disclosure, would mean the number they are about to act on is
-        read before the reason it differs from the one they typed.
+      An explicit lower allocation, immediately above the answer it explains.
+      The normal path does not need this disclosure because the amount shown and
+      the amount priced are identical.
       */}
       {totalAmount === undefined ? null : (
         <AllocationBreakdown

@@ -22,6 +22,7 @@ import { GOAL_LABELS } from '../constants/goals';
 import { PLANNER_STEPS, STEP_HINTS, acknowledgementFor } from '../constants/presentation';
 import { useGoalRecommendations, useProductCatalogue } from '../hooks/use-goal-recommendations';
 import { parseGoalParam, usePlannerFlow } from '../hooks/use-planner-flow';
+import { calculateEmergencyFundTarget } from '../utils/emergency-allocation';
 
 /**
  * Goal Planner Screen
@@ -42,7 +43,7 @@ export function GoalPlannerScreen() {
 
   const catalogue = useProductCatalogue();
 
-  const { data: result, isFetching } = useGoalRecommendations(flow.goal);
+  const { data: result, isFetching, isError, refetch } = useGoalRecommendations(flow.goal);
 
   /*
    * The honest version of "deposits start from ₹X":
@@ -272,7 +273,6 @@ export function GoalPlannerScreen() {
 
           {flow.stage === 'amount' ? (
             <AmountStep
-              goalType={flow.answers.goalType}
               hint={STEP_HINTS.amount}
               lowestMinimum={lowestMinimum}
               initialValue={flow.answers.totalAmount ?? flow.answers.principal}
@@ -292,6 +292,12 @@ export function GoalPlannerScreen() {
             <TargetStep
               hint={STEP_HINTS.target}
               initialValue={flow.answers.targetAmount}
+              suggestedValue={
+                flow.answers.goalType === 'emergency' && flow.answers.principal !== undefined
+                  ? calculateEmergencyFundTarget(flow.answers.principal)
+                  : undefined
+              }
+              initialSource={flow.answers.targetSource}
               onSubmit={flow.setTarget}
             />
           ) : null}
@@ -308,16 +314,45 @@ export function GoalPlannerScreen() {
         </div>
       ) : null}
 
+      {showResults && isError ? (
+        <section
+          aria-live="polite"
+          className="border-border-default bg-surface-card flex flex-col items-start gap-3 rounded-2xl border p-5"
+        >
+          <h2 className="text-h3 text-content">We couldn&apos;t load recommendations</h2>
+          <p className="text-body text-content-muted">
+            Your plan is still here. Please try again, or edit it and submit a new request.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              className="focus-ring text-content-brand rounded-md font-medium"
+              onClick={() => void refetch()}
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              className="focus-ring text-content-brand rounded-md font-medium"
+              onClick={() => flow.editStep('amount')}
+            >
+              Edit plan
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       {/* =========================================================
           RESULTS
       ========================================================== */}
 
-      {showResults && !isFetching && result && goalType !== undefined ? (
+      {showResults && !isFetching && !isError && result && goalType !== undefined ? (
         <div className="w-full min-w-0">
           <PlannerResults
             result={result}
             goalType={goalType}
             totalAmount={flow.answers.totalAmount}
+            onEditPlan={() => flow.editStep('amount')}
           />
         </div>
       ) : null}

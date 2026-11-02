@@ -4,17 +4,13 @@ import { ChevronLeft, Info } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 
-import { BankBadge } from '@/components/business/bank-badge';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Stepper } from '@/components/ui/stepper';
 import { ROUTES } from '@/constants/routes';
 
 import { BookingStepActions } from './booking-step-actions';
 import { EstimatedReturns } from './estimated-returns';
-import { ImportantInformation } from './important-information';
 import { InvestmentAmountField } from './investment-amount-field';
-import { InvestmentSummary } from './investment-summary';
 import { PayoutOptionGroup } from './payout-option-group';
 import { QuickAmountChips } from './quick-amount-chips';
 import { TenureSelector } from './tenure-selector';
@@ -23,7 +19,6 @@ import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
 import { validateAmount, validateInvestmentConfiguration } from '../utils/investment-schema';
-import { buildConfiguredSummaryRows } from '../utils/investment-summary';
 import {
   defaultPayoutOption,
   reconcilePayoutOption,
@@ -85,7 +80,7 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
     This screen previously defaulted to a hardcoded fixture, so a booking for one
     product would have priced another product's terms.
   */
-  const { deposit, investmentInformation } = useBookingProduct();
+  const { deposit } = useBookingProduct();
   const { draft, setInvestment } = useBookingDraft();
   const { investment } = draft;
 
@@ -103,16 +98,6 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
    * `InvestmentAmountField`.
    */
   const [amountTouched, setAmountTouched] = useState(false);
-
-  /**
-   * The rail's single derivation site, memoised on the two things it reads.
-   * Seven rows is cheap; the rule that the row model has one owner is what keeps
-   * this panel and the returns strip quoting the same figures once both exist.
-   */
-  const summaryRows = useMemo(
-    () => buildConfiguredSummaryRows(deposit, investment),
-    [deposit, investment],
-  );
 
   /**
    * The chips this product may offer — filtered against its own limits, so
@@ -257,7 +242,7 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
           </p>
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-1 md:gap-8">
           {/* Two thirds on desktop, first everywhere — it is what the user came to do. */}
           <div className="md:col-span-2">
             <Card variant="outlined">
@@ -362,16 +347,11 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
             </Card>
           </div>
 
-          <div className="flex flex-col gap-6">
+          {/* <div className="flex flex-col gap-6">
             <InvestmentSummary
               rows={summaryRows}
               header={
                 <div className="flex items-center gap-3">
-                  {/*
-                    `decorative={false}` — no adjacent element names the bank on
-                    its own, so the badge carries the name for assistive
-                    technology. The product name beside it names the *product*.
-                  */}
                   <BankBadge bank={deposit.bank} size="lg" decorative={false} />
 
                   <div className="flex min-w-0 flex-col gap-1">
@@ -386,19 +366,12 @@ export function InvestmentDetailsScreen({ productId }: InvestmentDetailsScreenPr
                 </div>
               }
             />
-
-            {/*
-              `headingLevel={2}` — in this rail the callout is a top-level panel
-              beside the summary, not a subsection of it, so it sits at the same
-              level in the outline. `checklist` is the approved marker on this
-              screen; Overview uses the plain variant.
-            */}
             <ImportantInformation
               notes={investmentInformation}
               variant="checklist"
               headingLevel={2}
             />
-          </div>
+          </div> */}
         </div>
 
         {/*

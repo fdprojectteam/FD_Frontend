@@ -12,7 +12,6 @@ import { useInvestorIdentity } from '@/hooks/use-investor-identity';
 import { ApplicationForm } from './application-form';
 import { BookingStepActions } from './booking-step-actions';
 import { BookingStepShell } from './booking-step-shell';
-import { BookingSummaryRail } from './booking-summary-rail';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
@@ -114,7 +113,7 @@ export function ApplicationScreen({ productId }: ApplicationScreenProps) {
             : `We've prepared this application using the details you've already provided. ${String(outstandingCount)} ${outstandingCount === 1 ? 'field still needs' : 'fields still need'} your input.`
       }
     >
-      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-1 md:gap-8">
         <div className="flex flex-col gap-6 md:col-span-2">
           {template === null || application === null ? (
             /*
@@ -232,9 +231,9 @@ export function ApplicationScreen({ productId }: ApplicationScreenProps) {
           )}
         </div>
 
-        <div className="flex flex-col gap-6">
+        {/* <div className="flex flex-col gap-6">
           <BookingSummaryRail deposit={deposit} investment={draft.investment} />
-        </div>
+        </div> */}
       </div>
 
       <BookingStepActions

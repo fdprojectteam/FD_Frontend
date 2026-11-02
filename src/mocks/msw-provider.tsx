@@ -48,6 +48,7 @@ import { featureFlags } from '@/config/featureFlags';
  * symbol survives that too, which is why the extra indirection is here.
  */
 const START_KEY = Symbol.for('fd.msw.start');
+const WORKER_CONTROL_TIMEOUT_MS = 5_000;
 
 /**
  * The start attempt, and whether it has finished.
@@ -74,6 +75,51 @@ type GlobalWithStart = typeof globalThis & { [START_KEY]?: WorkerStart };
  */
 function isWorkerControlling(): boolean {
   return typeof navigator !== 'undefined' && navigator.serviceWorker?.controller != null;
+}
+
+/**
+ * `worker.start()` completes registration, but registration alone does not
+ * guarantee that this already-open page is a controlled client. A request in
+ * that small gap bypasses MSW and reaches the Next server's intentionally
+ * absent `/api/v1` routes as a 404. Do not release the transport gate until
+ * the controller is present.
+ */
+function waitForWorkerControl(): Promise<void> {
+  if (isWorkerControlling()) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    let complete = false;
+    /* Browser timers return a numeric id even when Node timer types are in scope. */
+    const timeoutId = window.setTimeout(() => {
+      finish(() =>
+        reject(
+          new Error(
+            `MSW registered but did not control this page within ${WORKER_CONTROL_TIMEOUT_MS}ms.`,
+          ),
+        ),
+      );
+    }, WORKER_CONTROL_TIMEOUT_MS);
+
+    const finish = (callback: () => void) => {
+      if (complete) return;
+      complete = true;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      callback();
+    };
+
+    const onControllerChange = () => {
+      if (isWorkerControlling()) finish(resolve);
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+
+    // The event can have fired between the initial check and listener setup.
+    // `ready` closes that race without treating registration as control.
+    void navigator.serviceWorker.ready.then(onControllerChange, (error: unknown) => {
+      finish(() => reject(error));
+    });
+  });
 }
 
 /**
@@ -110,7 +156,10 @@ export function ensureMockWorker(): Promise<void> | null {
 
   const start: WorkerStart = {
     promise: import('./browser')
-      .then(({ startMockWorker }) => startMockWorker())
+      .then(async ({ startMockWorker }) => {
+        await startMockWorker();
+        await waitForWorkerControl();
+      })
       .finally(() => {
         start.settled = true;
       }),

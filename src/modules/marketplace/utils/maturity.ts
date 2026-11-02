@@ -17,13 +17,14 @@ import type { MaturityInput, MaturityResult } from '../types/calculator';
  *
  * Values are rounded to the nearest rupee, matching the approved display.
  */
-const COMPOUNDS_PER_YEAR = 4;
 const MONTHS_PER_YEAR = 12;
+const COMPOUNDS_PER_YEAR = { monthly: 12, quarterly: 4, annual: 1 } as const;
 
 export function calculateMaturity({
   principal,
   annualRate,
   tenureMonths,
+  compoundingFrequency = 'quarterly',
 }: MaturityInput): MaturityResult {
   if (principal <= 0 || annualRate < 0 || tenureMonths <= 0) {
     return {
@@ -33,8 +34,9 @@ export function calculateMaturity({
     };
   }
 
-  const periods = COMPOUNDS_PER_YEAR * (tenureMonths / MONTHS_PER_YEAR);
-  const growth = (1 + annualRate / 100 / COMPOUNDS_PER_YEAR) ** periods;
+  const compoundsPerYear = COMPOUNDS_PER_YEAR[compoundingFrequency];
+  const periods = compoundsPerYear * (tenureMonths / MONTHS_PER_YEAR);
+  const growth = (1 + annualRate / 100 / compoundsPerYear) ** periods;
   const maturityValue = Math.round(principal * growth);
 
   return {

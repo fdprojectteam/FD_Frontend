@@ -1,45 +1,10 @@
 import { formatCurrency } from '@/utils';
 
-import { EMERGENCY_FUND_BASIS } from '../utils/emergency-allocation';
-
 /**
- * Where the money the customer entered went.
- *
- * ## The question this answers
- *
- * > *"I entered ₹1,00,000. Why does this say ₹10,000?"*
- *
- * For the emergency-fund goal the two figures are genuinely different, and
- * genuinely correct: the customer states a total, and the deposit is the share
- * of it that this goal calls for. `calculateEmergencyFundAmount` is the one
- * authority on that share, and it is unchanged — this component computes
- * nothing, it reports.
- *
- * The Amount step already explained the split at the moment of entry. What was
- * missing is everything after: the trail, the recommendation and the booking
- * showed the deposit alone, so a customer who scrolled past the explanation or
- * came back to the page later had no way to reconstruct it. A number that
- * changed and cannot be traced is the worst kind of number to put next to
- * somebody's savings.
- *
- * ## Why the third row is worded the way it is
- *
- * The remainder is **not** "available to invest in this deposit". The engine
- * reserves the smaller figure *for* the emergency fund and leaves the rest for
- * the customer's other goals — that is what the multi-goal planner does with
- * the identical rule. Calling it "available" here would invite the customer to
- * expect a ₹90,000 deposit, which is the opposite of what the plan says. So it
- * is named for what it is: not part of this plan, and where to take it next.
- *
- * ## Why it is three plain rows
- *
- * A card, a chart or a set of badges would make an arithmetic identity look
- * like a feature. Three labelled figures, in the order the money moves, is the
- * whole explanation — and the last row carries the only sentence that is not a
- * number.
- *
- * Pure presentation: both figures arrive derived, and `remainder` is a
- * subtraction of two values the caller already holds.
+ * A disclosure for a customer who explicitly chose an FD principal lower than
+ * the amount they made available. The normal Emergency Fund path sends the
+ * full available amount to the engine, so this remains absent unless there is
+ * a real customer choice to explain.
  */
 export interface AllocationBreakdownProps {
   /** What the customer entered. */
@@ -69,12 +34,11 @@ export function AllocationBreakdown({
     {
       label: 'Into this fixed deposit',
       value: formatCurrency(investedAmount),
-      note: EMERGENCY_FUND_BASIS,
     },
     {
-      label: 'Not part of this plan',
+      label: 'Outside this plan',
       value: formatCurrency(remainder),
-      note: 'Stays with you to plan for other goals.',
+      note: 'You chose not to invest this amount in this fixed deposit.',
     },
   ];
 

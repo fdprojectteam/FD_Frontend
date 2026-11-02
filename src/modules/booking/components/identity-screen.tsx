@@ -12,11 +12,9 @@ import { IDENTITY_FIELD_LABELS, isIdentityCleared, type KycReadiness } from '@/u
 
 import { BookingStepActions } from './booking-step-actions';
 import { BookingStepShell } from './booking-step-shell';
-import { BookingSummaryRail } from './booking-summary-rail';
 import { IdentityAssurance } from './identity-assurance';
 import { IdentityDetailList } from './identity-detail-list';
 import { useBookingDraft } from '../hooks/use-booking-draft';
-import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
 
 /**
@@ -75,7 +73,6 @@ const TITLE_BY_OUTCOME: Record<KycReadiness['outcome'], string> = {
 };
 
 export function IdentityScreen({ productId }: IdentityScreenProps) {
-  const { deposit } = useBookingProduct();
   const { draft, confirmIdentity } = useBookingDraft();
   const { isReady, continueTo } = useBookingStep('identity', productId);
   const { identity, readiness, isPending, isError } = useInvestorIdentity();
@@ -111,7 +108,7 @@ export function IdentityScreen({ productId }: IdentityScreenProps) {
       isReady={isReady}
       description={description}
     >
-      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-1 md:gap-8">
         <div className="flex flex-col gap-6 md:col-span-2">
           {isPending ? (
             <Card variant="outlined" className="flex flex-col gap-4 p-5 md:p-6">
@@ -220,9 +217,9 @@ export function IdentityScreen({ productId }: IdentityScreenProps) {
           )}
         </div>
 
-        <div className="flex flex-col gap-6">
+        {/* <div className="flex flex-col gap-6">
           <BookingSummaryRail deposit={deposit} investment={draft.investment} />
-        </div>
+        </div> */}
       </div>
 
       <BookingStepActions

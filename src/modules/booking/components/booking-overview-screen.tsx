@@ -1,23 +1,21 @@
 'use client';
 
 import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 
 import { DataProvenanceNote, SafetyNote } from '@/components/business';
-import { Card } from '@/components/ui/card';
 import { Stepper } from '@/components/ui/stepper';
 import { ROUTES } from '@/constants/routes';
 
 import { BookingAssuranceStrip } from './booking-assurance-strip';
 import { BookingStepActions } from './booking-step-actions';
-import { InvestmentSummary } from './investment-summary';
 import { SelectedFdSummary } from './selected-fd-summary';
 import { BOOKING_PHASES, resolveBookingPhase } from '../constants/phases';
 import { useBookingDraft } from '../hooks/use-booking-draft';
 import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
-import { buildInvestmentSummaryRows } from '../utils/investment-summary';
 
 /**
  * BookingOverviewScreen — step 1 of the approved booking journey (T3.1).
@@ -73,7 +71,7 @@ export function BookingOverviewScreen({
   */
   const overview = useBookingProduct();
 
-  const { deposit, assurances, importantInformation, nextStep } = overview;
+  const { deposit, assurances, importantInformation } = overview;
 
   const { draft, isHydrated, setInvestment, reset } = useBookingDraft();
 
@@ -146,13 +144,6 @@ export function BookingOverviewScreen({
   const phaseId = resolveBookingPhase('overview');
 
   /**
-   * The summary's single derivation site. Memoised on the deposit rather than
-   * rebuilt each render — nine rows is cheap, but the rule that the row model
-   * has one owner is what keeps the two panels quoting the same figures.
-   */
-  const summaryRows = useMemo(() => buildInvestmentSummaryRows(deposit), [deposit]);
-
-  /**
    * Continue moves to Investment Details (spec 21a §10).
    *
    * The booking *session* the spec also describes is a server concept and there
@@ -213,7 +204,7 @@ export function BookingOverviewScreen({
           <BookingAssuranceStrip assurances={assurances} />
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-1 md:gap-8">
           {/* Two thirds on desktop, first everywhere — it is what the user came to check. */}
           <div className="flex flex-col gap-4 md:col-span-2">
             <SelectedFdSummary deposit={deposit} importantInformation={importantInformation} />
@@ -244,14 +235,9 @@ export function BookingOverviewScreen({
             </div>
           </div>
 
-          <div className="flex flex-col gap-6">
+          {/* <div className="flex flex-col gap-6">
             <InvestmentSummary rows={summaryRows} />
 
-            {/*
-              "Next Step" states what Continue does before it is pressed — the
-              spec's transparency requirement, and the reason the primary action
-              needs no explanatory tooltip.
-            */}
             <Card variant="outlined" className="flex items-start gap-3 p-5">
               <span className="bg-surface-brand-subtle text-content-brand flex size-10 shrink-0 items-center justify-center rounded-full">
                 <ChevronLeft aria-hidden="true" className="size-5 rotate-180" />
@@ -262,7 +248,7 @@ export function BookingOverviewScreen({
                 <p className="text-body text-content-muted">{nextStep}</p>
               </div>
             </Card>
-          </div>
+          </div> */}
         </div>
 
         <BookingStepActions

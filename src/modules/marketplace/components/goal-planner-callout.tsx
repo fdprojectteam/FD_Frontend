@@ -39,7 +39,7 @@ export function GoalPlannerCallout() {
           className="pointer-events-none absolute bottom-0 left-1/3 size-40 rounded-full bg-violet-100/40 blur-3xl"
         />
 
-        <div className="relative grid items-center gap-8 md:grid-cols-[1fr_320px] md:gap-12 lg:grid-cols-[1fr_420px] lg:gap-16">
+        <div className="relative grid grid-cols-1 items-center gap-8 md:grid-cols-[1fr_320px] md:gap-12 lg:grid-cols-[1fr_420px] lg:gap-16">
           {/* -------------------------------------------------------
               CONTENT
           -------------------------------------------------------- */}

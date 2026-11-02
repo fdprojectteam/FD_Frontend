@@ -9,6 +9,7 @@ export interface MaturityInput {
   /** Annual rate as a percentage number, e.g. 7.75. */
   annualRate: number;
   tenureMonths: number;
+  compoundingFrequency?: 'monthly' | 'quarterly' | 'annual';
 }
 
 export interface MaturityResult {

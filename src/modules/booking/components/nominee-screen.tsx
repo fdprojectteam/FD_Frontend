@@ -4,8 +4,6 @@ import { ChevronLeft, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo } from 'react';
 
-import { BankBadge } from '@/components/business/bank-badge';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Stepper } from '@/components/ui/stepper';
@@ -13,14 +11,11 @@ import { ROUTES } from '@/constants/routes';
 
 import { BookingStepActions } from './booking-step-actions';
 import { ImportantInformation } from './important-information';
-import { InvestmentSummary } from './investment-summary';
 import { NominationTypeGroup } from './nomination-type-group';
 import { NomineeFields } from './nominee-fields';
 import { BOOKING_PHASES, resolveBookingPhase } from '../constants/phases';
 import { useBookingDraft } from '../hooks/use-booking-draft';
-import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
-import { buildConfiguredSummaryRows } from '../utils/investment-summary';
 import type { NomineeField } from '../utils/nominee-schema';
 import { validateNomineeConfiguration } from '../utils/nominee-schema';
 
@@ -68,12 +63,6 @@ export interface NomineeScreenProps {
 }
 
 export function NomineeScreen({ productId }: NomineeScreenProps) {
-  /*
-    The same deposit the two steps before it are using, resolved once by the
-    layout — so the right rail here cannot describe a different product from the
-    one whose amount and tenure were just configured.
-  */
-  const { deposit, nominationInformation } = useBookingProduct();
   const { draft, setNominee, addNominee, removeNominee, updateNominee } = useBookingDraft();
   const { nominee } = draft;
 
@@ -123,16 +112,6 @@ export function NomineeScreen({ productId }: NomineeScreenProps) {
   }, [validation.errors]);
 
   /**
-   * The same rail as Investment Details, from the same row model and the same
-   * draft — so the two screens cannot disagree about the deposit the user is
-   * partway through booking.
-   */
-  const summaryRows = useMemo(
-    () => buildConfiguredSummaryRows(deposit, draft.investment),
-    [deposit, draft.investment],
-  );
-
-  /**
    * Continue advances to Bank Account, through the shared step hook — so the
    * high-water mark is recorded before the navigation and this screen names no
    * route of its own.
@@ -163,13 +142,13 @@ export function NomineeScreen({ productId }: NomineeScreenProps) {
             on a partner-bank policy the data does not carry.
           */}
           <p className="text-body-lg text-content-muted">
-            Add a nominee who will receive the proceeds in case of an unfortunate event.
-            <br />
             As per RBI guidelines, nomination is mandatory.
+            {/* Add a nominee who will receive the proceeds in case of an unfortunate event.
+            <br /> */}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-1 md:gap-8">
           <div className="md:col-span-2">
             <Card variant="outlined">
               <div className="flex flex-col gap-6 p-5 md:p-6">
@@ -226,7 +205,7 @@ export function NomineeScreen({ productId }: NomineeScreenProps) {
             </Card>
           </div>
 
-          <div className="flex flex-col gap-6">
+          {/* <div className="flex flex-col gap-6">
             <InvestmentSummary
               rows={summaryRows}
               header={
@@ -252,7 +231,7 @@ export function NomineeScreen({ productId }: NomineeScreenProps) {
               variant="checklist"
               headingLevel={2}
             />
-          </div>
+          </div> */}
         </div>
 
         {/*

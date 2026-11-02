@@ -13,10 +13,8 @@ import { defaultFundingAccount, isUsableForFunding } from '@/utils/bank-account'
 import { BankAccountOption } from './bank-account-option';
 import { BookingStepActions } from './booking-step-actions';
 import { BookingStepShell } from './booking-step-shell';
-import { BookingSummaryRail } from './booking-summary-rail';
 import { ImportantInformation } from './important-information';
 import { useBookingDraft } from '../hooks/use-booking-draft';
-import { useBookingProduct } from '../hooks/use-booking-product';
 import { useBookingStep } from '../hooks/use-booking-step';
 
 /**
@@ -52,7 +50,6 @@ export interface BankAccountScreenProps {
 }
 
 export function BankAccountScreen({ productId }: BankAccountScreenProps) {
-  const { deposit } = useBookingProduct();
   const { draft, setBankAccountId } = useBookingDraft();
   const { isReady, continueTo } = useBookingStep('bank-account', productId);
   const { accounts, isLoaded: accountsLoaded } = useBankAccounts();
@@ -97,7 +94,7 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
         </>
       }
     >
-      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3 md:gap-8">
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-1 md:gap-8">
         <div className="md:col-span-2">
           <Card variant="outlined">
             <fieldset className="flex flex-col gap-4 p-5 md:p-6">
@@ -174,18 +171,8 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
           </Card>
         </div>
 
-        <div className="flex flex-col gap-6">
+        {/* <div className="flex flex-col gap-6">
           <BookingSummaryRail deposit={deposit} investment={draft.investment} />
-
-          {/*
-            ⚠ Was "Your Security is Our Priority · 256-bit SSL encryption for
-            all transactions · Your bank details are secure and protected". The
-            first names a standard nothing here implements; the second is an
-            assurance with no mechanism behind it. Only the third — that no
-            banking password is stored — was true, and it is true for the
-            stronger reason that none is ever asked for. That is what the list
-            now says, alongside what the platform actually holds.
-          */}
           <ImportantInformation
             notes={[
               'You are never asked for a net-banking password, PIN or OTP.',
@@ -196,7 +183,7 @@ export function BankAccountScreen({ productId }: BankAccountScreenProps) {
             variant="checklist"
             headingLevel={2}
           />
-        </div>
+        </div> */}
       </div>
 
       <BookingStepActions

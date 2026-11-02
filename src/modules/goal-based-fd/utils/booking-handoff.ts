@@ -121,12 +121,14 @@ export function toBookingHandoff(recommendation: Recommendation): BookingHandoff
     recommendation screen, where they are an explanation rather than a term of
     business.
   */
-  const { productId, principal } = recommendation;
+  const { productId, principal, product } = recommendation;
+  /* Legacy test and integration callers may carry only id + principal. */
+  const bookable = product?.dataStatus !== 'illustrative' && isBookableProduct(productId);
 
   return {
     productId,
     amount: principal,
-    href: bookingHandoffHref(productId, principal),
-    bookable: isBookableProduct(productId),
+    href: bookable ? ROUTES.bookingOverview(productId, principal) : ROUTES.product(productId),
+    bookable,
   };
 }

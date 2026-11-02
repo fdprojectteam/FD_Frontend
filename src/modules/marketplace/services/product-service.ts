@@ -51,7 +51,10 @@ import { calculateMaturity } from '../utils/maturity';
  * platform does not assume a day-count basis.
  */
 export function estimateReturnsFor(
-  product: Pick<ProductSummary, 'interestRate' | 'rateSlabs' | 'tenureMonths' | 'tenure'>,
+  product: Pick<
+    ProductSummary,
+    'interestRate' | 'rateSlabs' | 'tenureMonths' | 'tenure' | 'compoundingFrequency'
+  >,
   amount: number,
 ): (MaturityResult & { appliedRate: number }) | null {
   const tenureMonths = toWholeMonths(publishedTenure(product));
@@ -61,7 +64,12 @@ export function estimateReturnsFor(
 
   return {
     appliedRate,
-    ...calculateMaturity({ principal: amount, annualRate: appliedRate, tenureMonths }),
+    ...calculateMaturity({
+      principal: amount,
+      annualRate: appliedRate,
+      tenureMonths,
+      compoundingFrequency: product.compoundingFrequency,
+    }),
   };
 }
 
@@ -75,6 +83,7 @@ function toSummary(dto: ProductSummaryDto, referenceAmount: number): ProductSumm
         principal: referenceAmount,
         annualRate: appliedRate,
         tenureMonths: dto.tenureMonths,
+        compoundingFrequency: dto.compoundingFrequency,
         /* Passed through so the display layer can print the published unit. */
         ...(dto.tenure === undefined ? {} : { tenure: dto.tenure }),
       }),

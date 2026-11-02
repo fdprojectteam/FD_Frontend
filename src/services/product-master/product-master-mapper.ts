@@ -75,8 +75,17 @@ export const productWireSchema = z.object({
     .object({ value: z.number().positive(), unit: z.enum(['days', 'months', 'years']) })
     .optional(),
   minInvestment: z.number().positive().finite(),
+  dataStatus: z.enum(['verified-live', 'illustrative']).optional(),
+  rateSource: z
+    .object({
+      url: z.string().url(),
+      effectiveFrom: z.string().min(1),
+      tenureLabel: z.string().min(1),
+    })
+    .optional(),
   interestType: z.enum(['cumulative', 'non-cumulative']),
   payout: z.enum(['at-maturity', 'monthly', 'quarterly']),
+  compoundingFrequency: z.enum(['monthly', 'quarterly', 'annual']).optional(),
   rateSlabs: z.array(rateBandSchema).optional(),
   /** The senior-citizen uplift in percentage points, where the product publishes one. */
   seniorCitizenDelta: z.number().positive().finite().optional(),
@@ -111,6 +120,8 @@ export function toProductMaster(record: ProductWireRecord): ProductMaster {
     name: record.name,
     bank: record.bank,
     minInvestment: record.minInvestment,
+    ...(record.dataStatus === undefined ? {} : { dataStatus: record.dataStatus }),
+    ...(record.rateSource === undefined ? {} : { rateSource: record.rateSource }),
     productType: 'fixed-deposit',
     terms: {
       tenureMonths: record.tenureMonths,
@@ -133,6 +144,9 @@ export function toProductMaster(record: ProductWireRecord): ProductMaster {
         : { seniorCitizenDelta: record.seniorCitizenDelta }),
       interestType: record.interestType,
       payout: record.payout,
+      ...(record.compoundingFrequency === undefined
+        ? {}
+        : { compoundingFrequency: record.compoundingFrequency }),
     },
   };
 }

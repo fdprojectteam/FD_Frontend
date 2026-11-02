@@ -24,6 +24,7 @@ import type { BankDto } from './bank';
 
 export type InterestType = 'cumulative' | 'non-cumulative';
 export type PayoutType = 'at-maturity' | 'monthly' | 'quarterly';
+export type CompoundingFrequency = 'monthly' | 'quarterly' | 'annual';
 
 /**
  * One band of a product's rate card: "₹5,00,000 and above earns 7.85%".
@@ -88,9 +89,20 @@ export interface ProductSummaryDto {
   minInvestment: number;
   interestType: InterestType;
   payout: PayoutType;
+  /** Published cadence for cumulative-interest calculations, when supplied. */
+  compoundingFrequency?: CompoundingFrequency;
   benefits: Benefit[];
   categories: ProductCategoryId[];
   flags: ProductFlagId[];
+  /** Whether this record can be presented as a verified bank offering. */
+  dataStatus?: 'verified-live' | 'illustrative';
+  /** Source metadata for rates which have been verified from a bank rate card. */
+  rateSource?: {
+    url: string;
+    effectiveFrom: string;
+    /** The bank's own tenure band; this can be broader than the selected term. */
+    tenureLabel: string;
+  };
   /**
    * The product's rate card, in ascending `minAmount` order.
    *
@@ -143,6 +155,8 @@ export interface ProductSummary {
   minInvestment: number;
   interestType: InterestType;
   payout: PayoutType;
+  /** Published cadence for cumulative-interest calculations, when supplied. */
+  compoundingFrequency?: CompoundingFrequency;
   benefits: Benefit[];
   categories: ProductCategoryId[];
   flags: ProductFlagId[];

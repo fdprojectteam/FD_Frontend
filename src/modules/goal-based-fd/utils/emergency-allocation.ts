@@ -1,12 +1,11 @@
 /**
- * The emergency-fund reserve — **10% of the total the customer is investing.**
+ * The emergency-fund planning reference — **10% of the total available investment.**
  *
  * ## Why this goal alone is derived
  *
- * Every other goal keeps the amount the customer typed. An emergency fund is the
- * one goal whose size is a function of the whole portfolio rather than of a
- * thing being saved for: it exists to cover a shortfall in the rest, so it is
- * expressed as a share of the rest.
+ * This is guidance only. It does not reduce the FD principal: the amount a
+ * customer enters remains the investment unless they explicitly choose a lower
+ * amount in the Amount step.
  *
  * The share is applied to `MultiGoalPlan.totalAmount`, which is already the
  * canonical total. No second total is introduced, and no other goal is touched —
@@ -48,6 +47,17 @@
 export const EMERGENCY_FUND_PERCENT = 10;
 
 /**
+ * Emergency Fund's suggested maturity target: the investment plus a 10%
+ * planning buffer. It is a target-field default only — never a promised return
+ * and never an input to rate resolution or maturity calculation.
+ */
+export function calculateEmergencyFundTarget(investmentAmount: number): number {
+  if (!Number.isFinite(investmentAmount) || investmentAmount <= 0) return 0;
+
+  return Math.round((investmentAmount * (100 + EMERGENCY_FUND_PERCENT)) / 100);
+}
+
+/**
  * The rupees reserved for an emergency fund out of `totalAmount`.
  *
  * Always a whole, non-negative number, and never greater than the total.
@@ -68,7 +78,7 @@ export function calculateEmergencyFundAmount(totalAmount: number): number {
  * Here rather than in a component so the sentence and the arithmetic cannot
  * drift apart, and so the percentage is never typed a second time.
  */
-export const EMERGENCY_FUND_EXPLANATION = `We reserve ${String(EMERGENCY_FUND_PERCENT)}% of your total investment for short-term needs, so this amount stays within reach.`;
+export const EMERGENCY_FUND_EXPLANATION = `${String(EMERGENCY_FUND_PERCENT)}% of your available investment is shown as a planning reference. It is not deducted from the Fixed Deposit or treated as a return.`;
 
-/** The short label shown beside the derived figure. */
-export const EMERGENCY_FUND_BASIS = `${String(EMERGENCY_FUND_PERCENT)}% of your total investment`;
+/** The short label shown beside the planning reference. */
+export const EMERGENCY_FUND_BASIS = `${String(EMERGENCY_FUND_PERCENT)}% planning reference`;

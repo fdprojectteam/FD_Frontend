@@ -1,6 +1,6 @@
 import type { ProductMaster } from '@/types/product-master';
 import { publishedTenure } from '@/utils/finance';
-import { calculateMaturity } from '@/utils/maturity';
+import { calculateDepositReturns } from '@/utils/finance';
 
 import { selectCandidates } from './candidates';
 import { blockedRuleWarnings, buildReasons, buildWarnings } from './explain';
@@ -71,6 +71,13 @@ function validateGoal(goal: GoalInput): RecommendationWarning[] {
   }
 
   if (
+    goal.selectedTenureMonths !== undefined &&
+    (!Number.isInteger(goal.selectedTenureMonths) || goal.selectedTenureMonths <= 0)
+  ) {
+    problems.push({ kind: 'limitation', text: 'Choose a supported FD term in whole months.' });
+  }
+
+  if (
     goal.targetAmount !== undefined &&
     (!Number.isFinite(goal.targetAmount) || goal.targetAmount <= 0)
   ) {
@@ -123,11 +130,21 @@ export function recommendForGoal(
       screen must handle, which is the point.
     */
     const maturity = supportsMaturity(publishedTenure(candidate.product.terms))
-      ? calculateMaturity({
-          principal: goal.principal,
-          annualRate: candidate.quote.annualRate,
-          tenureMonths: candidate.quote.tenureMonths,
-        })
+      ? (() => {
+          const returns = calculateDepositReturns({
+            principal: goal.principal,
+            annualRate: candidate.quote.annualRate,
+            tenureMonths: candidate.quote.tenureMonths,
+            compoundingFrequency: candidate.product.terms.compoundingFrequency,
+            isCumulative: candidate.product.terms.interestType === 'cumulative',
+          });
+
+          return {
+            principal: goal.principal,
+            interestEarned: returns.totalInterest,
+            maturityValue: returns.maturityValue,
+          };
+        })()
       : null;
 
     /* No maturity, no target assessment — a target cannot be compared with nothing. */
@@ -161,11 +178,30 @@ export function recommendForGoal(
   const warnings: RecommendationWarning[] = [];
 
   if (recommendations.length === 0 && products.length > 0) {
-    warnings.push({
-      kind: 'limitation',
-      ruleId: '§8.investment-amount',
-      text: 'No product in the catalogue accepts this amount at a published rate.',
-    });
+    const selectedTermExists =
+      goal.selectedTenureMonths !== undefined &&
+      products.some(
+        (product) =>
+          product.dataStatus === 'verified-live' &&
+          product.terms.tenureMonths === goal.selectedTenureMonths,
+      );
+
+    warnings.push(
+      goal.selectedTenureMonths !== undefined && !selectedTermExists
+        ? {
+            kind: 'limitation',
+            ruleId: '§8.tenure-constraints',
+            text: `No FD in the current demonstration catalogue is published for your selected ${String(goal.selectedTenureMonths)}-month term. Choose another term to see available options.`,
+          }
+        : {
+            kind: 'limitation',
+            ruleId: '§8.investment-amount',
+            text:
+              goal.selectedTenureMonths === undefined
+                ? 'No product in the catalogue accepts this amount at a published rate.'
+                : 'No product at your selected term accepts this amount at a published rate.',
+          },
+    );
   }
 
   return {

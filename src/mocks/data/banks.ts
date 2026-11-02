@@ -92,6 +92,15 @@ export const banks: readonly Bank[] = [
     rating: null,
     category: 'small-finance',
   },
+  {
+    id: 'demo-fd-lab',
+    name: 'Demonstration FD Lab',
+    shortCode: 'DEMO',
+    initials: 'DF',
+    logoUrl: null,
+    rating: null,
+    category: 'universal',
+  },
 ];
 
 export const SMALL_FINANCE_BANK_IDS: readonly string[] = [

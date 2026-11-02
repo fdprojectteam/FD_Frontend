@@ -62,6 +62,11 @@ export function BestFitCard({ recommendation }: { recommendation: Recommendation
             <p className="text-body text-content-muted">
               {product.bank.name} · {formatTenure(product.terms.tenureMonths)}
             </p>
+            {product.rateSource ? (
+              <p className="text-caption text-content-muted">
+                Bank rate band: {product.rateSource.tenureLabel}
+              </p>
+            ) : null}
           </div>
 
           {/*
@@ -79,6 +84,9 @@ export function BestFitCard({ recommendation }: { recommendation: Recommendation
             {formatRate(quote.annualRate)} p.a.
           </span>
         </p>
+        {product.dataStatus === 'illustrative' ? (
+          <p className="text-caption text-content-muted">Illustrative data — not bookable.</p>
+        ) : null}
       </CardHeader>
 
       <CardContent className="motion-safe:animate-reveal flex flex-col gap-5 p-0">

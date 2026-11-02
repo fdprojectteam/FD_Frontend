@@ -341,7 +341,7 @@ export async function runJourneySuite() {
       still disabled in this tick. Settling first is what a customer does by
       simply being slower than a synchronous test.
     */
-    click(buttonStartingWith('₹1 lakh'));
+    click(buttonStartingWith('₹5 lakh'));
     await settle();
 
     click(buttonByText('Continue'));
@@ -390,19 +390,14 @@ export async function runJourneySuite() {
       shipping a journey that cannot be run would be worse than saying so.
     */
 
-    section('G2 · Emergency fund — ₹1,00,000 in, and where it went (P0.3)');
+    section('G2 · Emergency fund — editable suggested target (P0)');
 
     /**
      * ⚠ The regression this journey exists for.
      *
-     * A customer choosing the emergency-fund goal and entering ₹1,00,000 was
-     * shown a ₹10,000 recommendation. The split is correct and deliberate — the
-     * deposit is 10% of the stated total — but the total was dropped at the
-     * Amount step, so nothing after it could account for the other ₹90,000.
-     *
-     * This drives the real screens to the real recommendation and asserts that
-     * all three figures are present and reconcile. Unlike G1 above it runs to
-     * completion: the environment that truncated that journey no longer does.
+     * The investment remains the FD principal. Emergency Fund's 10% is an
+     * editable maturity-target assumption (₹1,00,000 → ₹1,10,000), never an
+     * allocation reduction or an implied return.
      */
     await mountPlanner('/goal-planner?goal=emergency');
 
@@ -413,37 +408,34 @@ export async function runJourneySuite() {
     await settle();
 
     ok(
-      'the amount question names the figure as a total for this goal',
-      /Total investment/.test(plannerText()),
+      'the amount question names the figure as an investment',
+      /Investment amount/.test(plannerText()),
     );
 
-    click(buttonStartingWith('₹1 lakh'));
+    click(buttonStartingWith('₹5 lakh'));
     await settle(200);
 
-    /* The split is stated at the moment of entry, with both figures. */
-    ok('the entered total is shown', /₹1,00,000/.test(plannerText()));
-    ok('the derived deposit is shown beside it', /₹10,000/.test(plannerText()));
-    ok('and the rule relating them is named', /10% of your total investment/.test(plannerText()));
+    ok('the entered investment is shown', /₹5,00,000/.test(plannerText()));
 
     click(buttonByText('Continue'));
     await settle(200);
 
-    /*
-      The trail is the first screen the old build lost the total on. It must
-      carry both figures and the remainder — this is the assertion that would
-      have failed before the fix.
-    */
-    ok('the trail keeps the entered total', /₹1,00,000/.test(plannerText()));
-    ok('alongside what is being invested', /₹10,000/.test(plannerText()));
-    ok(
-      'and says the rest is not part of this plan',
-      /₹90,000/.test(plannerText()) && /not part of this plan/i.test(plannerText()),
-    );
+    ok('the trail retains the full principal', /₹5,00,000/.test(plannerText()));
+    ok('no ₹90,000 automatic exclusion is shown', !/₹90,000/.test(plannerText()));
 
-    click(buttonStartingWith('1 year'));
+    click(buttonStartingWith('2 years'));
     await settle(200);
 
-    click(buttonByText('Skip this'));
+    const targetInput = $('input');
+    check('₹5,00,000 gets a ₹5,50,000 suggested target', targetInput.value, '5,50,000');
+    type(targetInput, '600000');
+    await settle();
+    check('target input uses Indian grouping while edited', targetInput.value, '6,00,000');
+    type(targetInput, '650000');
+    await settle();
+    check('a revised target remains formatted and editable', targetInput.value, '6,50,000');
+
+    click(buttonByText('See my recommendation'));
 
     /*
       The engine resolves through React Query, so poll rather than assume.
@@ -462,24 +454,25 @@ export async function runJourneySuite() {
 
     ok('the recommendation arrives', /We found \d+ FDs? that fit your plan/.test(plannerText()));
 
-    /*
-      And the money flow is still on screen beside it — the last point at which
-      both figures are visible, because everything below prices the deposit.
-    */
-    ok('the results still show what was entered', /You entered/.test(plannerText()));
-    ok('what went into the deposit', /Into this fixed deposit/.test(plannerText()));
-    ok('and what did not', /Not part of this plan/.test(plannerText()));
     ok(
-      'the three figures are all present together',
-      /₹1,00,000/.test(plannerText()) &&
-        /₹10,000/.test(plannerText()) &&
-        /₹90,000/.test(plannerText()),
+      'the results are evaluated with the full ₹5,00,000 principal',
+      /₹5,00,000/.test(plannerText()),
+    );
+    ok('the results retain the edited ₹6,50,000 target', /₹6,50,000/.test(plannerText()));
+    ok('the 24-month results render SBI', /State Bank of India Fixed Deposit/.test(plannerText()));
+    ok(
+      'the 24-month results render AU SFB',
+      /AU Small Finance Bank Fixed Deposit/.test(plannerText()),
+    );
+    ok('the 24-month results render DBS', /DBS Bank India Fixed Deposit/.test(plannerText()));
+    ok(
+      'the scoped results contain no IDFC recommendation',
+      !/IDFC FIRST Bank Fixed Deposit/.test(plannerText()),
     );
 
     /*
-      The booking handoff carries the **deposit**, not the total. That is
-      correct — ₹10,000 is what is being invested — and it is the reason the
-      breakdown above has to exist rather than being optional.
+      The booking handoff carries the full FD principal, not the planning
+      reference. A booking route serialises the customer amount as `100000`.
     */
     const handoffLinks = $$('a')
       .map((node) => node.getAttribute('href') ?? '')
@@ -487,8 +480,17 @@ export async function runJourneySuite() {
 
     ok('a destination is offered for the recommendation', handoffLinks.length > 0);
     ok(
-      'and no handoff carries the entered total',
-      handoffLinks.every((href) => !href.includes('100000')),
+      'and no handoff carries the target as its principal',
+      handoffLinks.every((href) => !href.includes('amount=650000')),
+    );
+    check(
+      'every supported-bank card opens its matching booking flow',
+      handoffLinks.filter((href) => href.startsWith('/booking/')).sort(),
+      [
+        '/booking/verified-au-small-finance-024m/overview?amount=500000',
+        '/booking/verified-dbs-024m/overview?amount=500000',
+        '/booking/verified-sbi-024m/overview?amount=500000',
+      ].sort(),
     );
   }
 

@@ -89,6 +89,8 @@ export interface MaturityInput {
   /** Annual rate as a percentage number, e.g. 7.75 — never a fraction. */
   annualRate: number;
   tenureMonths: number;
+  /** Omitted legacy records use their documented quarterly convention. */
+  compoundingFrequency?: 'monthly' | 'quarterly' | 'annual';
 }
 
 export interface MaturityResult {

@@ -1,10 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ROUTES } from '@/constants/routes';
 
 import { createBookingOverviewService } from '../services/booking-overview-service';
 import type { BookingOverview } from '../types/booking';
@@ -78,21 +80,56 @@ export interface BookingProductProviderProps {
 export function BookingProductProvider({ productId, children }: BookingProductProviderProps) {
   const service = useMemo(() => createBookingOverviewService(), []);
 
-  const { data, isPending, isError } = useQuery({
+  const { data, isPending, isError, refetch } = useQuery({
     queryKey: ['booking', 'overview', productId],
     queryFn: () => service.findByProductId(productId),
   });
 
   if (isPending) return <BookingProductSkeleton />;
 
-  /*
-    `null` is the catalogue saying it has no such product; an error is the
-    transport failing. Both mean this screen cannot state which deposit is being
-    booked, and on a screen about money that must not be guessed at.
-  */
-  if (isError || !data) notFound();
+  /* A failed lookup is recoverable; only an explicit null means the id is stale. */
+  if (isError) return <BookingLookupError onRetry={() => void refetch()} />;
+
+  if (!data) return <BookingProductUnavailable onRetry={() => void refetch()} />;
 
   return <BookingProductContext.Provider value={data}>{children}</BookingProductContext.Provider>;
+}
+
+function BookingLookupError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="container-page flex flex-col items-start gap-5 py-24" role="alert">
+      <h1 className="text-h2 text-content">We couldn&apos;t verify this FD right now</h1>
+      <p className="text-body text-content-muted max-w-prose">
+        The demonstration catalogue could not be reached. No booking has been started and we have
+        not treated this FD as unavailable.
+      </p>
+      <Button type="button" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
+
+function BookingProductUnavailable({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="container-page flex flex-col items-start gap-5 py-24">
+      <h1 className="text-h2 text-content">
+        This FD is not in the current demonstration catalogue
+      </h1>
+      <p className="text-body text-content-muted max-w-prose">
+        The selection may be out of date or the product may have changed. No product has been
+        substituted and no booking has been started.
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <Button asChild>
+          <Link href={ROUTES.home}>Browse current FDs</Link>
+        </Button>
+        <Button type="button" variant="secondary" onClick={onRetry}>
+          Check again
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /** The shape of the Booking chrome while the deposit is in flight. */

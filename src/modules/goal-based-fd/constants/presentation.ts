@@ -76,21 +76,23 @@ export const RULE_LABELS: Record<RuleId, string> = {
 /**
  * Horizon presets, in months (decision A3).
  *
- * These describe **the customer's need**, not the catalogue's terms. Five years
- * is offered even though the longest deposit on the platform runs 36 months,
- * because a customer who needs money in five years has that need whether or not
- * a product serves it — and the honest response is to show them the gap, which
- * the engine already produces as a warning on every recommendation.
- *
- * Capping the list at what the catalogue can match would hide a real limitation
- * behind a control that looks complete.
+ * These are explicit terms a customer may select. Catalogue matching decides
+ * whether an institution-named product publishes that exact term; unsupported
+ * terms receive an actionable explanation rather than a nearby substituted rate.
  */
 export const HORIZON_PRESETS: readonly { months: number; label: string }[] = [
+  { months: 1, label: '1 month' },
+  { months: 3, label: '3 months' },
   { months: 6, label: '6 months' },
+  { months: 9, label: '9 months' },
   { months: 12, label: '1 year' },
+  { months: 18, label: '18 months' },
   { months: 24, label: '2 years' },
   { months: 36, label: '3 years' },
+  { months: 48, label: '4 years' },
   { months: 60, label: '5 years' },
+  { months: 84, label: '7 years' },
+  { months: 120, label: '10 years' },
 ] as const;
 
 /**
@@ -105,7 +107,7 @@ export const STEP_HINTS = {
   investor:
     'Some deposits publish a higher rate for senior citizens. The bank confirms eligibility at booking.',
   amount: 'We only show deposits that accept the amount you have.',
-  horizon: 'We look for deposits that mature around the time you need the money.',
+  horizon: 'We use the term you select. Emergency-fund guidance never replaces your choice.',
   target: 'If you have a figure in mind, we’ll tell you whether this plan reaches it.',
 } as const;
 

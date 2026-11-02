@@ -1,0 +1,145 @@
+{
+  "dataSource": "demonstration-synthetic",
+  "verified": false,
+  "currency": "INR",
+  "institutions": [
+    {
+      "id": "demo-fd-lab",
+      "name": "Demonstration FD Lab"
+    }
+  ],
+  "products": [
+    {
+      "productId": "demo-fd-001m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 1, "maxMonths": 1, "annualRate": 6.0, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-003m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 3, "maxMonths": 3, "annualRate": 6.1, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-006m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 6, "maxMonths": 6, "annualRate": 6.2, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-009m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 9, "maxMonths": 9, "annualRate": 6.3, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-012m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 12, "maxMonths": 12, "annualRate": 6.4, "seniorAnnualRate": 6.9 }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-018m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 18, "maxMonths": 18, "annualRate": 6.5, "seniorAnnualRate": 7.0 }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-024m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 24, "maxMonths": 24, "annualRate": 6.6, "seniorAnnualRate": 7.1 }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-036m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 36, "maxMonths": 36, "annualRate": 6.7, "seniorAnnualRate": 7.2 }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-048m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 48, "maxMonths": 48, "annualRate": 6.8, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-060m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 60, "maxMonths": 60, "annualRate": 6.9, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-084m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 84, "maxMonths": 84, "annualRate": 7.0, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    },
+    {
+      "productId": "demo-fd-120m",
+      "institutionId": "demo-fd-lab",
+      "minimumInvestment": 10000,
+      "maximumInvestment": null,
+      "tenureBands": [
+        { "minMonths": 120, "maxMonths": 120, "annualRate": 7.1, "seniorAnnualRate": null }
+      ],
+      "compoundingFrequency": "quarterly",
+      "payoutType": "at-maturity"
+    }
+  ]
+}

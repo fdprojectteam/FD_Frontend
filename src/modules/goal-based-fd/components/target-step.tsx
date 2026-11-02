@@ -1,11 +1,16 @@
 'use client';
 
 import { ArrowRight } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
+import {
+  currencyCaretPosition,
+  formatCurrencyDigits,
+  normaliseCurrencyDigits,
+} from '../utils/currency-input';
 /**
  * The last question — "Is there an amount you're aiming for?"
  *
@@ -31,19 +36,27 @@ export interface TargetStepProps {
   /** One line saying why the question is being asked. */
   hint: string;
   initialValue?: number;
+  /** The emergency-only system target. It is still completely editable. */
+  suggestedValue?: number;
+  initialSource?: 'suggested' | 'manual' | 'none';
   /** `undefined` when the customer declines to set one. */
-  onSubmit: (targetAmount: number | undefined) => void;
+  onSubmit: (targetAmount: number | undefined, source: 'suggested' | 'manual' | 'none') => void;
 }
 
-/** Digits only — the field is money, and a stray character is a silent NaN later. */
-function toDigits(raw: string): string {
-  return raw.replace(/\D/g, '').slice(0, 12);
-}
-
-export function TargetStep({ hint, initialValue, onSubmit }: TargetStepProps) {
+export function TargetStep({
+  hint,
+  initialValue,
+  suggestedValue,
+  initialSource,
+  onSubmit,
+}: TargetStepProps) {
   const fieldId = useId();
   const hintId = useId();
   const [digits, setDigits] = useState(initialValue ? String(initialValue) : '');
+  const [source, setSource] = useState<'suggested' | 'manual' | 'none'>(
+    initialSource ?? (suggestedValue === undefined ? 'none' : 'suggested'),
+  );
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const amount = digits === '' ? 0 : Number(digits);
 
@@ -52,7 +65,7 @@ export function TargetStep({ hint, initialValue, onSubmit }: TargetStepProps) {
       className="flex flex-col gap-6"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit(amount > 0 ? amount : undefined);
+        onSubmit(amount > 0 ? amount : undefined, amount > 0 ? source : 'none');
       }}
     >
       <div className="flex flex-col gap-2">
@@ -72,16 +85,43 @@ export function TargetStep({ hint, initialValue, onSubmit }: TargetStepProps) {
         placeholder="27,00,000"
         prefix="₹"
         className="max-w-sm"
-        /*
-          Grouped as the customer types — Indian grouping, through the platform
-          formatter — while the state stays digits. Two representations of one
-          number, and only one of them is ever parsed.
-        */
-        value={digits === '' ? '' : new Intl.NumberFormat('en-IN').format(amount)}
+        ref={inputRef}
+        value={formatCurrencyDigits(digits)}
         onChange={(event) => {
-          setDigits(toDigits(event.target.value));
+          const caretDigits = normaliseCurrencyDigits(
+            event.target.value.slice(0, event.target.selectionStart ?? 0),
+          ).length;
+          const nextDigits = normaliseCurrencyDigits(event.target.value);
+          setDigits(nextDigits);
+          setSource('manual');
+          queueMicrotask(() => {
+            const input = inputRef.current;
+            if (!input) return;
+            const nextDisplay = formatCurrencyDigits(nextDigits);
+            const caret = currencyCaretPosition(nextDisplay, caretDigits);
+            input.setSelectionRange(caret, caret);
+          });
         }}
       />
+
+      {suggestedValue !== undefined ? (
+        <div className="text-caption text-content-muted flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>Suggested emergency target: ₹{formatCurrencyDigits(String(suggestedValue))}.</span>
+          <span>This is a planning assumption, not a promised return.</span>
+          {source === 'manual' ? (
+            <button
+              type="button"
+              className="focus-ring text-content-brand rounded-md font-medium"
+              onClick={() => {
+                setDigits(String(suggestedValue));
+                setSource('suggested');
+              }}
+            >
+              Reset to suggested target
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" size="lg" className="w-fit">
@@ -97,7 +137,7 @@ export function TargetStep({ hint, initialValue, onSubmit }: TargetStepProps) {
           size="lg"
           className="w-fit"
           onClick={() => {
-            onSubmit(undefined);
+            onSubmit(undefined, 'none');
           }}
         >
           Skip this

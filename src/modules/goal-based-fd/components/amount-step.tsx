@@ -1,19 +1,17 @@
 'use client';
 
 import { ArrowRight, Check, Sparkles } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/utils';
 
-import { GOAL_LABELS } from '../constants/goals';
-import type { GoalType } from '../types/goal';
 import {
-  EMERGENCY_FUND_BASIS,
-  EMERGENCY_FUND_EXPLANATION,
-  calculateEmergencyFundAmount,
-} from '../utils/emergency-allocation';
+  currencyCaretPosition,
+  formatCurrencyDigits,
+  normaliseCurrencyDigits,
+} from '../utils/currency-input';
 
 const QUICK_AMOUNTS = [
   {
@@ -34,77 +32,23 @@ const QUICK_AMOUNTS = [
 ] as const;
 
 export interface AmountStepProps {
-  /**
-   * The goal being planned for.
-   *
-   * Only the emergency fund derives its allocation from the total; every other
-   * goal invests the amount the customer stated. Optional because the flow
-   * types it as possibly unanswered — an absent goal simply derives nothing,
-   * which is the honest behaviour rather than an assertion that it is present. The step reads the goal rather
-   * than being told what to suggest, so the rule stays in
-   * `emergency-allocation.ts` and this component never restates it.
-   */
-  goalType?: GoalType;
   /** One line saying why the question is being asked. */
   hint: string;
   /** The smallest minimum investment across the loaded catalogue, when known. */
   lowestMinimum?: number;
   initialValue?: number;
-  /**
-   * `totalAmount` is the figure the customer entered, passed only when the
-   * deposit is a share of it — the emergency fund. Every other goal invests the
-   * amount typed, so there is no second number to carry.
-   */
-  onSubmit: (principal: number, totalAmount?: number) => void;
+  onSubmit: (principal: number) => void;
 }
 
-/** Digits only — the field is money, and a stray character is a silent NaN later. */
-function toDigits(raw: string): string {
-  return raw.replace(/\D/g, '').slice(0, 12);
-}
-
-export function AmountStep({
-  goalType,
-  hint,
-  lowestMinimum,
-  initialValue,
-  onSubmit,
-}: AmountStepProps) {
+export function AmountStep({ hint, lowestMinimum, initialValue, onSubmit }: AmountStepProps) {
   const fieldId = useId();
   const hintId = useId();
-  const allocationFieldId = useId();
   const [digits, setDigits] = useState(initialValue ? String(initialValue) : '');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const amount = digits === '' ? 0 : Number(digits);
 
-  /**
-   * The emergency fund's own allocation.
-   *
-   * For this one goal the figure above is the customer's **total investment**,
-   * and what they put into an emergency deposit is a share of it — the policy
-   * `calculateEmergencyFundAmount` owns. Every other goal invests the stated
-   * amount directly and never sees this control.
-   *
-   * ## Suggested, not imposed
-   *
-   * The field is editable, and once the customer changes it their figure wins.
-   * `editedAllocation` is `null` until they do; while it is null the suggestion
-   * tracks the total, so correcting ₹25,00,000 to ₹30,00,000 moves the
-   * suggestion with it. After an edit the suggestion is shown as a hint and
-   * never re-applied — a value the customer typed must not be overwritten by a
-   * later render.
-   */
-  const derivesAllocation = goalType === 'emergency';
-  const [editedAllocation, setEditedAllocation] = useState<string | null>(null);
-
-  const suggestedAllocation = calculateEmergencyFundAmount(amount);
-  const allocationDigits =
-    editedAllocation ?? (suggestedAllocation > 0 ? String(suggestedAllocation) : '');
-  const allocation = allocationDigits === '' ? 0 : Number(allocationDigits);
-
-  /* What is actually invested — the allocation for an emergency fund, else the total. */
-  const investedAmount = derivesAllocation ? allocation : amount;
-  const canContinue = investedAmount > 0;
+  const canContinue = amount > 0;
 
   return (
     <form
@@ -113,12 +57,7 @@ export function AmountStep({
         event.preventDefault();
 
         if (canContinue) {
-          /*
-            The total travels with the deposit whenever the two differ. Sending
-            only `investedAmount` is what made ₹1,00,000 become ₹10,000 with no
-            explanation anywhere after this screen.
-          */
-          onSubmit(investedAmount, derivesAllocation ? amount : undefined);
+          onSubmit(amount);
         }
       }}
     >
@@ -147,9 +86,7 @@ export function AmountStep({
 
         <div className="relative flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-content text-sm font-semibold">
-              {derivesAllocation ? 'Total investment' : 'Investment amount'}
-            </span>
+            <span className="text-content text-sm font-semibold">Investment amount</span>
 
             {lowestMinimum !== undefined ? (
               <span className="text-content-muted text-xs">
@@ -166,9 +103,21 @@ export function AmountStep({
             placeholder="1,00,000"
             prefix="₹"
             className="h-16 max-w-full rounded-2xl text-2xl font-semibold sm:text-3xl"
-            value={digits === '' ? '' : new Intl.NumberFormat('en-IN').format(amount)}
+            ref={inputRef}
+            value={formatCurrencyDigits(digits)}
             onChange={(event) => {
-              setDigits(toDigits(event.target.value));
+              const caretDigits = normaliseCurrencyDigits(
+                event.target.value.slice(0, event.target.selectionStart ?? 0),
+              ).length;
+              const nextDigits = normaliseCurrencyDigits(event.target.value);
+              setDigits(nextDigits);
+              queueMicrotask(() => {
+                const input = inputRef.current;
+                if (!input) return;
+                const nextDisplay = formatCurrencyDigits(nextDigits);
+                const caret = currencyCaretPosition(nextDisplay, caretDigits);
+                input.setSelectionRange(caret, caret);
+              });
             }}
           />
 
@@ -177,67 +126,10 @@ export function AmountStep({
               <Check className="size-3" />
             </span>
 
-            <span>
-              {derivesAllocation
-                ? 'We’ll set aside part of this for your emergency fund.'
-                : 'We’ll use this amount to compare relevant FD options.'}
-            </span>
+            <span>We’ll use this amount to compare relevant FD options.</span>
           </div>
         </div>
       </div>
-
-      {/*
-        The derived allocation. Rendered only for the goal whose size is a
-        function of the whole portfolio, and only once there is a total to take
-        a share of.
-      */}
-      {derivesAllocation && amount > 0 ? (
-        <div className="border-border-default bg-surface-card flex flex-col gap-3 rounded-3xl border p-5 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <label htmlFor={allocationFieldId} className="text-content text-sm font-semibold">
-              {GOAL_LABELS.emergency}
-            </label>
-            <span className="text-content-muted text-xs">{EMERGENCY_FUND_BASIS}</span>
-          </div>
-
-          <p className="text-content-muted text-sm">
-            Based on your total investment of {formatCurrency(amount)}, we suggest{' '}
-            {formatCurrency(suggestedAllocation)}.
-          </p>
-
-          <Input
-            id={allocationFieldId}
-            inputMode="numeric"
-            autoComplete="off"
-            prefix="₹"
-            className="h-14 max-w-full rounded-2xl text-xl font-semibold"
-            value={allocation === 0 ? '' : new Intl.NumberFormat('en-IN').format(allocation)}
-            onChange={(event) => {
-              setEditedAllocation(toDigits(event.target.value));
-            }}
-          />
-
-          <p className="text-content-muted text-xs">
-            {EMERGENCY_FUND_EXPLANATION} You can change this amount.
-          </p>
-
-          {/*
-            Once edited, the suggestion becomes a way back rather than something
-            that silently reasserts itself.
-          */}
-          {editedAllocation !== null && allocation !== suggestedAllocation ? (
-            <button
-              type="button"
-              onClick={() => {
-                setEditedAllocation(null);
-              }}
-              className="focus-ring text-content-brand w-fit rounded-md text-xs font-medium"
-            >
-              Use the suggested {formatCurrency(suggestedAllocation)}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
 
       {/* Quick amounts */}
       <div className="flex flex-col gap-3">

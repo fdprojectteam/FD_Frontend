@@ -8,11 +8,10 @@ import { cn } from '@/lib/utils';
 import { HORIZON_PRESETS } from '../constants/presentation';
 
 /**
- * State 5 — "When will you need the money?"
+ * State 5 — "How long would you like to invest?"
  *
- * The customer's timeline is one of the strongest inputs to FD matching.
- * The UI therefore makes the timeline the primary decision rather than
- * presenting five plain radio-like buttons.
+ * This is an explicit FD-term choice. It is not an emergency-liquidity default:
+ * the engine must price the selected term or explain why the catalogue cannot.
  */
 
 export interface HorizonStepProps {
@@ -34,7 +33,7 @@ export function HorizonStep({ value, hint, onChange }: HorizonStepProps) {
           Investment timeline
         </span>
 
-        <legend className="text-h2 text-content">When will you need the money?</legend>
+        <legend className="text-h2 text-content">How long would you like to invest?</legend>
 
         <p className="text-body-lg text-content-muted max-w-2xl">{hint}</p>
       </div>
@@ -60,9 +59,7 @@ export function HorizonStep({ value, hint, onChange }: HorizonStepProps) {
             <div>
               <p className="text-content text-sm font-semibold">Your investment timeline</p>
 
-              <p className="text-content-muted text-xs">
-                Choose when you expect to need this money
-              </p>
+              <p className="text-content-muted text-xs">Choose the Fixed Deposit term you want</p>
             </div>
           </div>
 
@@ -132,7 +129,7 @@ export function HorizonStep({ value, hint, onChange }: HorizonStepProps) {
               </span>
 
               <p className="text-content text-sm">
-                You expect to need this money in about{' '}
+                You selected an FD term of{' '}
                 <span className="font-semibold">{selectedPreset.label}</span>.
               </p>
             </div>
@@ -164,7 +161,7 @@ export function HorizonStep({ value, hint, onChange }: HorizonStepProps) {
         <div className="border-border-default bg-surface-card flex flex-col gap-3 rounded-2xl border p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-content-muted text-xs font-medium tracking-wide uppercase">
-              Your timeline
+              Selected FD term
             </p>
 
             <p className="text-body text-content mt-1 font-semibold">{selectedPreset.label}</p>
@@ -173,7 +170,7 @@ export function HorizonStep({ value, hint, onChange }: HorizonStepProps) {
           <div className="text-left sm:text-right">
             <p className="text-content-muted text-xs">We&apos;ll use this to</p>
 
-            <p className="text-content-brand text-sm font-medium">Find suitable FD tenures</p>
+            <p className="text-content-brand text-sm font-medium">Find FDs at this term</p>
           </div>
         </div>
       ) : null}

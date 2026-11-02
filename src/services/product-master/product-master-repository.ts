@@ -41,6 +41,12 @@ export interface ProductMasterRepository {
 
 /** The resource path, matching the existing product endpoints. */
 const PRODUCTS_RESOURCE = '/products';
+/**
+ * Goal recommendations must evaluate the complete catalogue, not Marketplace's
+ * first visual page. This is deliberately a repository concern: components and
+ * the engine continue to receive one complete candidate collection.
+ */
+const RECOMMENDATION_CATALOGUE_LIMIT = 100;
 
 /**
  * The HTTP implementation.
@@ -58,7 +64,14 @@ export function createProductMasterRepository(): ProductMasterRepository {
 
   return {
     async findAll(): Promise<ProductMaster[]> {
-      const { items } = await source.list();
+      /*
+        The shared endpoint defaults to six records for Marketplace pagination.
+        Calling it without an explicit limit silently hid partner products that
+        appear after that first page, leaving the engine to rank legacy data.
+        This PoC catalogue is bounded well below 100; production replaces this
+        with the API's cursor/complete-catalogue contract.
+       */
+      const { items } = await source.list({ limit: RECOMMENDATION_CATALOGUE_LIMIT });
       return parseProductMasters(items);
     },
 

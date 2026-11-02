@@ -8,6 +8,8 @@ import type {
 } from '@/modules/marketplace/types';
 
 import { banks } from './banks';
+import { demoTenureCatalogue } from './demo-tenure-catalogue';
+import { verifiedPartnerFdProducts } from './partner-fd-catalogue';
 
 /**
  * Product fixtures (M2.1).
@@ -458,6 +460,47 @@ export const DBS_FLEXI_374D_PRODUCT: ProductSummaryDto = {
   flags: [],
 };
 
+/**
+ * JSON-backed synthetic products used only to exercise terms the PoC offers but
+ * institution-named demonstration data does not publish. A product has one
+ * exact band because the platform's current product model has one rate per
+ * product/term; a missing term therefore has no rate to invent.
+ */
+export const demoTenureProducts: ProductSummaryDto[] = demoTenureCatalogue.products.map(
+  (product) => {
+    const bank = banks.find((candidate) => candidate.id === product.institutionId);
+    if (!bank) {
+      throw new Error(`Validated demonstration institution ${product.institutionId} is missing.`);
+    }
+
+    const [band] = product.tenureBands;
+    if (!band || band.minMonths !== band.maxMonths) {
+      throw new Error(
+        `Demonstration product ${product.productId} must publish one exact month term.`,
+      );
+    }
+
+    return {
+      id: product.productId,
+      bank,
+      name: `Demonstration Fixed Deposit — ${String(band.minMonths)} months`,
+      interestRate: band.annualRate,
+      ...(band.seniorAnnualRate === null
+        ? {}
+        : { seniorCitizenDelta: band.seniorAnnualRate - band.annualRate }),
+      tenureMonths: band.minMonths,
+      minInvestment: product.minimumInvestment,
+      interestType: product.payoutType === 'at-maturity' ? 'cumulative' : 'non-cumulative',
+      payout: product.payoutType,
+      compoundingFrequency: product.compoundingFrequency,
+      benefits: [],
+      categories: [],
+      flags: [],
+      rateSlabs: [],
+    };
+  },
+);
+
 /*
   The 91-day and 374-day deposits are appended rather than seeded, because they
   are the products whose terms the month-based `Seed` shape cannot express. The
@@ -469,6 +512,7 @@ export const productSummaries: ProductSummaryDto[] = [
   ...buildSeeds().map(toSummary),
   UC2_DAY_BASED_PRODUCT,
   DBS_FLEXI_374D_PRODUCT,
+  ...verifiedPartnerFdProducts,
 ];
 
 export function findProductSummary(id: string): ProductSummaryDto | undefined {

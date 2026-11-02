@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { GOAL_TYPES } from '../constants/goals';
 import type { GoalInput, GoalType } from '../types/goal';
+import { calculateEmergencyFundTarget } from '../utils/emergency-allocation';
 
 /**
  * The planner's step machine — **presentation state only**.
@@ -34,30 +35,14 @@ export interface PlannerAnswers {
    */
   principal?: number;
   /**
-   * ⚠ **What the customer typed, when that is not what gets invested.**
-   *
-   * The emergency fund is the one goal whose deposit is a share of a larger
-   * sum: the customer states a total, `calculateEmergencyFundAmount` takes 10%
-   * of it, and that 10% is the deposit. Someone entering ₹1,00,000 is planning
-   * a ₹10,000 deposit.
-   *
-   * That is intended, and the Amount step explains it. What was wrong is that
-   * the total **stopped there** — only `principal` survived the step, so the
-   * trail, the recommendation and the booking all showed ₹10,000 with no record
-   * that ₹1,00,000 had ever been entered. A customer looking at the result had
-   * no way to answer *"I entered ₹1,00,000. Where did the rest go?"*, and the
-   * answer is not a hard one: it is not in this plan.
-   *
-   * So the total is carried alongside. `undefined` when there is no distinction
-   * to draw — which is every goal except this one, and this one before the
-   * customer has entered anything.
-   *
-   * **It is not an engine input.** `GoalInput` still receives `principal` and
-   * nothing else, so no rate, maturity or ranking changes by a rupee. This
-   * exists to be shown.
+   * What the customer made available when they explicitly chose to invest less.
+   * Omitted when the whole entered amount is invested, which is the default for
+   * every goal including Emergency Fund.
    */
   totalAmount?: number;
   horizonMonths?: number;
+  /** The FD term explicitly selected in the planner. */
+  selectedTenureMonths?: number;
   /**
    * The maturity the customer is aiming for, when they named one.
    *
@@ -68,6 +53,8 @@ export interface PlannerAnswers {
    * past the question without inventing a figure.
    */
   targetAmount?: number;
+  /** Distinguishes a system suggestion from a figure the customer typed. */
+  targetSource?: 'suggested' | 'manual' | 'none';
   /** Whether the target question has been answered, including by declining it. */
   targetAsked?: boolean;
 }
@@ -80,13 +67,13 @@ export interface PlannerFlow {
   chooseGoal: (goalType: GoalType) => void;
   setInvestor: (isSeniorCitizen: boolean) => void;
   /**
-   * `totalAmount` is the sum the customer entered, supplied only when the
-   * deposit is a share of it. Omitted means the two are the same figure.
+   * `totalAmount` is supplied only when the customer explicitly chooses an FD
+   * principal below the available amount. Omitted means the two are the same.
    */
   setPrincipal: (principal: number, totalAmount?: number) => void;
   setHorizon: (horizonMonths: number) => void;
   /** `undefined` is the customer declining to set one, which is a valid answer. */
-  setTarget: (targetAmount: number | undefined) => void;
+  setTarget: (targetAmount: number | undefined, source: 'suggested' | 'manual' | 'none') => void;
   /** Reopen an answered step without discarding the answers after it. */
   editStep: (
     stage: Extract<PlannerStage, 'goal' | 'investor' | 'amount' | 'horizon' | 'target'>,
@@ -122,7 +109,14 @@ export function usePlannerFlow(initialGoal?: GoalType): PlannerFlow {
   );
 
   const chooseGoal = useCallback((goalType: GoalType) => {
-    setAnswers((current) => ({ ...current, goalType }));
+    /* A target belongs to a goal. Do not carry a prior goal's manual value over. */
+    setAnswers((current) => ({
+      ...current,
+      goalType,
+      targetAmount: undefined,
+      targetAsked: false,
+      targetSource: undefined,
+    }));
     setStage('investor');
   }, []);
 
@@ -138,12 +132,38 @@ export function usePlannerFlow(initialGoal?: GoalType): PlannerFlow {
     education deposit it never applied to.
   */
   const setPrincipal = useCallback((principal: number, totalAmount?: number) => {
-    setAnswers((current) => ({ ...current, principal, totalAmount }));
+    setAnswers((current) => {
+      const next = { ...current, principal, totalAmount };
+
+      /* A customer-entered target is never overwritten by a new amount. */
+      if (current.goalType === 'emergency' && current.targetSource !== 'manual') {
+        return {
+          ...next,
+          targetAmount: calculateEmergencyFundTarget(principal),
+          targetAsked: false,
+          targetSource: 'suggested' as const,
+        };
+      }
+
+      return next;
+    });
     setStage('horizon');
   }, []);
 
   const setHorizon = useCallback((horizonMonths: number) => {
-    setAnswers((current) => ({ ...current, horizonMonths }));
+    /*
+      The current planner asks one term question. Keep its answer in both
+      fields: `selectedTenureMonths` is the instruction to the catalogue;
+      `horizonMonths` remains the existing planning context used by the
+      explainability rules. The engine gives the explicit selection precedence.
+      A future separate liquidity question can set `horizonMonths` independently
+      without changing the selected-tenure contract.
+    */
+    setAnswers((current) => ({
+      ...current,
+      horizonMonths,
+      selectedTenureMonths: horizonMonths,
+    }));
     setStage('target');
   }, []);
 
@@ -153,10 +173,18 @@ export function usePlannerFlow(initialGoal?: GoalType): PlannerFlow {
     "no target" indistinguishable from "a target of nothing", and R-TARGET-003
     would then be comparing maturity against it.
   */
-  const setTarget = useCallback((targetAmount: number | undefined) => {
-    setAnswers((current) => ({ ...current, targetAmount, targetAsked: true }));
-    setStage('results');
-  }, []);
+  const setTarget = useCallback(
+    (targetAmount: number | undefined, source: 'suggested' | 'manual' | 'none') => {
+      setAnswers((current) => ({
+        ...current,
+        targetAmount,
+        targetAsked: true,
+        targetSource: source,
+      }));
+      setStage('results');
+    },
+    [],
+  );
 
   /*
     Editing keeps the later answers. A customer correcting their amount has not
@@ -172,8 +200,15 @@ export function usePlannerFlow(initialGoal?: GoalType): PlannerFlow {
     engine is never asked a half-formed question.
   */
   const goal = useMemo<GoalInput | null>(() => {
-    const { goalType, principal, horizonMonths, targetAmount, targetAsked, isSeniorCitizen } =
-      answers;
+    const {
+      goalType,
+      principal,
+      horizonMonths,
+      selectedTenureMonths,
+      targetAmount,
+      targetAsked,
+      isSeniorCitizen,
+    } = answers;
 
     if (
       goalType === undefined ||
@@ -194,6 +229,7 @@ export function usePlannerFlow(initialGoal?: GoalType): PlannerFlow {
       goalType,
       principal,
       horizonMonths,
+      selectedTenureMonths,
       isSeniorCitizen,
       ...(targetAmount === undefined ? {} : { targetAmount }),
     };

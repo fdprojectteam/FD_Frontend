@@ -1378,6 +1378,27 @@ export async function runUnitSuite() {
     );
   }
 
+  check(
+    'an annual product compounds once per year when its terms say annual',
+    M.calculatePlatformMaturity({
+      principal: 100_000,
+      annualRate: 7.2,
+      tenureMonths: 12,
+      compoundingFrequency: 'annual',
+    }).maturityValue,
+    107_200,
+  );
+  check(
+    'a monthly product uses its published monthly cadence',
+    M.calculatePlatformMaturity({
+      principal: 100_000,
+      annualRate: 7.2,
+      tenureMonths: 12,
+      compoundingFrequency: 'monthly',
+    }).maturityValue,
+    107_442,
+  );
+
   /* Degenerate inputs: a form is partially filled for most of its life. */
   check(
     'a zero amount is worth zero, not NaN',
@@ -3367,6 +3388,43 @@ export async function runUnitSuite() {
     [6, 12, 24, 36],
   );
 
+  /*
+   * P0 regression: the term chosen in the planner is an instruction to the
+   * catalogue, not an Emergency Fund default that ranking may replace with six
+   * months. The same financial engine prices the surviving 24-month candidate.
+   */
+  const selectedTwentyFourMonths = goal({
+    goalType: 'emergency',
+    horizonMonths: 24,
+    selectedTenureMonths: 24,
+  });
+  check(
+    'an explicit 24-month emergency selection keeps only 24-month candidates',
+    M.selectCandidates(CATALOGUE, selectedTwentyFourMonths).map((c) => c.product.productId),
+    ['p24'],
+  );
+  const selectedTwentyFourResult = M.recommendForGoal(CATALOGUE, selectedTwentyFourMonths);
+  check(
+    'the selected emergency FD is calculated for 24 months',
+    selectedTwentyFourResult.recommendations[0].quote.tenureMonths,
+    24,
+  );
+  check(
+    'its maturity comes from the authoritative financial engine',
+    selectedTwentyFourResult.recommendations[0].maturity.maturityValue,
+    115_795,
+  );
+  const unavailableSelectedTerm = M.recommendForGoal(CATALOGUE, goal({ selectedTenureMonths: 48 }));
+  check(
+    'an unavailable selected term returns no fabricated recommendation',
+    unavailableSelectedTerm.recommendations,
+    [],
+  );
+  ok(
+    'and explains that the selected term is not published',
+    unavailableSelectedTerm.warnings.some((warning) => /selected 48-month term/.test(warning.text)),
+  );
+
   /** An amount band overrides the base rate, through the platform resolver. */
   const banded = [gbfProduct('pb', 12, 7.0, 10_000, [{ minAmount: 500_000, annualRate: 7.5 }])];
   check(
@@ -3952,21 +4010,76 @@ export async function runUnitSuite() {
     ['We’ll prioritise deposits that mature closest to when you need the money.'],
   );
 
-  /**
-   * **The five-year horizon is offered** (decision A3) even though the catalogue
-   * tops out at 36 months. Removing it would hide a real limitation behind a
-   * control that looks complete; the engine warns instead.
-   */
+  /** Every term the planner offers is explicit and has catalogue coverage. */
   check(
-    'horizon presets ascend and reach five years',
+    'FD-term presets cover the published PoC range',
     M.HORIZON_PRESETS.map((preset) => preset.months),
-    [6, 12, 24, 36, 60],
+    [1, 3, 6, 9, 12, 18, 24, 36, 48, 60, 84, 120],
   );
   ok(
     'a horizon longer than every product still yields recommendations',
     M.recommendForGoal(CATALOGUE, goal({ goalType: 'retirement', horizonMonths: 60 }))
       .recommendations.length > 0,
   );
+
+  section('Demonstration JSON tenure catalogue');
+
+  check(
+    'the JSON catalogue is explicitly synthetic',
+    M.demoTenureCatalogue.dataSource,
+    'demonstration-synthetic',
+  );
+  check('and is never marked verified', M.demoTenureCatalogue.verified, false);
+  check(
+    'it covers every selectable planner term exactly once',
+    M.demoTenureCatalogue.products.map((product) => product.tenureBands[0].minMonths),
+    M.HORIZON_PRESETS.map((preset) => preset.months),
+  );
+  ok(
+    'each synthetic product is visibly named as demonstration data',
+    M.demoTenureProducts.every((product) => product.name.startsWith('Demonstration Fixed Deposit')),
+  );
+  for (const product of M.demoTenureCatalogue.products) {
+    const [band] = product.tenureBands;
+    const matchingSummary = M.demoTenureProducts.find(
+      (summary) => summary.id === product.productId,
+    );
+    check(
+      `${product.productId} preserves its JSON tenure`,
+      matchingSummary?.tenureMonths,
+      band.minMonths,
+    );
+    check(
+      `${product.productId} preserves its JSON rate`,
+      matchingSummary?.interestRate,
+      band.annualRate,
+    );
+  }
+  let duplicateCatalogueRejected = false;
+  try {
+    M.validateDemoTenureCatalogue({
+      ...M.demoTenureCatalogue,
+      products: [...M.demoTenureCatalogue.products, M.demoTenureCatalogue.products[0]],
+    });
+  } catch {
+    duplicateCatalogueRejected = true;
+  }
+  ok('duplicate JSON product ids fail validation', duplicateCatalogueRejected);
+  let invalidRangeRejected = false;
+  try {
+    M.validateDemoTenureCatalogue({
+      ...M.demoTenureCatalogue,
+      products: [
+        {
+          ...M.demoTenureCatalogue.products[0],
+          tenureBands: [{ minMonths: 12, maxMonths: 6, annualRate: 6, seniorAnnualRate: null }],
+        },
+      ],
+    });
+  } catch {
+    invalidRangeRejected = true;
+  }
+  ok('an invalid JSON tenure range fails validation', invalidRangeRejected);
   ok(
     'and every one of them warns that it matures first',
     M.recommendForGoal(
@@ -6557,58 +6670,143 @@ export async function runBookingJourneySuite(M) {
   ok('the basis names the percentage', M.EMERGENCY_FUND_BASIS.includes('10%'));
   ok('so does the explanation', M.EMERGENCY_FUND_EXPLANATION.includes('10%'));
   ok(
-    'and the explanation says the money stays reachable',
-    /short-term|within reach/i.test(M.EMERGENCY_FUND_EXPLANATION),
+    'and the explanation says the reference is not deducted',
+    /not deducted/i.test(M.EMERGENCY_FUND_EXPLANATION),
   );
 
-  section('Planner · the money the customer entered is accounted for (P0.3)');
+  section('Planner · emergency available investment remains FD principal (P0)');
 
-  /**
-   * ⚠ **The defect this covers.** A customer choosing the emergency-fund goal
-   * and entering ₹1,00,000 was shown a ₹10,000 recommendation. The arithmetic
-   * was right — the deposit is a share of the total, by policy — but the total
-   * was discarded the moment the Amount step submitted, so no screen after it
-   * could say where the other ₹90,000 had gone.
-   *
-   * The three figures must always reconcile exactly. Asserted here rather than
-   * left to the components, because "entered = invested + remainder" is an
-   * arithmetic guarantee about somebody's savings, and a component test would
-   * only prove that today's markup happens to render it.
-   */
-  for (const total of [10_000, 25_000, 50_000, 100_000, 500_000, 1_000_000]) {
-    const invested = M.calculateEmergencyFundAmount(total);
-    const remainder = total - invested;
+  const emergencyInput = {
+    goalType: 'emergency',
+    principal: 100_000,
+    horizonMonths: 12,
+    selectedTenureMonths: 12,
+    isSeniorCitizen: true,
+    targetAmount: 130_000,
+  };
+  const emergencyProducts = M.parseProductMasters(M.productSummaries);
+  const emergencyResults = M.recommendForGoal(emergencyProducts, emergencyInput);
 
-    check(`${String(total)}: entered = invested + remainder`, invested + remainder, total);
-    ok(`${String(total)}: the deposit is the smaller figure`, invested < total);
-    ok(`${String(total)}: nothing is unaccounted for`, remainder > 0);
-    ok(
-      `${String(total)}: both figures are whole rupees`,
-      Number.isInteger(invested) && Number.isInteger(remainder),
+  check(
+    '₹1,00,000 remains the FD principal',
+    emergencyResults.recommendations[0].principal,
+    100_000,
+  );
+  check(
+    'its separate 10% planning reference is ₹10,000',
+    M.calculateEmergencyFundAmount(100_000),
+    10_000,
+  );
+  check(
+    'the customer target remains independent',
+    emergencyResults.recommendations[0].target.targetAmount,
+    130_000,
+  );
+  ok(
+    'a target shortfall keeps the eligible FD',
+    emergencyResults.recommendations.length > 0 &&
+      emergencyResults.recommendations[0].target.achieved === false,
+  );
+  ok(
+    'the customer copy says the reference is not deducted',
+    /not deducted/i.test(M.EMERGENCY_FUND_EXPLANATION),
+  );
+  ok(
+    'and it does not call the reference a return',
+    /not.*return/i.test(M.EMERGENCY_FUND_EXPLANATION),
+  );
+
+  section('Planner · Emergency Fund suggested target (P0)');
+
+  for (const [investment, expectedTarget] of [
+    [10_000, 11_000],
+    [50_000, 55_000],
+    [100_000, 110_000],
+    [500_000, 550_000],
+    [1_000_000, 1_100_000],
+  ]) {
+    check(
+      `${String(investment)} receives the 110% suggested target`,
+      M.calculateEmergencyFundTarget(investment),
+      expectedTarget,
     );
   }
+  check('an unusable investment has no suggested target', M.calculateEmergencyFundTarget(0), 0);
 
-  /*
-    The documented example, exactly. ₹1,00,000 in, ₹10,000 into the deposit,
-    ₹90,000 left over — the figures a reviewer will check first.
-  */
-  check('₹1,00,000 puts ₹10,000 into the deposit', M.calculateEmergencyFundAmount(100_000), 10_000);
+  section('Verified partner catalogue · bank × selected tenure matrix');
+
+  const verifiedProducts = M.parseProductMasters(M.verifiedPartnerFdProducts);
+  const verifiedBanks = ['sbi', 'au-small-finance', 'dbs'];
+  const supportedTenures = [3, 6, 9, 12, 18, 24, 36, 48, 60];
+  const expectedRates = {
+    sbi: [4.9, 5.65, 5.9, 6.25, 6.25, 6.45, 6.3, 6.3, 6.05],
+    'au-small-finance': [4.75, 5.25, 6.35, 6.35, 7, 7, 7.4, 6.75, 6.75],
+    dbs: [4.25, 5.8, 6, 6.3, 6.5, 6.4, 6.4, 6.4, 6.25],
+  };
+
+  for (const [bankId, rates] of Object.entries(expectedRates)) {
+    for (const [index, tenureMonths] of supportedTenures.entries()) {
+      const matches = verifiedProducts.filter(
+        (product) => product.bank.id === bankId && product.terms.tenureMonths === tenureMonths,
+      );
+      check(
+        `${bankId} has one verified ${String(tenureMonths)}-month comparison term`,
+        matches.length,
+        1,
+      );
+      check(
+        `${bankId} ${String(tenureMonths)} months uses its own verified rate`,
+        matches[0]?.terms.baseRate,
+        rates[index],
+      );
+    }
+  }
+
+  for (const goalType of ['emergency', 'education', 'retirement']) {
+    for (const tenureMonths of supportedTenures) {
+      const matrix = M.recommendForGoal(verifiedProducts, {
+        goalType,
+        principal: 500_000,
+        horizonMonths: tenureMonths,
+        selectedTenureMonths: tenureMonths,
+        isSeniorCitizen: false,
+      });
+      check(
+        `${goalType} ${String(tenureMonths)} months compares the three eligible banks`,
+        matrix.recommendations.map((recommendation) => recommendation.product.bank.id).sort(),
+        [...verifiedBanks].sort(),
+      );
+      ok(
+        `${goalType} ${String(tenureMonths)} months has internally consistent maturity figures`,
+        matrix.recommendations.every(
+          (recommendation) =>
+            recommendation.maturity !== null &&
+            recommendation.maturity.interestEarned ===
+              recommendation.maturity.maturityValue - recommendation.principal,
+        ),
+      );
+    }
+  }
+
+  section('Planner · currency input preserves editable digits (P0)');
+
   check(
-    'and leaves ₹90,000 outside this plan',
-    100_000 - M.calculateEmergencyFundAmount(100_000),
-    90_000,
+    'middle-digit correction keeps the exact target digits',
+    M.normaliseCurrencyDigits('130000'),
+    '130000',
   );
-
-  /*
-    **Only the emergency fund splits.** Every other goal invests what was typed,
-    and a second figure appearing under one of them would be the planner
-    inventing a reserve nobody asked for.
-  */
-  ok(
-    'the split applies to one goal, and the module says which',
-    /emergency/i.test(M.EMERGENCY_FUND_EXPLANATION) ||
-      /total investment/i.test(M.EMERGENCY_FUND_BASIS),
+  check(
+    'replacement digits are not locale-formatted while editing',
+    M.normaliseCurrencyDigits('125000'),
+    '125000',
   );
+  check(
+    'a pasted formatted amount normalises once',
+    M.normaliseCurrencyDigits('₹1,30,000'),
+    '130000',
+  );
+  check('clearing remains a real empty input', M.normaliseCurrencyDigits(''), '');
+  check('numeric keyboard input remains digits', M.normaliseCurrencyDigits('90000'), '90000');
 
   section('Portfolio · a holding is ownership, not intent');
 

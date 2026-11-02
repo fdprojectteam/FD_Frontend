@@ -8,7 +8,6 @@ import { formatCurrency, formatTenure } from '@/utils';
 import { GOAL_LABELS } from '../constants/goals';
 import { GOAL_ICONS } from '../constants/presentation';
 import type { PlannerAnswers, PlannerStage } from '../hooks/use-planner-flow';
-import { EMERGENCY_FUND_BASIS } from '../utils/emergency-allocation';
 
 /**
  * The answers so far, as a trail rather than a discarded form.
@@ -52,16 +51,7 @@ export function PlannerTrail({ answers, stage, onEdit }: PlannerTrailProps) {
       value: answers.isSeniorCitizen ? 'Senior citizen' : 'Standard rates',
     });
   }
-  /*
-    ⚠ The amount row used to show the invested figure alone. For the emergency
-    fund that is a share of what the customer typed, so the trail said "Amount
-    ₹10,000" to someone who had just entered ₹1,00,000 — the number changed
-    between one screen and the next with nothing on the page to account for it.
-
-    Both figures now appear, and the note names the rule that relates them. The
-    row still leads with the amount that is being invested, because that is what
-    the rest of the plan is about.
-  */
+  /* An explicit smaller allocation keeps both customer-entered figures visible. */
   if (answers.principal !== undefined && stage !== 'amount') {
     const total = answers.totalAmount;
     const isShare = total !== undefined && total > answers.principal;
@@ -71,7 +61,7 @@ export function PlannerTrail({ answers, stage, onEdit }: PlannerTrailProps) {
       label: isShare ? 'Investing' : 'Amount',
       value: formatCurrency(answers.principal),
       note: isShare
-        ? `${EMERGENCY_FUND_BASIS}. You entered ${formatCurrency(total)}; the remaining ${formatCurrency(total - answers.principal)} is not part of this plan.`
+        ? `You chose to invest ${formatCurrency(answers.principal)} from ${formatCurrency(total)} available. ${formatCurrency(total - answers.principal)} is outside this plan.`
         : undefined,
     });
   }

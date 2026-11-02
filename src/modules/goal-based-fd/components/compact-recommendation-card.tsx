@@ -55,6 +55,11 @@ export function CompactRecommendationCard({ recommendation }: { recommendation: 
           <dd className="text-body text-content font-medium">
             {formatTenure(product.terms.tenureMonths)}
           </dd>
+          {product.rateSource ? (
+            <span className="text-caption text-content-muted">
+              {product.rateSource.tenureLabel}
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-col">
           <dt className="text-caption text-content-muted">Estimated maturity</dt>

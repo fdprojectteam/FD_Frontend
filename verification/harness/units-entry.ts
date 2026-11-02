@@ -161,6 +161,7 @@ export {
   toBookingHandoff,
   TARGET_ADJUSTMENTS,
 } from '@/modules/goal-based-fd';
+export { normaliseCurrencyDigits } from '@/modules/goal-based-fd/utils/currency-input';
 /* Tenure model (UC2) — exact conversions only, day terms never rounded. */
 export {
   days,
@@ -171,7 +172,11 @@ export {
   toWholeMonths,
   years,
 } from '@/utils/finance';
-export { UC2_DAY_BASED_PRODUCT, productSummaries } from '@/mocks/data/products';
+export { UC2_DAY_BASED_PRODUCT, demoTenureProducts, productSummaries } from '@/mocks/data/products';
+export {
+  demoTenureCatalogue,
+  validateDemoTenureCatalogue,
+} from '@/mocks/data/demo-tenure-catalogue';
 export { formatProductTenure } from '@/modules/marketplace/utils';
 /* Booking resolution for any catalogue product (documented UC1/UC2/UC3 deposits). */
 export {
@@ -327,7 +332,9 @@ export {
   EMERGENCY_FUND_EXPLANATION,
   EMERGENCY_FUND_PERCENT,
   calculateEmergencyFundAmount,
+  calculateEmergencyFundTarget,
 } from '@/modules/goal-based-fd/utils/emergency-allocation';
+export { verifiedPartnerFdProducts } from '@/mocks/data/partner-fd-catalogue';
 
 /* ---- Portfolio: ownership, not intent ---- */
 export { portfolioAttention, summarisePortfolio, toHoldingView } from '@/utils/portfolio';

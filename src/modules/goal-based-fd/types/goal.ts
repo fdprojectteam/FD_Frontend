@@ -36,6 +36,19 @@ export interface GoalInput {
    */
   horizonMonths: number;
   /**
+   * The FD term the customer explicitly chose, in whole months.
+   *
+   * This is deliberately separate from `horizonMonths`. A horizon expresses
+   * when money may be needed; a selected term is an instruction to price and
+   * recommend that term. Emergency-fund guidance may inform the choice, but it
+   * must never replace an explicit selection with a shorter deposit.
+   *
+   * Optional so existing non-interactive callers can still ask the engine for
+   * ranked alternatives. The planner always supplies it once the customer has
+   * chosen a term.
+   */
+  selectedTenureMonths?: number;
+  /**
    * The customer's horizon **in the unit they stated it**.
    *
    * Optional and additive. When absent the horizon is `horizonMonths` months,

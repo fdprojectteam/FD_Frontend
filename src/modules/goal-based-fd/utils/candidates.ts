@@ -60,9 +60,20 @@ export function selectCandidates(
 ): PricedCandidate[] {
   const candidates: PricedCandidate[] = [];
 
+  /*
+    A verified partner catalogue is authoritative where it exists. The older
+    demonstration fixtures remain useful to exercise Marketplace UI, but must
+    never outrank or duplicate a bank's verified rate in advice.
+   */
+  const verifiedProducts = products.filter((product) => product.dataStatus === 'verified-live');
+  const catalogue =
+    goal.selectedTenureMonths !== undefined && verifiedProducts.length > 0
+      ? verifiedProducts
+      : products;
+
   const horizon = goalHorizon(goal);
 
-  for (const product of products) {
+  for (const product of catalogue) {
     if (goal.principal < product.minInvestment) continue;
 
     /*
@@ -71,7 +82,22 @@ export function selectCandidates(
       deposit from a 91-day goal — in both directions, and without either term
       being converted into the other's unit.
     */
-    if (!compareTenure(publishedTenure(product.terms), horizon).comparable) continue;
+    const tenureFit = compareTenure(publishedTenure(product.terms), horizon);
+    if (!tenureFit.comparable) continue;
+
+    /*
+      A selected FD term is an instruction, not a ranking preference. Without
+      this gate the emergency-goal comparator could put a six-month product
+      ahead of a customer's explicit 24-month selection. We retain the normal
+      horizon-only ranking for programmatic callers that did not receive an
+      explicit selection.
+    */
+    if (
+      goal.selectedTenureMonths !== undefined &&
+      product.terms.tenureMonths !== goal.selectedTenureMonths
+    ) {
+      continue;
+    }
 
     const quote = resolveProductRate(product.terms, {
       tenureMonths: product.terms.tenureMonths,

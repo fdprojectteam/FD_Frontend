@@ -143,8 +143,8 @@ export const BOOKING_OVERVIEW_FIXTURE: BookingOverview = {
     },
   ],
   importantInformation: [
-    'Interest rates and terms are provided by the partner bank and are subject to change.',
-    'Please review the latest rates on the bank’s website before investing.',
+    'The interest rate and terms shown here are the latest information available for this FD through our platform. Rates and terms may change based on updates from the partner bank.',
+    'We’ll clearly present the applicable rate, tenure, maturity amount, and key terms before you confirm your investment.',
   ],
   /**
    * The Investment Details screen's four notes, **transcribed verbatim from the

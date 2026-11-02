@@ -32,6 +32,7 @@ export interface DepositReturnsInput {
   /** Already resolved for the term — this function never picks a rate. */
   annualRate: number;
   tenureMonths: number;
+  compoundingFrequency?: 'monthly' | 'quarterly' | 'annual';
   /** True when interest is retained and compounds ("at maturity"). */
   isCumulative: boolean;
 }
@@ -52,10 +53,12 @@ export function calculateDepositReturns({
   principal,
   annualRate,
   tenureMonths,
+  compoundingFrequency,
   isCumulative,
 }: DepositReturnsInput): DepositReturns {
   const totalInterest = isCumulative
-    ? calculateMaturity({ principal, annualRate, tenureMonths }).interestEarned
+    ? calculateMaturity({ principal, annualRate, tenureMonths, compoundingFrequency })
+        .interestEarned
     : calculateSimpleInterest({ principal, annualRate, tenureMonths });
 
   return {

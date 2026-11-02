@@ -911,8 +911,16 @@ export async function runInvariantSuite() {
     /navigator\.serviceWorker\?\.controller != null/.test(mswProvider),
   );
   ok(
-    'the restart is not a reload, a timer, or a duplicate request',
-    !/location\.reload|setTimeout|setInterval/.test(mswProvider),
+    'the recovery is not a reload, polling loop, or duplicate request',
+    !/location\.reload|setInterval/.test(mswProvider),
+  );
+  ok(
+    'the gate waits for a controlling client after MSW starts',
+    /await startMockWorker\(\);\s*await waitForWorkerControl\(\);/.test(mswProvider),
+  );
+  ok(
+    'a missing controller fails loudly instead of leaking an API request',
+    /MSW registered but did not control this page/.test(mswProvider),
   );
   ok(
     'idempotency survives Fast Refresh via a global symbol',
@@ -5355,18 +5363,19 @@ export async function runInvariantSuite() {
     stands — the component tracks an explicit "edited" state rather than
     re-applying the suggestion on every render.
   */
-  const amountStep = sources.get('src/modules/goal-based-fd/components/amount-step.tsx');
+  const emergencyPlannerFlow = sources.get('src/modules/goal-based-fd/hooks/use-planner-flow.ts');
+  const targetStep = sources.get('src/modules/goal-based-fd/components/target-step.tsx');
   ok(
-    'the amount step reads the shared policy',
-    /calculateEmergencyFundAmount/.test(amountStep ?? ''),
+    'the flow reads the shared target policy',
+    /calculateEmergencyFundTarget/.test(emergencyPlannerFlow ?? ''),
   );
   ok(
-    'and never overwrites an edited value',
-    /editedAllocation \?\? \(suggestedAllocation/.test(amountStep ?? ''),
+    'and never overwrites a manually edited target',
+    /targetSource !== 'manual'/.test(emergencyPlannerFlow ?? ''),
   );
   ok(
-    'the suggestion is presented as editable, not imposed',
-    /You can change this amount/.test(amountStep ?? ''),
+    'the target suggestion can be reset without being imposed',
+    /Reset to suggested target/.test(targetStep ?? ''),
   );
 
   /* ---- FD Application Orchestrator ---- */
