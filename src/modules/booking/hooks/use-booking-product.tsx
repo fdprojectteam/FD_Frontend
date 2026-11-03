@@ -2,11 +2,18 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ROUTES } from '@/constants/routes';
+import {
+  BOOKING_SELECTION_PARAM,
+  parseBookingTermsSnapshot,
+  type BookingTermsSnapshot,
+} from '@/types/booking-selection';
+import { formatRate } from '@/utils';
 
 import { createBookingOverviewService } from '../services/booking-overview-service';
 import type { BookingOverview } from '../types/booking';
@@ -79,10 +86,21 @@ export interface BookingProductProviderProps {
  */
 export function BookingProductProvider({ productId, children }: BookingProductProviderProps) {
   const service = useMemo(() => createBookingOverviewService(), []);
+  const searchParams = useSearchParams();
+  const initialSelection = useRef<BookingTermsSnapshot | null | undefined>(undefined);
+  const hasMalformedSelection = useRef(false);
+  if (initialSelection.current === undefined) {
+    const values = searchParams.getAll(BOOKING_SELECTION_PARAM);
+    const parsed = parseBookingTermsSnapshot(values.length === 1 ? values[0] : null);
+    hasMalformedSelection.current = values.length > 0 && parsed === null;
+    initialSelection.current = parsed;
+  }
+  const selection = initialSelection.current ?? null;
+  const [acceptedUpdatedRate, setAcceptedUpdatedRate] = useState(false);
 
   const { data, isPending, isError, refetch } = useQuery({
-    queryKey: ['booking', 'overview', productId],
-    queryFn: () => service.findByProductId(productId),
+    queryKey: ['booking', 'overview', productId, selection],
+    queryFn: () => service.findByProductId(productId, selection ?? undefined),
   });
 
   if (isPending) return <BookingProductSkeleton />;
@@ -92,7 +110,90 @@ export function BookingProductProvider({ productId, children }: BookingProductPr
 
   if (!data) return <BookingProductUnavailable onRetry={() => void refetch()} />;
 
+  if (hasMalformedSelection.current) {
+    return <BookingTermsUnavailable message="The selected FD terms could not be verified." />;
+  }
+
+  const selectionProblem = selection === null ? null : selectionConsistencyProblem(selection, data);
+  if (selectionProblem !== null) return <BookingTermsUnavailable message={selectionProblem} />;
+
+  if (
+    selection !== null &&
+    selection.annualRate !== data.deposit.terms.interestRate &&
+    !acceptedUpdatedRate
+  ) {
+    return (
+      <UpdatedRateReview
+        previousRate={selection.annualRate}
+        currentRate={data.deposit.terms.interestRate}
+        onAccept={() => setAcceptedUpdatedRate(true)}
+      />
+    );
+  }
+
   return <BookingProductContext.Provider value={data}>{children}</BookingProductContext.Provider>;
+}
+
+function selectionConsistencyProblem(
+  selection: BookingTermsSnapshot,
+  overview: BookingOverview,
+): string | null {
+  const { deposit } = overview;
+  if (selection.productId !== deposit.productId || selection.bankId !== deposit.bank.id) {
+    return 'The selected bank product no longer matches the product that Booking resolved.';
+  }
+  if (selection.tenureMonths !== deposit.terms.tenureMonths) {
+    return 'The selected FD term is no longer available for this product.';
+  }
+  if (
+    selection.payout !== deposit.payout ||
+    selection.interestType !== deposit.interestType ||
+    selection.compoundingFrequency !== (deposit.compoundingFrequency ?? null)
+  ) {
+    return 'The selected FD payout or compounding terms have changed.';
+  }
+  return null;
+}
+
+function BookingTermsUnavailable({ message }: { message: string }) {
+  return (
+    <div className="container-page flex flex-col items-start gap-5 py-24" role="alert">
+      <h1 className="text-h2 text-content">This FD&apos;s terms have changed</h1>
+      <p className="text-body text-content-muted max-w-prose">{message}</p>
+      <Button asChild>
+        <Link href={ROUTES.home}>Browse current FDs</Link>
+      </Button>
+    </div>
+  );
+}
+
+function UpdatedRateReview({
+  previousRate,
+  currentRate,
+  onAccept,
+}: {
+  previousRate: number;
+  currentRate: number;
+  onAccept: () => void;
+}) {
+  return (
+    <div className="container-page flex flex-col items-start gap-5 py-24" role="alert">
+      <h1 className="text-h2 text-content">The FD rate has changed</h1>
+      <p className="text-body text-content-muted max-w-prose">
+        The bank&apos;s current rate is different from the rate shown in your recommendation. Review
+        the updated rate before continuing; all booking figures will use the current rate.
+      </p>
+      <dl className="border-border-default rounded-card grid w-full max-w-md grid-cols-2 gap-3 border p-5">
+        <dt className="text-body text-content-muted">Recommended rate</dt>
+        <dd className="text-body text-content font-semibold">{formatRate(previousRate)} p.a.</dd>
+        <dt className="text-body text-content-muted">Current rate</dt>
+        <dd className="text-body text-content font-semibold">{formatRate(currentRate)} p.a.</dd>
+      </dl>
+      <Button type="button" onClick={onAccept}>
+        Review updated terms and continue
+      </Button>
+    </div>
+  );
 }
 
 function BookingLookupError({ onRetry }: { onRetry: () => void }) {

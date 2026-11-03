@@ -47,6 +47,8 @@ export interface Recommendation {
   tenureMonths: number;
   /** What the deposit earns, from `resolveProductRate`. Never a stored or headline figure. */
   quote: RateQuote;
+  /** The category used by the rate resolver; Booking must preserve it. */
+  isSeniorCitizen: boolean;
   /**
    * Expected maturity, from the platform engine — or **`null` when it cannot be
    * produced**.

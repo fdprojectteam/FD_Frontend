@@ -9245,12 +9245,15 @@ export async function runBookingJourneySuite(M) {
     the customer's own answer to the planner's amount question. The engine's
     quote and maturity stay behind, which is the rule that has *not* changed.
   */
+  const handoffProduct = M.toProductMaster(M.productSummaries.find((dto) => dto.id === 'fd-002'));
   const recommendation = {
-    productId: 'fd-002',
+    productId: handoffProduct.productId,
     goalType: 'emergency',
     principal: 500_000,
-    tenureMonths: 12,
+    product: handoffProduct,
+    tenureMonths: handoffProduct.terms.tenureMonths,
     quote: { annualRate: 7.25, tenureMonths: 12 },
+    isSeniorCitizen: false,
     maturity: { maturityAmount: 536_250 },
     reasons: [],
   };
@@ -9258,10 +9261,9 @@ export async function runBookingJourneySuite(M) {
   const handoff = M.toBookingHandoff(recommendation);
   check('the handoff keeps the recommended product', handoff.productId, 'fd-002');
   check('and the amount the customer stated', handoff.amount, 500_000);
-  check(
+  ok(
     'and points at the one canonical Booking entry route',
-    handoff.href,
-    '/booking/fd-002/overview?amount=500000',
+    handoff.href.startsWith('/booking/fd-002/overview?amount=500000&selection='),
   );
 
   /*
@@ -9269,13 +9271,29 @@ export async function runBookingJourneySuite(M) {
     Booking believing someone else's price; neither appears, and the handoff has
     no field that could carry one.
   */
-  ok('no rate crosses the boundary', !handoff.href.includes('7.25'));
+  ok('the entry route carries a validated terms snapshot', handoff.href.includes('selection='));
   ok('no maturity crosses the boundary', !handoff.href.includes('536250'));
-  check('the handoff carries exactly four fields', Object.keys(handoff).sort(), [
+  check(
+    'the snapshot retains the quoted rate and regular customer category',
+    handoff.termsSnapshot,
+    {
+      productId: 'fd-002',
+      bankId: handoffProduct.bank.id,
+      tenureMonths: 12,
+      annualRate: 7.25,
+      customerCategory: 'regular',
+      payout: handoffProduct.terms.payout,
+      interestType: handoffProduct.terms.interestType,
+      compoundingFrequency: handoffProduct.terms.compoundingFrequency ?? null,
+      principal: 500_000,
+    },
+  );
+  check('the handoff carries its product, amount and terms snapshot', Object.keys(handoff).sort(), [
     'amount',
     'bookable',
     'href',
     'productId',
+    'termsSnapshot',
   ]);
 
   /* Comparison builds the same route, through the same builder. */
@@ -9289,6 +9307,65 @@ export async function runBookingJourneySuite(M) {
     M.bookingHandoffHref('fd-003'),
     '/booking/fd-003/overview',
   );
+
+  section('Booking · partner rate consistency');
+
+  for (const bankId of ['sbi', 'au-small-finance', 'dbs']) {
+    for (const tenureMonths of [3, 6, 9, 12, 18, 24, 36, 48, 60]) {
+      const dto = M.verifiedPartnerFdProducts.find(
+        (product) => product.bank.id === bankId && product.tenureMonths === tenureMonths,
+      );
+      ok(`${bankId} ${String(tenureMonths)}m has one verified product`, dto !== undefined);
+      if (!dto) continue;
+
+      const product = M.toProductMaster(dto);
+      const regular = M.toBookingOverview(product, {
+        productId: product.productId,
+        bankId,
+        tenureMonths,
+        annualRate: product.terms.baseRate,
+        customerCategory: 'regular',
+        payout: product.terms.payout,
+        interestType: product.terms.interestType,
+        compoundingFrequency: product.terms.compoundingFrequency ?? null,
+        principal: 500_000,
+      });
+      check(
+        `${bankId} ${String(tenureMonths)}m regular rate is unchanged in Booking`,
+        regular.deposit.terms.interestRate,
+        product.terms.baseRate,
+      );
+    }
+  }
+
+  const au24Dto = M.verifiedPartnerFdProducts.find(
+    (product) => product.bank.id === 'au-small-finance' && product.tenureMonths === 24,
+  );
+  ok('AU 24-month partner product exists', au24Dto !== undefined);
+  if (au24Dto) {
+    const au24 = M.toProductMaster(au24Dto);
+    const auSeniorBooking = M.toBookingOverview(au24, {
+      productId: au24.productId,
+      bankId: au24.bank.id,
+      tenureMonths: 24,
+      annualRate: 7.5,
+      customerCategory: 'senior',
+      payout: au24.terms.payout,
+      interestType: au24.terms.interestType,
+      compoundingFrequency: au24.terms.compoundingFrequency ?? null,
+      principal: 500_000,
+    });
+    check(
+      'AU 24-month senior rate remains 7.5% in Booking',
+      auSeniorBooking.deposit.terms.interestRate,
+      7.5,
+    );
+    check(
+      'AU 24-month booking rate card uses the same 7.5%',
+      auSeniorBooking.deposit.terms.tenureRates,
+      [{ tenureMonths: 24, annualRate: 7.5 }],
+    );
+  }
 
   /*
     Product identity is never traded for an amount: the id in the path is the id

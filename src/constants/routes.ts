@@ -1,5 +1,11 @@
 import type { Route } from 'next';
 
+import {
+  BOOKING_SELECTION_PARAM,
+  serialiseBookingTermsSnapshot,
+  type BookingTermsSnapshot,
+} from '@/types/booking-selection';
+
 /**
  * Typed route builders — the single source for <Link> targets and
  * router navigation (Document 04 §13, deep linking).
@@ -49,13 +55,17 @@ export const ROUTES = {
    * it against the product like any other amount. An absent or unusable value
    * changes nothing — see that module for why no fallback exists.
    *
-   * **No rate, maturity or tenure may ever be added here.** Those are figures
-   * Booking resolves for itself; an amount is the customer's own input. The
-   * distinction is the whole reason this parameter is safe and those would not
-   * be, and an invariant holds the query key list at exactly one.
+   * `selection` is a comparison snapshot of the terms the customer saw. It is
+   * not a booking price: Booking resolves the product again, compares the
+   * snapshot, and requires review when the bank's rate changed.
    */
-  bookingOverview: (productId: string, amount?: number) => {
-    const query = amount === undefined ? '' : `?amount=${String(amount)}`;
+  bookingOverview: (productId: string, amount?: number, selection?: BookingTermsSnapshot) => {
+    const params = new URLSearchParams();
+    if (amount !== undefined) params.set('amount', String(amount));
+    if (selection !== undefined) {
+      params.set(BOOKING_SELECTION_PARAM, serialiseBookingTermsSnapshot(selection));
+    }
+    const query = params.size === 0 ? '' : `?${params.toString()}`;
     return `/booking/${productId}/overview${query}` as Route;
   },
   /**

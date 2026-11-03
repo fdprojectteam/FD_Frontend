@@ -2,8 +2,9 @@ import {
   createProductMasterRepository,
   type ProductMasterRepository,
 } from '@/services/product-master';
+import type { BookingTermsSnapshot } from '@/types/booking-selection';
 import type { ProductMaster } from '@/types/product-master';
-import { publishedTenure, toWholeMonths } from '@/utils/finance';
+import { publishedTenure, resolveProductRate, toWholeMonths } from '@/utils/finance';
 
 import { BOOKING_OVERVIEW_FIXTURE } from '../fixtures/booking-overview';
 import type { BookingOverview, DemoTermId, SelectedDeposit } from '../types/booking';
@@ -95,9 +96,22 @@ const DEMO_DEPOSIT = BOOKING_OVERVIEW_FIXTURE.deposit;
  * Exported for verification: the mapping is assertable without a repository,
  * a network call or a React tree.
  */
-export function toBookingOverview(product: ProductMaster): BookingOverview {
+export function toBookingOverview(
+  product: ProductMaster,
+  selection?: BookingTermsSnapshot,
+): BookingOverview {
   const { terms } = product;
   const tenureMonths = terms.tenureMonths;
+  const currentQuote = resolveProductRate(terms, {
+    tenureMonths,
+    tenure: publishedTenure(terms),
+    amount: selection?.principal,
+    isSeniorCitizen: selection?.customerCategory === 'senior',
+  });
+
+  if (currentQuote === null) {
+    throw new Error(`Booking cannot resolve current terms for ${product.productId}.`);
+  }
 
   /*
     The rate card carries exactly one entry — the term this product publishes —
@@ -107,7 +121,9 @@ export function toBookingOverview(product: ProductMaster): BookingOverview {
   */
   const monthEquivalent = toWholeMonths(publishedTenure(terms));
   const tenureRates =
-    monthEquivalent === null ? [] : [{ tenureMonths: monthEquivalent, annualRate: terms.baseRate }];
+    monthEquivalent === null
+      ? []
+      : [{ tenureMonths: monthEquivalent, annualRate: currentQuote.annualRate }];
 
   const deposit: SelectedDeposit = {
     productId: product.productId,
@@ -118,8 +134,13 @@ export function toBookingOverview(product: ProductMaster): BookingOverview {
     isPreferredPartner: false,
     about: `${product.bank.name} Fixed Deposit. Rate, tenure and terms are confirmed with the bank before your booking is placed.`,
     highlights: DEMO_DEPOSIT.highlights,
+    interestType: terms.interestType,
+    ...(terms.compoundingFrequency === undefined
+      ? {}
+      : { compoundingFrequency: terms.compoundingFrequency }),
+    payout: terms.payout,
     terms: {
-      interestRate: terms.baseRate,
+      interestRate: currentQuote.annualRate,
       tenureMonths,
       minInvestment: product.minInvestment,
       /* Demo defaults — the catalogue publishes none of the following. */
@@ -147,20 +168,26 @@ export function toBookingOverview(product: ProductMaster): BookingOverview {
 
 export interface BookingOverviewService {
   /** The deposit for this id, or `null` when no such product exists. */
-  findByProductId(productId: string): Promise<BookingOverview | null>;
+  findByProductId(
+    productId: string,
+    selection?: BookingTermsSnapshot,
+  ): Promise<BookingOverview | null>;
 }
 
 export function createBookingOverviewService(
   repository: ProductMasterRepository = createProductMasterRepository(),
 ): BookingOverviewService {
   return {
-    async findByProductId(productId: string): Promise<BookingOverview | null> {
+    async findByProductId(
+      productId: string,
+      selection?: BookingTermsSnapshot,
+    ): Promise<BookingOverview | null> {
       /*
         The curated deposit first: `fd-002` is the approved artwork's product and
         carries real partner copy that derivation cannot reproduce.
       */
       const curated = resolveBookingOverview(productId);
-      if (curated) return curated;
+      if (curated && selection === undefined) return curated;
 
       const product = await repository.findById(productId);
 
@@ -168,7 +195,7 @@ export function createBookingOverviewService(
         Fails closed, exactly as before. An unknown id returns `null` and the
         route takes its not-found boundary — no substitute deposit, ever.
       */
-      return product === null ? null : toBookingOverview(product);
+      return product === null ? null : toBookingOverview(product, selection);
     },
   };
 }

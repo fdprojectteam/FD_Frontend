@@ -304,7 +304,7 @@ export async function runJourneySuite() {
       'the second question asks the investor type',
       /Are you investing as a senior citizen\?/.test(norm($('legend')?.textContent)),
     );
-    click(buttonStartingWith('No'));
+    click(buttonStartingWith('Yes'));
     await settle();
 
     ok('the answer is kept in the trail', /Standard rates/.test(norm(document.body.textContent)));
@@ -483,14 +483,31 @@ export async function runJourneySuite() {
       'and no handoff carries the target as its principal',
       handoffLinks.every((href) => !href.includes('amount=650000')),
     );
+    const bookingLinks = handoffLinks.filter((href) => href.startsWith('/booking/'));
     check(
       'every supported-bank card opens its matching booking flow',
-      handoffLinks.filter((href) => href.startsWith('/booking/')).sort(),
+      bookingLinks.map((href) => href.split('?')[0]).sort(),
       [
-        '/booking/verified-au-small-finance-024m/overview?amount=500000',
-        '/booking/verified-dbs-024m/overview?amount=500000',
-        '/booking/verified-sbi-024m/overview?amount=500000',
+        '/booking/verified-au-small-finance-024m/overview',
+        '/booking/verified-dbs-024m/overview',
+        '/booking/verified-sbi-024m/overview',
       ].sort(),
+    );
+    ok(
+      'each booking link carries the full selected terms snapshot',
+      bookingLinks.every((href) => new URL(href, 'http://localhost').searchParams.has('selection')),
+    );
+    const auSnapshot = JSON.parse(
+      new URL(
+        bookingLinks.find((href) => href.includes('verified-au-small-finance-024m')),
+        'http://localhost',
+      ).searchParams.get('selection'),
+    );
+    check('AU 24-month handoff preserves the senior rate', auSnapshot.annualRate, 7.5);
+    check(
+      'AU 24-month handoff preserves the senior category',
+      auSnapshot.customerCategory,
+      'senior',
     );
   }
 

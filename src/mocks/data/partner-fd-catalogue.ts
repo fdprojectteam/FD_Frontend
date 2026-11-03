@@ -14,15 +14,15 @@ import { banks } from './banks';
 const RATE_SOURCES = {
   sbi: {
     url: 'https://sbi.co.in/web/interest-rates/deposit-rates/retail-domestic-term-deposits',
-    effectiveFrom: '2025-07-15',
+    effectiveFrom: '2025-12-15',
   },
   au: {
     url: 'https://www.au.bank.in/interest-rates/fixed-deposit-interest-rates',
-    effectiveFrom: '2026-09-01',
+    effectiveFrom: '2026-06-10',
   },
   dbs: {
     url: 'https://www.dbs.com/in/treasures/common/interest-rates.page',
-    effectiveFrom: '2026-05-06',
+    effectiveFrom: '2026-09-30',
   },
 } as const;
 
@@ -40,7 +40,7 @@ const BANK_RATE_BANDS: Record<'sbi' | 'au-small-finance' | 'dbs', readonly BankR
     { months: 9, rate: 5.9, seniorRate: 6.4, tenureLabel: '211 days to less than 1 year' },
     { months: 12, rate: 6.25, seniorRate: 6.75, tenureLabel: '1 year to less than 2 years' },
     { months: 18, rate: 6.25, seniorRate: 6.75, tenureLabel: '1 year to less than 2 years' },
-    { months: 24, rate: 6.45, seniorRate: 6.95, tenureLabel: '2 years to less than 3 years' },
+    { months: 24, rate: 6.4, seniorRate: 6.9, tenureLabel: '2 years to less than 3 years' },
     { months: 36, rate: 6.3, seniorRate: 6.8, tenureLabel: '3 years to less than 5 years' },
     { months: 48, rate: 6.3, seniorRate: 6.8, tenureLabel: '3 years to less than 5 years' },
     { months: 60, rate: 6.05, seniorRate: 7.05, tenureLabel: '5 years and up to 10 years' },
@@ -63,14 +63,14 @@ const BANK_RATE_BANDS: Record<'sbi' | 'au-small-finance' | 'dbs', readonly BankR
   ],
   dbs: [
     { months: 3, rate: 4.25, tenureLabel: '91 days to 180 days' },
-    { months: 6, rate: 5.8, tenureLabel: '182 days to 189 days' },
-    { months: 9, rate: 6, tenureLabel: '270 days to less than 1 year' },
-    { months: 12, rate: 6.3, tenureLabel: '1 year to 375 days' },
-    { months: 18, rate: 6.5, tenureLabel: '601 days to less than 2 years' },
-    { months: 24, rate: 6.4, tenureLabel: '2 years to less than 2 years 6 months' },
-    { months: 36, rate: 6.4, tenureLabel: '3 years to less than 4 years' },
-    { months: 48, rate: 6.4, tenureLabel: '4 years to less than 5 years' },
-    { months: 60, rate: 6.25, tenureLabel: '5 years and above' },
+    { months: 6, rate: 5.8, seniorRate: 6.3, tenureLabel: '182 days to 189 days' },
+    { months: 9, rate: 6, seniorRate: 6.5, tenureLabel: '270 days to less than 1 year' },
+    { months: 12, rate: 6.25, seniorRate: 6.75, tenureLabel: '1 year to 375 days' },
+    { months: 18, rate: 6.5, seniorRate: 7, tenureLabel: '601 days to less than 2 years' },
+    { months: 24, rate: 6.5, seniorRate: 7, tenureLabel: '2 years to less than 2 years 6 months' },
+    { months: 36, rate: 6.5, seniorRate: 7, tenureLabel: '3 years to less than 4 years' },
+    { months: 48, rate: 6.5, seniorRate: 7, tenureLabel: '4 years to less than 5 years' },
+    { months: 60, rate: 6.25, seniorRate: 6.75, tenureLabel: '5 years and above' },
   ],
 };
 

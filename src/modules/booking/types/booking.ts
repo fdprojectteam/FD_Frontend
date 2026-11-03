@@ -1,4 +1,9 @@
 import type { Bank, TenureRate } from '@/types/finance';
+import type {
+  CompoundingFrequency,
+  ProductInterestType,
+  ProductPayoutType,
+} from '@/types/product-master';
 
 import type { PayoutOptionId } from './draft';
 
@@ -147,6 +152,10 @@ export interface SelectedDeposit {
   isPreferredPartner: boolean;
   about: string;
   highlights: DepositHighlight[];
+  /** Product-master terms retained for recommendation-to-booking checks. */
+  interestType: ProductInterestType;
+  compoundingFrequency?: CompoundingFrequency;
+  payout: ProductPayoutType;
   terms: DepositTerms;
   /**
    * Terms on this deposit that are demo placeholders, not published bank terms.

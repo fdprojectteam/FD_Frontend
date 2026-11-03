@@ -77,6 +77,9 @@ export const BOOKING_OVERVIEW_FIXTURE: BookingOverview = {
       { id: 'premature-withdrawal', label: 'Premature withdrawal, with terms' },
       { id: 'auto-renewal', label: 'Auto-renewal available' },
     ],
+    interestType: 'cumulative',
+    compoundingFrequency: 'quarterly',
+    payout: 'at-maturity',
     terms: {
       interestRate: 7.25,
       tenureMonths: 12,

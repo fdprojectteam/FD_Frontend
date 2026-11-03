@@ -3130,17 +3130,14 @@ export async function runInvariantSuite() {
     ['src/modules/goal-based-fd/utils/booking-handoff.ts'],
   );
   ok(
-    'BookingHandoff carries only an id, a destination and bookability',
-    /export interface BookingHandoff \{[\s\S]*?productId: string;[\s\S]*?href: Route;[\s\S]*?bookable: boolean;\s*\}/.test(
+    'BookingHandoff carries an id, customer amount, and a terms-comparison snapshot',
+    /export interface BookingHandoff \{[\s\S]*?productId: string;[\s\S]*?amount: number;[\s\S]*?termsSnapshot: BookingTermsSnapshot;[\s\S]*?href: Route;[\s\S]*?bookable: boolean;\s*\}/.test(
       handoffSource ?? '',
-    ) &&
-      !/rate|maturity|quote/i.test(
-        (handoffSource ?? '').split('export interface BookingHandoff')[1]?.split('}')[0] ?? '',
-      ),
+    ),
   );
   ok(
     'both destinations are built through ROUTES, never as inline strings',
-    /ROUTES\.bookingOverview\(productId, amount\)/.test(handoffSource ?? '') &&
+    /ROUTES\.bookingOverview\(productId, amount, termsSnapshot\)/.test(handoffSource ?? '') &&
       /ROUTES\.product\(productId\)/.test(handoffSource ?? '') &&
       !/['"`]\/booking\//.test(handoffSource ?? '') &&
       !/['"`]\/marketplace\//.test(handoffSource ?? ''),
@@ -3161,12 +3158,14 @@ export async function runInvariantSuite() {
     statement than "one": a third would fail here.
   */
   ok(
-    'and the handoff reads only the customer’s own two answers',
-    /const \{ productId, principal \} = recommendation;/.test(handoffSource ?? ''),
+    'and the handoff builds its snapshot only from the selected product and resolved quote',
+    /const \{ productId, principal, product, quote, isSeniorCitizen \} = recommendation;/.test(
+      handoffSource ?? '',
+    ),
   );
   ok(
-    'never a figure the engine computed',
-    !/recommendation\.(quote|maturity|reasons|target)/.test(handoffSource ?? ''),
+    'never forwards maturity, reasons or target figures as booking terms',
+    !/recommendation\.(maturity|reasons|target)/.test(handoffSource ?? ''),
   );
   /*
     And the amount is a *prefill* into the one canonical draft, not a second
@@ -3660,7 +3659,7 @@ export async function runInvariantSuite() {
   );
   ok(
     'the provider resolves from productId and holds it for the session',
-    /findByProductId\(productId\)/.test(bookingProvider ?? '') &&
+    /findByProductId\(productId, selection/.test(bookingProvider ?? '') &&
       /BookingProductContext\.Provider/.test(bookingProvider ?? ''),
   );
   ok(

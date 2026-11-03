@@ -288,6 +288,11 @@ export {
  * one place a fabricated amount could get in.
  */
 export { ENTRY_AMOUNT_PARAM, parseEntryAmount } from '@/modules/booking/utils/entry-amount';
+export {
+  BOOKING_SELECTION_PARAM,
+  parseBookingTermsSnapshot,
+  serialiseBookingTermsSnapshot,
+} from '@/types/booking-selection';
 
 /* ---- Investor identity & KYC readiness (doc 07 Stage 3, doc 11 Domain 1) ---- */
 /**

@@ -158,6 +158,7 @@ export function recommendForGoal(
       principal: goal.principal,
       tenureMonths: candidate.product.terms.tenureMonths,
       quote: candidate.quote,
+      isSeniorCitizen: goal.isSeniorCitizen === true,
       maturity,
       ...(target ? { target } : {}),
       reasons: buildReasons(candidate, goal, maturity, target),

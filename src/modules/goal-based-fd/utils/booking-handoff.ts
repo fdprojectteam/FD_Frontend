@@ -2,6 +2,7 @@ import type { Route } from 'next';
 
 import { isBookableProduct } from '@/constants/booking';
 import { ROUTES } from '@/constants/routes';
+import type { BookingTermsSnapshot } from '@/types/booking-selection';
 
 import type { Recommendation } from '../types/recommendation';
 
@@ -77,6 +78,8 @@ export interface BookingHandoff {
    * still refuses it if the product would.
    */
   amount: number;
+  /** The terms observed at recommendation, for Booking's freshness comparison. */
+  termsSnapshot: BookingTermsSnapshot;
   /** The destination, built through `ROUTES`. Never an inline string. */
   href: Route;
   /**
@@ -96,14 +99,18 @@ export interface BookingHandoff {
  * does the job, so no caller can hand this function a figure it might be tempted
  * to forward.
  */
-export function bookingHandoffHref(productId: string, amount?: number): Route {
+export function bookingHandoffHref(
+  productId: string,
+  amount?: number,
+  termsSnapshot?: BookingTermsSnapshot,
+): Route {
   /*
     The amount rides along only into Booking. The Marketplace product page has
     its own calculator with its own default, and seeding it from a plan would
     make the recommendation look like a decision the customer had made there.
   */
   return isBookableProduct(productId)
-    ? ROUTES.bookingOverview(productId, amount)
+    ? ROUTES.bookingOverview(productId, amount, termsSnapshot)
     : ROUTES.product(productId);
 }
 
@@ -121,14 +128,29 @@ export function toBookingHandoff(recommendation: Recommendation): BookingHandoff
     recommendation screen, where they are an explanation rather than a term of
     business.
   */
-  const { productId, principal, product } = recommendation;
+  const { productId, principal, product, quote, isSeniorCitizen } = recommendation;
   /* Legacy test and integration callers may carry only id + principal. */
   const bookable = product?.dataStatus !== 'illustrative' && isBookableProduct(productId);
+
+  const termsSnapshot: BookingTermsSnapshot = {
+    productId,
+    bankId: product.bank.id,
+    tenureMonths: product.terms.tenureMonths,
+    annualRate: quote.annualRate,
+    customerCategory: isSeniorCitizen ? 'senior' : 'regular',
+    payout: product.terms.payout,
+    interestType: product.terms.interestType,
+    compoundingFrequency: product.terms.compoundingFrequency ?? null,
+    principal,
+  };
 
   return {
     productId,
     amount: principal,
-    href: bookable ? ROUTES.bookingOverview(productId, principal) : ROUTES.product(productId),
+    termsSnapshot,
+    href: bookable
+      ? ROUTES.bookingOverview(productId, principal, termsSnapshot)
+      : ROUTES.product(productId),
     bookable,
   };
 }
